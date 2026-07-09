@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Spacio AM · Guest App</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,300;1,400&display=swap" rel="stylesheet" />
+<style>
+@font-face { font-family:"Valky"; src:url("assets/fonts/Valky-Light.otf") format("opentype"); font-weight:300; font-display:swap; }
+@font-face { font-family:"Valky"; src:url("assets/fonts/Valky-Regular.otf") format("opentype"); font-weight:400; font-display:swap; }
+@font-face { font-family:"Valky"; src:url("assets/fonts/Valky-Semibold.otf") format("opentype"); font-weight:600; font-display:swap; }
+@font-face { font-family:"Valky"; src:url("assets/fonts/Valky-Bold.otf") format("opentype"); font-weight:700; font-display:swap; }
+
+:root{
+  --alabaster:#FAFAFA; --beige:#F5F3F0; --ink:#3E3F3F; --peach:#E9826A;
+  --ease:cubic-bezier(.22,.61,.36,1);
+}
+*{ box-sizing:border-box; }
+html{ scroll-behavior:smooth; }
+html,body{ margin:0; padding:0; }
+body{
+  background:var(--alabaster); color:var(--ink);
+  font-family:"Montserrat","Helvetica Neue",Arial,sans-serif;
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  min-height:100vh;
+}
+button{ font-family:inherit; }
+
+/* ---------- Responsive app shell (mobile-first, fluid to desktop) ---------- */
+#root{ min-height:100vh; }
+.sp-stage{ min-height:100vh; }
+.sp-screen{ min-height:100vh; display:flex; flex-direction:column; }
+.sp-grain{ position:fixed; inset:0; pointer-events:none; opacity:.04; mix-blend-mode:multiply; z-index:60;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+
+/* center short content vertically, let tall content scroll from top */
+.sp-center{ margin:auto; width:100%; }
+
+/* ---------- Slim translucent nav (Apple-style) ---------- */
+.sp-nav{ position:sticky; top:0; z-index:40; display:flex; align-items:center; justify-content:space-between;
+  padding:16px clamp(20px,4vw,40px); backdrop-filter:blur(20px) saturate(120%); -webkit-backdrop-filter:blur(20px) saturate(120%);
+  background:rgba(250,250,250,.72); border-bottom:1px solid rgba(216,212,206,.5); }
+.sp-langbtn{ background:transparent; border:1px solid var(--warm-grey,#D8D4CE); border-radius:999px;
+  padding:7px 15px; font-size:10px; letter-spacing:.18em; color:#938B8A; cursor:pointer; font-weight:500; transition:all .18s var(--ease); }
+.sp-langbtn:hover{ border-color:var(--ink); color:var(--ink); }
+
+/* ---------- Bento grid (responsive: 2 → 3 columns) ---------- */
+.bento-wrap{ width:100%; max-width:480px; margin:0 auto; }
+.bento{ display:grid; grid-template-columns:repeat(2,1fr); grid-auto-rows:128px; gap:12px; grid-auto-flow:dense; }
+@media (min-width:780px){
+  .bento-wrap{ max-width:920px; }
+  .bento{ grid-template-columns:repeat(4,1fr); grid-auto-rows:168px; gap:16px; }
+}
+
+/* ---------- Motion & interaction ---------- */
+.sp-img{ transition:transform .72s var(--ease); }
+.sp-imgwrap{ overflow:hidden; }
+.sp-tile:hover .sp-img, .sp-row:hover .sp-img, .sp-weave:hover .sp-img{ transform:scale(1.045); }
+
+.sp-btn{ transition:transform .12s var(--ease), box-shadow .18s var(--ease), background .18s var(--ease); }
+.sp-btn:active{ transform:scale(.98); }
+.sp-row,.sp-tile{ transition:transform .18s var(--ease), border-color .18s var(--ease), box-shadow .24s var(--ease); }
+.sp-row:hover{ border-color:var(--ink)!important; }
+.sp-tile:hover{ transform:translateY(-3px); box-shadow:0 16px 40px rgba(62,63,63,.12)!important; }
+.sp-link{ transition:opacity .18s var(--ease); }
+.sp-link:hover{ opacity:.6; }
+
+@keyframes rise{ from{opacity:0; transform:translateY(14px);} to{opacity:1; transform:none;} }
+.reveal{ animation:rise .56s var(--ease) both; }
+@keyframes spin{ to{ transform:rotate(360deg);} }
+.sp-spin{ animation:spin .8s linear infinite; }
+@keyframes floaty{ 0%,100%{transform:translateY(0);} 50%{transform:translateY(-7px);} }
+.sp-float{ animation:floaty 4.5s ease-in-out infinite; }
+
+@media (prefers-reduced-motion:reduce){
+  .reveal,.sp-float{ animation:none!important; }
+  .sp-img{ transition:none; }
+  html{ scroll-behavior:auto; }
+}
+
+/* ---------- Print — a body-level portal is the ONLY thing that prints ----------
+   The summary is cloned into #print-portal (a direct child of <body>) so no
+   ancestor (fixed overlay, #root, transforms) can clip it. display:none on
+   everything else is stronger & more reliable than visibility:hidden on iOS. */
+#print-portal{ display:none; }
+@media print{
+  @page{ margin:14mm; }
+  html,body{ background:#fff!important; height:auto!important; min-height:0!important; overflow:visible!important; }
+  body > *:not(#print-portal){ display:none!important; }
+  .sp-grain{ display:none!important; }
+  #print-portal{ display:block!important; position:static!important; width:100%!important; }
+  #print-portal *{ color:#3E3F3F!important; -webkit-print-color-adjust:exact!important; print-color-adjust:exact!important; }
+  #print-portal .sum-noprint{ display:none!important; }
+  /* sections + guest list flow freely across as many pages as needed */
+  #print-portal .sum-section, #print-portal .sum-guest-list{ display:block!important; break-inside:auto; page-break-inside:auto; }
+  #print-portal .sum-guest-list > *{ margin-bottom:18px!important; }
+  /* keep each individual card together only when it fits on a page */
+  #print-portal .sum-card{ break-inside:avoid; page-break-inside:avoid; }
+  #print-portal img{ max-width:100%!important; max-height:none!important; height:auto!important; display:block; }
+}
+</style>
+</head>
+<body>
+<template id="__bundler_thumbnail">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#F5F3F0"/><path d="M50 30 C 51 42, 55 46, 67 50 C 55 54, 51 58, 50 70 C 49 58, 45 54, 33 50 C 45 46, 49 42, 50 30 Z" fill="#E9826A"/></svg>
+</template>
+
+<div class="sp-grain"></div>
+<div id="root"></div>
+
+<script src="config.js"></script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="app/data.jsx"></script>
+<script type="text/babel" src="app/checkin-data.jsx"></script>
+<script type="text/babel" src="app/primitives.jsx"></script>
+<script type="text/babel" src="app/screens-onboarding.jsx"></script>
+<script type="text/babel" src="app/screens-bento.jsx"></script>
+<script type="text/babel" src="app/screens-admin.jsx"></script>
+<script type="text/babel" src="app/app.jsx"></script>
+</body>
+</html>

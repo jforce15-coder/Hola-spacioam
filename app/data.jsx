@@ -41,10 +41,10 @@ const HERO_GENERIC = IMG.morning;
 function resPhoto(res) {
   try {
     const pi = (window.loadPropInfo ? window.loadPropInfo() : {})[res && res.propertyName] || {};
-    if (pi.photoUrl && /^https?:\/\//.test(pi.photoUrl)) return pi.photoUrl;   // 1) admin override
+    if (pi.photoUrl && /^https?:\/\//.test(pi.photoUrl)) return pi.photoUrl;   // 1) admin override (alta resolución)
   } catch (e) {}
-  if (res && res.photo && /^https?:\/\//.test(res.photo)) return res.photo;    // 2) og:image auto-resuelto (backend)
-  return HERO_GENERIC;                                                          // 3) genérica
+  // NOTA: no usamos res.photo — el thumbnail de Hospitable llega borroso.
+  return HERO_GENERIC;                                                          // 2) genérica nítida
 }
 function resName(res) {
   return (res && (res.propertyShort || res.propertyName || res.apartment)) || "Spacio AM";

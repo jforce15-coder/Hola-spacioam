@@ -33,12 +33,18 @@ const IMG = {
   morning:  "assets/photos/morning.jpeg",
 };
 
-/* Generic high-res editorial hero used for ALL stays. The Hospitable listing
-   photos came through low-res/blurry, so we standardize on one warm, on-brand
-   image (soft morning light) that works for every property. */
+/* Hero photo per stay. Priority:
+   1) admin-set high-res photo URL for the property (Propiedades tab) — used
+      directly as <img src>, no re-encode, so it stays full resolution.
+   2) generic on-brand fallback. */
 const HERO_GENERIC = IMG.morning;
 function resPhoto(res) {
-  return HERO_GENERIC;
+  try {
+    const pi = (window.loadPropInfo ? window.loadPropInfo() : {})[res && res.propertyName] || {};
+    if (pi.photoUrl && /^https?:\/\//.test(pi.photoUrl)) return pi.photoUrl;   // 1) admin override
+  } catch (e) {}
+  if (res && res.photo && /^https?:\/\//.test(res.photo)) return res.photo;    // 2) og:image auto-resuelto (backend)
+  return HERO_GENERIC;                                                          // 3) genérica
 }
 function resName(res) {
   return (res && (res.propertyShort || res.propertyName || res.apartment)) || "Spacio AM";
@@ -221,7 +227,7 @@ const T = {
     adminComplete: "completos", adminPending: "pendientes",
     adminGuest: "Huésped de la reserva", adminCheckinCol: "Check-in", adminStatusCol: "Estado",
     adminView: "Ver resumen", adminDownload: "Descargar", adminResend: "Reenviar correo",
-    adminResent: "Enviado a", adminNoDocs: "Documentos aún no recopilados.", adminEmpty: "No hay reservas en este rango.",
+    adminResent: "Enviado a", adminResending: "Enviando…", adminResendFail: "No se pudo enviar. Revisa el backend.", adminNoDocs: "Documentos aún no recopilados.", adminEmpty: "No hay reservas en este rango.",
     adminDoneElsewhere: "Este registro se completó desde otro dispositivo. Los datos y documentos están guardados en la base de datos (hoja ‘Formularios’/‘Huespedes’ y carpeta de Drive).",
     sumViewDoc: "Ver documento", sumOpenFolder: "Abrir carpeta de documentos",
     adminSyncNote: "Reservas obtenidas de Hospitable", adminSeeded: "Demo", adminRefreshNow: "Actualizar",
@@ -242,6 +248,9 @@ const T = {
     piType: "Tipo de propiedad", piTypeApt: "Apartamento en edificio", piTypeCondo: "Casa en condominio", piTypeOff: "Propiedad fuera de condominio",
     piContact: "Contacto (recepción)", piContactNote: "A estos correos se envía el formulario completado de esta propiedad.",
     piInstructions: "Instrucciones generales", piInstructionsNote: "Aplican a todo el edificio, condominio o región. Editar aquí actualiza lo que ve el huésped en su check-in.",
+    piCheckinNote: "Nota adicional (ej. dejar llaves y tarjeta en el buzón)",
+    piPhotoUrl: "Foto del alojamiento (URL)",
+    piPhotoNote: "Pega el enlace del anuncio (Airbnb, Booking) o una URL de imagen directa. Usamos la imagen en alta resolución.",
     piSave: "Guardar", piSaved: "Guardado",
     segTitle: "Seguimiento", segPending: "Registros pendientes de hoy", segInvoices: "Facturas solicitadas", segDayReq: "Solicitudes de día adicional", segEarly: "Early check-in / permiso de maletas",
     segDeadline: "Vence", segNone: "Sin pendientes", segMarkDone: "Marcar hecho", segUpload: "Cargar factura", segEmpty: "Nada por aquí por ahora.",
@@ -475,7 +484,7 @@ const T = {
     adminComplete: "complete", adminPending: "pending",
     adminGuest: "Reservation guest", adminCheckinCol: "Check-in", adminStatusCol: "Status",
     adminView: "View summary", adminDownload: "Download", adminResend: "Resend email",
-    adminResent: "Sent to", adminNoDocs: "Documents not collected yet.", adminEmpty: "No reservations in this range.",
+    adminResent: "Sent to", adminResending: "Sending…", adminResendFail: "Couldn't send. Check the backend.", adminNoDocs: "Documents not collected yet.", adminEmpty: "No reservations in this range.",
     adminDoneElsewhere: "This registration was completed from another device. The data and documents are saved in the database (‘Formularios’/‘Huespedes’ sheet and the Drive folder).",
     sumViewDoc: "View document", sumOpenFolder: "Open documents folder",
     adminSyncNote: "Reservations pulled from Hospitable", adminSeeded: "Demo", adminRefreshNow: "Refresh",
@@ -496,6 +505,9 @@ const T = {
     piType: "Property type", piTypeApt: "Apartment in building", piTypeCondo: "House in condominium", piTypeOff: "Property outside condominium",
     piContact: "Contact (front desk)", piContactNote: "The completed form for this property is sent to these emails.",
     piInstructions: "General instructions", piInstructionsNote: "Apply to the whole building, condo or region. Editing here updates what the guest sees at check-in.",
+    piCheckinNote: "Additional note (e.g. leave keys and card in the mailbox)",
+    piPhotoUrl: "Property photo (URL)",
+    piPhotoNote: "Paste the listing link (Airbnb, Booking) or a direct image URL. We use the full-resolution image.",
     piSave: "Save", piSaved: "Saved",
     segTitle: "Tracking", segPending: "Today's pending registrations", segInvoices: "Requested invoices", segDayReq: "Additional-day requests", segEarly: "Early check-in / luggage permits",
     segDeadline: "Due", segNone: "Nothing pending", segMarkDone: "Mark done", segUpload: "Upload invoice", segEmpty: "Nothing here for now.",

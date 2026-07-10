@@ -525,7 +525,17 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang }) {
   const doneCount = rows ? rows.filter((r) => isDone(r.h, r.rec)).length : 0;
   const pendingCount = rows ? rows.length - doneCount : 0;
 
-  const resend = (h) => { setToast(`${t.adminResent} ${h.assignedEmail}`); setTimeout(() => setToast(""), 2600); };
+  const resend = (h) => {
+    setToast(t.adminResending || "Enviando…"); 
+    const done = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
+    try {
+      if (Backend.isConnected && Backend.isConnected() && Backend.call) {
+        Backend.call("resendRegistration", { code: h.code })
+          .then((r) => done(r && r.ok ? `${t.adminResent} ${r.to || ""}` : (t.adminResendFail || "No se pudo enviar")))
+          .catch(() => done(t.adminResendFail || "No se pudo enviar"));
+      } else { done(t.adminResendFail || "Conecta el backend para enviar correos"); }
+    } catch (e) { done(t.adminResendFail || "No se pudo enviar"); }
+  };
 
   const quickOptions = [
     { value: "yesterday", label: t.adminYesterday },
@@ -857,6 +867,18 @@ function PropertyInfoScreen({ t, roster, onToast }) {
     const c = stations[name] || {};
     try { Backend.call && Backend.call("savePropertyInfo", { property: name, info: store[name] || {} }).catch(() => {}); } catch (e) {}
     try { Backend.saveStation && Backend.saveStation({ propertyId: c.propertyId || "", propertyName: name, email1: c.email1 || "", email2: c.email2 || "", phone1: c.phone1 || "", phone2: c.phone2 || "" }); } catch (e) {}
+    // if the admin pasted a LISTING url (airbnb/booking), resolve its og:image (high-res) and store it
+    const purl = (store[name] || {}).photoUrl || "";
+    if (/airbnb\.|booking\.com|hospitable|\/rooms\//i.test(purl) && !/\.(jpg|jpeg|png|webp)(\?|$)/i.test(purl) && Backend.call) {
+      Backend.call("listingPhoto", { url: purl }).then((r) => {
+        if (r && r.ok && r.image) {
+          const cur = { ...loadPropInfo() };
+          cur[name] = { ...(cur[name] || {}), photoUrl: r.image };
+          savePropInfoAll(cur); setStore((s) => ({ ...s, [name]: { ...(s[name] || {}), photoUrl: r.image } }));
+          try { Backend.call("savePropertyInfo", { property: name, info: cur[name] }).catch(() => {}); } catch (e) {}
+        }
+      }).catch(() => {});
+    }
     onToast(`${t.piSaved} · ${name}`);
   };
 
@@ -951,7 +973,11 @@ function PropertyInfoScreen({ t, roster, onToast }) {
                     <p style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, margin: "-2px 0 10px", letterSpacing: "0.02em", lineHeight: 1.5 }}>{t.piInstructionsNote}</p>
                     <input value={info.address != null ? info.address : (buildingOf(name)?.address || "")} onChange={(e) => set(name, { address: e.target.value })} placeholder={t.ckAddress} style={{ ...fieldStyle, marginTop: 0 }} />
                     <textarea value={info.arrival != null ? info.arrival : (buildingOf(name)?.arrival || "")} onChange={(e) => set(name, { arrival: e.target.value })} placeholder={t.ckArrival} rows={4} style={{ ...fieldStyle, resize: "vertical" }} />
+                    <textarea value={info.tip != null ? info.tip : (buildingOf(name)?.tip || "")} onChange={(e) => set(name, { tip: e.target.value })} placeholder={t.piCheckinNote} rows={2} style={{ ...fieldStyle, resize: "vertical" }} />
                     <input value={info.maps != null ? info.maps : (buildingOf(name)?.maps || "")} onChange={(e) => set(name, { maps: e.target.value })} placeholder={t.ckMaps + " URL"} style={{ ...fieldStyle }} />
+                    <input value={info.waze != null ? info.waze : (buildingOf(name)?.waze || "")} onChange={(e) => set(name, { waze: e.target.value })} placeholder={t.ckWaze + " URL"} style={{ ...fieldStyle }} />
+                    <input value={info.photoUrl || ""} onChange={(e) => set(name, { photoUrl: e.target.value })} placeholder={t.piPhotoUrl} style={{ ...fieldStyle }} />
+                    <p style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, margin: "6px 0 0", letterSpacing: "0.02em", lineHeight: 1.5 }}>{t.piPhotoNote}</p>
 
                     <div style={{ marginTop: 20 }}>
                       <button onClick={() => save(name)} className="sp-btn" style={{ background: C.negro, color: C.alabaster, border: "none", borderRadius: 10, padding: "10px 20px",
@@ -995,6 +1021,17 @@ function InvoiceNotifyButton({ t, iv }) {
 function SeguimientoScreen({ t, roster }) {
   const store = typeof loadStore === "function" ? loadStore() : {};
   const es = t.code === "es";
+  const [, force] = useStateAd(0);
+  // marca de gestión por solicitud (persistente): done + approved
+  const reqKey = (r) => `${r.type}|${r.code}|${r.at || ""}`;
+  const marks = store.reqMarks || {};
+  const setMark = (r, patch) => {
+    const s = loadStore();
+    const m = { ...(s.reqMarks || {}) };
+    m[reqKey(r)] = { ...(m[reqKey(r)] || {}), ...patch };
+    saveStore({ ...s, reqMarks: m });
+    force((n) => n + 1);
+  };
   // pending registrations checking-in today
   const pendingToday = (roster || []).filter((r) => checkinBucket(r.checkin) === "today" && r.statusForm !== "completo");
   const invoices = (store.invoices || []).filter((i) => i.status !== "done");
@@ -1002,6 +1039,32 @@ function SeguimientoScreen({ t, roster }) {
   const dayReqs = hostReqs.filter((r) => r.type === "late" || r.type === "day");
   const earlyReqs = hostReqs.filter((r) => r.type === "early" || r.type === "luggage");
   const suggestions = store.suggestions || [];
+
+  const checkbox = (r, label) => {
+    const done = !!(marks[reqKey(r)] && marks[reqKey(r)].done);
+    return (
+      <button onClick={() => setMark(r, { done: !done })} className="sp-btn" style={{ display: "inline-flex", alignItems: "center", gap: 8,
+        background: done ? "rgba(31,138,91,.1)" : C.white, border: `1px solid ${done ? "rgba(31,138,91,.4)" : C.grisCalido}`, borderRadius: 999,
+        padding: "6px 12px", cursor: "pointer", fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.04em", color: done ? "#177A4F" : C.tierra, fontWeight: 500 }}>
+        <span style={{ width: 15, height: 15, borderRadius: 4, border: `1.5px solid ${done ? "#1F8A5B" : C.taupe}`, background: done ? "#1F8A5B" : "transparent", display: "grid", placeItems: "center" }}>
+          {done && <Icon name="check" size={10} color={C.white} />}
+        </span>
+        {done ? (es ? "Gestionado" : "Handled") : label}
+      </button>
+    );
+  };
+  const approveBtn = (r) => {
+    const ap = !!(marks[reqKey(r)] && marks[reqKey(r)].approved);
+    return (
+      <button onClick={() => { setMark(r, { approved: !ap });
+        try { Backend.call && Backend.call("hostRequestApprove", { code: r.code, kind: r.type, approved: !ap }).catch(() => {}); } catch (e) {} }}
+        className="sp-btn" style={{ display: "inline-flex", alignItems: "center", gap: 7,
+        background: ap ? "#1F8A5B" : C.negro, color: C.alabaster, border: "none", borderRadius: 999, padding: "7px 15px", cursor: "pointer",
+        fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.05em", fontWeight: 500 }}>
+        <Icon name="check" size={13} color={C.alabaster} /> {ap ? (es ? "Aprobado" : "Approved") : (es ? "Aprobar" : "Approve")}
+      </button>
+    );
+  };
 
   const card = (children, key) => <div key={key} style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 14, padding: "14px 16px" }}>{children}</div>;
   const sectionHead = (icon, title, count) => (
@@ -1064,9 +1127,10 @@ function SeguimientoScreen({ t, roster }) {
         {dayReqs.length ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {dayReqs.map((r, i) => card(
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                 <div><div style={{ fontFamily: C.serif, fontSize: 16, color: C.negro }}>{r.apartment || r.code}</div>
                   <div style={{ fontFamily: C.sans, fontSize: 11, color: C.tierra, marginTop: 2 }}>{reqLabel[r.type] || r.type} · {r.code}</div></div>
+                {checkbox(r, es ? "Marcar gestionado" : "Mark handled")}
               </div>, i
             ))}
           </div>
@@ -1078,9 +1142,10 @@ function SeguimientoScreen({ t, roster }) {
         {earlyReqs.length ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {earlyReqs.map((r, i) => card(
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                 <div><div style={{ fontFamily: C.serif, fontSize: 16, color: C.negro }}>{r.apartment || r.code}</div>
                   <div style={{ fontFamily: C.sans, fontSize: 11, color: C.tierra, marginTop: 2 }}>{reqLabel[r.type] || r.type} · {r.code}</div></div>
+                {r.type === "early" ? approveBtn(r) : checkbox(r, es ? "Marcar gestionado" : "Mark handled")}
               </div>, i
             ))}
           </div>

@@ -450,7 +450,8 @@ function CheckinContent({ t, res }) {
   const addr = (pi.address != null && pi.address !== "") ? pi.address : (b && b.address);
   const arrival = (pi.arrival != null && pi.arrival !== "") ? pi.arrival : (b && b.arrival);
   const maps = (pi.maps != null && pi.maps !== "") ? pi.maps : (b && b.maps);
-  const waze = b && b.waze;
+  const waze = (pi.waze != null && pi.waze !== "") ? pi.waze : (b && b.waze);
+  const tip = (pi.tip != null && pi.tip !== "") ? pi.tip : (b && b.tip);
   const hasInfo = !!(b || addr || arrival);
   const unit = typeof unitFromRes === "function" ? unitFromRes(res) : res.apartment;
   const floor = b && typeof floorFromUnit === "function" ? floorFromUnit(unit, b.key) : null;
@@ -521,7 +522,7 @@ function CheckinContent({ t, res }) {
             <div style={{ fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.16em", textTransform: "uppercase", color: C.tierra, fontWeight: 600, margin: "18px 0 8px" }}>{t.ckArrival}</div>
             <p style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, lineHeight: 1.65, margin: 0, letterSpacing: "0.01em", whiteSpace: "pre-line" }}>{arrival}</p>
           </>}
-          {b.tip && <p style={{ fontFamily: C.sans, fontSize: 11.5, color: C.tierra, lineHeight: 1.6, margin: "12px 0 0", letterSpacing: "0.01em", fontStyle: "italic" }}>{b.tip}</p>}
+          {tip && <p style={{ fontFamily: C.sans, fontSize: 11.5, color: C.tierra, lineHeight: 1.6, margin: "12px 0 0", letterSpacing: "0.01em", fontStyle: "italic" }}>{tip}</p>}
           {b.contactName && <p style={{ fontFamily: C.sans, fontSize: 12, color: C.negro, margin: "12px 0 0", letterSpacing: "0.01em" }}>{t.ckContactName}: <b>{b.contactName}</b> · {b.contactPhone}</p>}
           {/^(smart|keybox|locker|box)/.test(b.lock || "") && (
             <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginTop: 16, background: C.beige, borderRadius: 12, padding: "13px 15px" }}>

@@ -71,7 +71,7 @@ function CodeScreen({ t, onResolved, onAdmin, onSwitchLang }) {
   return (
     <Screen maxW={480}>
       {/* discreet admin access — top-right corner */}
-      <button onClick={() => setShowLogin(true)} title={t.adminLoginTitle} aria-label={t.adminLoginTitle}
+      <button onClick={() => { const s = (function(){try{return localStorage.getItem("spacioam_admin_session")||""}catch(e){return ""}})(); if (s) onAdmin(s); else setShowLogin(true); }} title={t.adminLoginTitle} aria-label={t.adminLoginTitle}
         style={{ position: "fixed", top: 16, right: 16, zIndex: 60, width: 38, height: 38, borderRadius: 11,
           border: `1px solid ${C.grisCalido}`, background: "rgba(250,250,250,.7)", backdropFilter: "blur(20px) saturate(120%)",
           cursor: "pointer", display: "grid", placeItems: "center", opacity: 0.5, transition: "opacity .18s " + C.ease }}
@@ -119,7 +119,7 @@ function OverviewScreen({ t, res, onStart, onSwitchLang }) {
       <TopBar t={t} onSwitchLang={onSwitchLang} />
       <div className="reveal"><H>{t.foundTitle}</H></div>
       <div className="reveal" style={{ animationDelay: ".08s", position: "relative", marginBottom: -1 }}>
-        <WeaveHero img={res.photo} variant={3} height="clamp(220px,30vh,288px)" width={90}
+        <WeaveHero img={resPhoto(res)} variant={3} height="clamp(220px,30vh,288px)" width={90}
           frontMask="radial-gradient(130% 92% at 78% 86%, #000 0 38%, transparent 60%)"
           overlay={<>
             <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(62,63,63,.58), transparent 52%)" }} />

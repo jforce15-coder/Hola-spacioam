@@ -133,9 +133,11 @@ function App() {
   const switchStay = (r) => { window.location.hash = ""; setTile(null); setRes(r); };
 
   // ADMIN — seed one completed demo form, then open the control panel
-  const [adminEmail, setAdminEmail] = useStateA("");
+  const [adminEmail, setAdminEmail] = useStateA(() => { try { return localStorage.getItem("spacioam_admin_session") || ""; } catch (e) { return ""; } });
   const goAdmin = (email) => {
-    setAdminEmail(email || "");
+    const em = email || adminEmail || "";
+    setAdminEmail(em);
+    try { if (em) localStorage.setItem("spacioam_admin_session", em); } catch (e) {}
     const store = loadStore();
     const records = { ...(store.records || {}) };
     const seed = adminSeedRecord();

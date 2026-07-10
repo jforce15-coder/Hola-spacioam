@@ -39,12 +39,24 @@ const IMG = {
    2) generic on-brand fallback. */
 const HERO_GENERIC = IMG.morning;
 function resPhoto(res) {
+  // BENTO — foto genérica de marca (o la que el admin fije). Nunca el thumbnail.
   try {
     const pi = (window.loadPropInfo ? window.loadPropInfo() : {})[res && res.propertyName] || {};
-    if (pi.photoUrl && /^https?:\/\//.test(pi.photoUrl)) return pi.photoUrl;   // 1) admin override (alta resolución)
+    if (pi.photoUrl && /^https?:\/\//.test(pi.photoUrl)) return pi.photoUrl;
   } catch (e) {}
-  // NOTA: no usamos res.photo — el thumbnail de Hospitable llega borroso.
-  return HERO_GENERIC;                                                          // 2) genérica nítida
+  return HERO_GENERIC;
+}
+/* OVERVIEW ("Encontramos tu estancia") — foto REAL del anuncio en alta
+   resolución. Prioridad: foto que el admin fijó → og:image resuelto por el
+   backend (res.photo) → genérica como último recurso. El backend solo guarda
+   en res.photo una URL de og:image en alta resolución, nunca el thumbnail. */
+function resListingPhoto(res) {
+  try {
+    const pi = (window.loadPropInfo ? window.loadPropInfo() : {})[res && res.propertyName] || {};
+    if (pi.photoUrl && /^https?:\/\//.test(pi.photoUrl)) return pi.photoUrl;
+  } catch (e) {}
+  if (res && res.photo && /^https?:\/\//.test(res.photo)) return res.photo;
+  return HERO_GENERIC;
 }
 function resName(res) {
   return (res && (res.propertyShort || res.propertyName || res.apartment)) || "Spacio AM";
@@ -1188,7 +1200,7 @@ Gracias por elegir Spacio AM, donde cada detalle tiene intención.
 
 Object.assign(window, {
   C, IMG, ADMIN_SETTINGS, money, DIAL_CODES, DIAL_CODES_SORTED, parsePhone,
-  resPhoto, resName, titleCaseName,
+  resPhoto, resName, resListingPhoto, titleCaseName,
   T, RESERVATIONS, groupReservations, findReservation, normCode, nightsBetween,
   RULES, FINES, RULES_FULL_TEXT,
   HOSPITABLE, adminSeedRecord, isAdminCode,

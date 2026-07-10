@@ -119,7 +119,7 @@ function OverviewScreen({ t, res, onStart, onSwitchLang }) {
       <TopBar t={t} onSwitchLang={onSwitchLang} />
       <div className="reveal"><H>{t.foundTitle}</H></div>
       <div className="reveal" style={{ animationDelay: ".08s", position: "relative", marginBottom: -1 }}>
-        <WeaveHero img={resPhoto(res)} variant={3} height="clamp(220px,30vh,288px)" width={90}
+        <WeaveHero img={resListingPhoto(res)} variant={3} height="clamp(220px,30vh,288px)" width={90}
           frontMask="radial-gradient(130% 92% at 78% 86%, #000 0 38%, transparent 60%)"
           overlay={<>
             <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(62,63,63,.58), transparent 52%)" }} />

@@ -33,13 +33,12 @@ const IMG = {
   morning:  "assets/photos/morning.jpeg",
 };
 
-/* fallbacks for live reservations that don't carry a photo / property name yet */
-const FALLBACK_PHOTOS = [IMG.living, IMG.bedroom, IMG.nook, IMG.antigua, IMG.rooftop, IMG.kitchen];
+/* Generic high-res editorial hero used for ALL stays. The Hospitable listing
+   photos came through low-res/blurry, so we standardize on one warm, on-brand
+   image (soft morning light) that works for every property. */
+const HERO_GENERIC = IMG.morning;
 function resPhoto(res) {
-  if (res && res.photo) return res.photo;
-  const s = String((res && (res.code || res.apartment || res.id)) || "");
-  let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return FALLBACK_PHOTOS[h % FALLBACK_PHOTOS.length];
+  return HERO_GENERIC;
 }
 function resName(res) {
   return (res && (res.propertyShort || res.propertyName || res.apartment)) || "Spacio AM";
@@ -180,7 +179,7 @@ const T = {
 
     /* account popup */
     acctTitle: "¿Quieres guardar tu acceso?",
-    acctSub: "Crea un usuario para volver a esta sección más fácilmente en el futuro, sin llenar el formulario de nuevo.",
+    acctSub: "Crea un usuario para ingresar fácilmente en el futuro, sin necesidad de recordar tu número de reserva. Además, podrás invitar a tus acompañantes para que tengan su propia cuenta.",
     acctYes: "Sí, crear usuario", acctNo: "Ahora no",
     acctChooseEmail: "Elige tu usuario", acctChooseEmailSub: "Usaremos uno de los correos que nos diste.",
     acctPassword: "Crea una contraseña", acctPasswordPh: "Mínimo 6 caracteres",
@@ -435,7 +434,7 @@ const T = {
     enterSpace: "Enter your space",
 
     acctTitle: "Want to save your access?",
-    acctSub: "Create a login to return to this section more easily in the future, without filling the form again.",
+    acctSub: "Create a login to get in easily in the future, without needing to remember your reservation number. You'll also be able to invite your companions to have their own account.",
     acctYes: "Yes, create login", acctNo: "Not now",
     acctChooseEmail: "Choose your username", acctChooseEmailSub: "We'll use one of the emails you gave us.",
     acctPassword: "Create a password", acctPasswordPh: "At least 6 characters",

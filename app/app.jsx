@@ -61,11 +61,31 @@ function App() {
   const [form, setForm] = useStateA(emptyForm(null));
   const [tile, setTile] = useStateA(null);
   const [acctOpen, setAcctOpen] = useStateA(false);
+  const [inviteEmail, setInviteEmail] = useStateA("");
   const acctTimer = useRefA(null);
   const t = lang ? T[lang] : T.es;
 
   // purge expired documents once, on mount
   useEffectA(() => { purgeExpiredDocuments(); }, []);
+
+  // invite link (#invite=CODE&email=…) — a secondary guest lands here from the
+  // email; resolve the reservation by code and open account creation synced to it.
+  useEffectA(() => {
+    const h = window.location.hash || "";
+    const m = h.match(/invite=([^&]+)/);
+    if (!m) return;
+    const code = decodeURIComponent(m[1] || "");
+    const em = (h.match(/email=([^&]+)/) || [])[1];
+    const inviteEmail = em ? decodeURIComponent(em) : "";
+    if (!code) return;
+    if (!lang) setLang("es");
+    Backend.findReservation(code).then((r) => {
+      if (!r) return;
+      window.location.hash = "";
+      setRes(r); setSiblings([r]); setInviteEmail(inviteEmail); setStage("bento");
+      setTimeout(() => setAcctOpen(true), 400);
+    }).catch(() => {});
+  }, []);
 
   // hash routing for bento tiles
   useEffectA(() => {
@@ -198,7 +218,10 @@ function App() {
 
   const firstName = (() => {
     const rec = completedRecordFor(res) || loadStore().records?.[res?.id];
-    return ((form?.docs?.[0]?.name || rec?.firstName || "").split(" ")[0]) || "";
+    const fromForm = form?.docs?.[0]?.name || "";
+    const fromRec = rec?.firstName || "";
+    const fromRes = res?.guestFirstName || (res?.guestName || "").trim();
+    return ((fromForm || fromRec || fromRes || "").split(" ")[0]) || "";
   })();
 
   let view;
@@ -221,7 +244,7 @@ function App() {
     <div className="sp-stage">
       <div key={stage + (tile || "") + (res?.id || "")}>{view}</div>
       {acctOpen && res && (
-        <AccountModal t={t} emails={acctEmails()} maxShare={res.maxCapacity}
+        <AccountModal t={t} emails={inviteEmail ? [inviteEmail] : acctEmails()} maxShare={res.maxCapacity} invited={!!inviteEmail}
           onClose={dismissAcct} onCreated={createAccount} />
       )}
     </div>

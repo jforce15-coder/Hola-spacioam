@@ -523,6 +523,12 @@ function CheckinContent({ t, res }) {
           </>}
           {b.tip && <p style={{ fontFamily: C.sans, fontSize: 11.5, color: C.tierra, lineHeight: 1.6, margin: "12px 0 0", letterSpacing: "0.01em", fontStyle: "italic" }}>{b.tip}</p>}
           {b.contactName && <p style={{ fontFamily: C.sans, fontSize: 12, color: C.negro, margin: "12px 0 0", letterSpacing: "0.01em" }}>{t.ckContactName}: <b>{b.contactName}</b> · {b.contactPhone}</p>}
+          {/^(smart|keybox|locker|box)/.test(b.lock || "") && (
+            <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginTop: 16, background: C.beige, borderRadius: 12, padding: "13px 15px" }}>
+              <span style={{ flexShrink: 0, marginTop: 1 }}><Icon name="lock" size={15} color={C.peach} /></span>
+              <p style={{ fontFamily: C.sans, fontSize: 11.5, color: C.negro, lineHeight: 1.6, margin: 0, letterSpacing: "0.01em" }}>{t.ckCodeNote}</p>
+            </div>
+          )}
         </div>
       ) : (
         <p style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, lineHeight: 1.65, margin: "16px 0 0", letterSpacing: "0.02em" }}>
@@ -714,43 +720,87 @@ function GuestAccessContent({ t, res }) {
 
 /* house-manual extras that apply to this property (induction, cable, smart house) */
 function ManualExtras({ t, res }) {
+  const es = t.code === "es";
   const b = typeof matchBuilding === "function" ? matchBuilding(res) : null;
   const extras = typeof HOUSE_MANUAL_EXTRAS !== "undefined" ? HOUSE_MANUAL_EXTRAS : {};
-  if (!b) return null;
-  const keys = ["induction", "cable", "smartHouse"].filter((k) => b[k] && extras[k]);
-  if (!keys.length) {
-    const es = t.code === "es";
-    return <p style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, lineHeight: 1.65, margin: "14px 0 0", letterSpacing: "0.02em" }}>
-      {es ? "Encontrarás todo listo y a la vista. Si algo no funciona como esperas, escríbenos y te ayudamos al instante." : "Everything is ready and in plain sight. If something doesn't work as expected, message us and we'll help right away."}</p>;
-  }
+
+  // universal cards shown for every property
+  const universal = es ? [
+    { icon: "manual", title: "Basura y reciclaje", intro: "En Guatemala la basura se separa por ley (Acuerdo Gubernativo 164-2021). Es sencillo:",
+      steps: [
+        "Orgánico (restos de comida, cáscaras): bolsa verde.",
+        "Inorgánico reciclable (plástico, vidrio, papel, lata) limpio y seco: bolsa blanca o azul.",
+        "No reciclable / sanitario: bolsa negra.",
+        "Toda la basura debe salir en bolsa cerrada y llevarse al área designada del edificio o casa. No la dejes en pasillos ni fuera de la puerta.",
+      ] },
+    { icon: "wifi", title: "Ecofiltro — agua pura", intro: "El apartamento tiene un ecofiltro: un invento guatemalteco que purifica el agua con un filtro de barro, aserrín y plata coloidal.",
+      steps: [
+        "Sirve directo de la llave del ecofiltro: el agua es 100% segura para beber.",
+        "No necesitas comprar agua embotellada — es mejor para ti y para el planeta.",
+        "Elimina bacterias y sedimentos conservando el sabor natural del agua.",
+        "Un orgullo local: creado en Guatemala y usado en todo el mundo.",
+      ] },
+    { icon: "manual", title: "Netflix y Disney+", intro: "La TV tiene acceso a Netflix y Disney+ para que disfrutes tus noches en casa.",
+      body: "Si tu TV no aparece conectada a nuestras cuentas, tómale una foto al código QR que sale en la pantalla y envíanoslo por la app — así te conectamos de forma remota en minutos.",
+      qr: true },
+  ] : [
+    { icon: "manual", title: "Trash & recycling", intro: "In Guatemala waste is separated by law (Government Accord 164-2021). It's simple:",
+      steps: [
+        "Organic (food scraps, peels): green bag.",
+        "Recyclable inorganic (plastic, glass, paper, cans) clean and dry: white or blue bag.",
+        "Non-recyclable / sanitary: black bag.",
+        "All trash must leave in a closed bag and be taken to the building's designated area. Don't leave it in hallways or outside the door.",
+      ] },
+    { icon: "wifi", title: "Ecofiltro — pure water", intro: "The apartment has an ecofiltro: a Guatemalan invention that purifies water with a filter of clay, sawdust and colloidal silver.",
+      steps: [
+        "Pour straight from the ecofiltro tap: the water is 100% safe to drink.",
+        "No need to buy bottled water — better for you and the planet.",
+        "Removes bacteria and sediment while keeping water's natural taste.",
+        "A local pride: created in Guatemala and used around the world.",
+      ] },
+    { icon: "manual", title: "Netflix & Disney+", intro: "The TV has access to Netflix and Disney+ so you can enjoy your nights in.",
+      body: "If your TV isn't connected to our accounts, snap a photo of the QR code shown on screen and send it to us through the app — we'll connect you remotely in minutes.",
+      qr: true },
+  ];
+
+  const buildingCards = b ? ["induction", "cable", "smartHouse"].filter((k) => b[k] && extras[k]).map((k) => extras[k]) : [];
+  const cards = universal.concat(buildingCards);
+
+  const renderCard = (e, k) => (
+    <div key={k} style={{ background: C.beige, borderRadius: 18, overflow: "hidden", border: `1px solid ${C.grisCalido}` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 18px 12px" }}>
+        <span style={{ flexShrink: 0, width: 40, height: 40, borderRadius: 12, background: C.white, display: "grid", placeItems: "center", boxShadow: "0 2px 8px rgba(62,63,63,.05)" }}>
+          <Icon name={e.icon || "manual"} size={19} color={C.peach} />
+        </span>
+        <div style={{ fontFamily: C.serif, fontSize: 19, color: C.negro, lineHeight: 1.15 }}>{e.title}</div>
+      </div>
+      {e.intro && <p style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, lineHeight: 1.6, margin: 0, padding: "0 18px 14px", letterSpacing: "0.01em" }}>{e.intro}</p>}
+      {e.steps && (
+        <ol style={{ margin: 0, padding: "0 18px 18px", listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
+          {e.steps.map((s, i) => (
+            <li key={i} style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+              <span style={{ flexShrink: 0, width: 24, height: 24, borderRadius: "50%", background: C.negro, color: C.alabaster, display: "grid", placeItems: "center",
+                fontFamily: C.sans, fontSize: 11.5, fontWeight: 600 }}>{i + 1}</span>
+              <span style={{ fontFamily: C.sans, fontSize: 12.5, color: C.negro, lineHeight: 1.6, letterSpacing: "0.01em", paddingTop: 2 }}>{s}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+      {e.body && <p style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, lineHeight: 1.6, margin: 0, padding: "0 18px 18px", letterSpacing: "0.01em" }}>{e.body}</p>}
+      {e.qr && (
+        <div style={{ margin: "0 18px 18px" }}>
+          <button onClick={() => window.open("https://wa.me/50256909499", "_blank")} className="sp-btn" style={{ width: "100%", background: C.white, color: C.negro, border: `1px solid ${C.grisCalido}`,
+            borderRadius: 11, padding: "11px 14px", fontFamily: C.sans, fontSize: 11.5, letterSpacing: "0.03em", cursor: "pointer", fontWeight: 500, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+            <Icon name="camera" size={15} color={C.negro} /> {es ? "Enviar código QR" : "Send QR code"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, paddingTop: 14 }}>
-      {keys.map((k) => {
-        const e = extras[k];
-        return (
-          <div key={k} style={{ background: C.beige, borderRadius: 18, overflow: "hidden", border: `1px solid ${C.grisCalido}` }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 18px 12px" }}>
-              <span style={{ flexShrink: 0, width: 40, height: 40, borderRadius: 12, background: C.white, display: "grid", placeItems: "center", boxShadow: "0 2px 8px rgba(62,63,63,.05)" }}>
-                <Icon name={e.icon || "manual"} size={19} color={C.peach} />
-              </span>
-              <div style={{ fontFamily: C.serif, fontSize: 19, color: C.negro, lineHeight: 1.15 }}>{e.title}</div>
-            </div>
-            {e.intro && <p style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, lineHeight: 1.6, margin: 0, padding: "0 18px 14px", letterSpacing: "0.01em" }}>{e.intro}</p>}
-            {e.steps && (
-              <ol style={{ margin: 0, padding: "0 18px 18px", listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
-                {e.steps.map((s, i) => (
-                  <li key={i} style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-                    <span style={{ flexShrink: 0, width: 24, height: 24, borderRadius: "50%", background: C.negro, color: C.alabaster, display: "grid", placeItems: "center",
-                      fontFamily: C.sans, fontSize: 11.5, fontWeight: 600 }}>{i + 1}</span>
-                    <span style={{ fontFamily: C.sans, fontSize: 12.5, color: C.negro, lineHeight: 1.6, letterSpacing: "0.01em", paddingTop: 2 }}>{s}</span>
-                  </li>
-                ))}
-              </ol>
-            )}
-            {e.body && !e.steps && <p style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, lineHeight: 1.6, margin: 0, padding: "0 18px 18px", letterSpacing: "0.01em" }}>{e.body}</p>}
-          </div>
-        );
-      })}
+      {cards.map((e, i) => renderCard(e, i))}
     </div>
   );
 }
@@ -831,6 +881,8 @@ function EmergencyContent({ t, res }) {
 function ActivitiesContent({ t, res }) {
   const es = t.code === "es";
   const data = typeof activitiesForRes === "function" ? activitiesForRes(res) : { list: [], areaName: "" };
+  const pics = [IMG.rooftop, IMG.antigua, IMG.nook, IMG.morning, IMG.welcome, IMG.selfcare];
+  const moreLink = (title) => "https://www.google.com/search?q=" + encodeURIComponent(title + " " + (data.areaName || "Guatemala"));
   return (
     <div style={{ paddingTop: 14 }}>
       <p style={{ fontFamily: C.sans, fontSize: 11, letterSpacing: "0.16em", textTransform: "uppercase", color: C.tierra, fontWeight: 500, margin: "0 0 16px" }}>{data.areaName}</p>
@@ -838,16 +890,29 @@ function ActivitiesContent({ t, res }) {
         {data.list.map((a, i) => {
           const c = es ? a.es : a.en;
           return (
-            <div key={i} style={{ display: "flex", gap: 13 }}>
-              <span style={{ flexShrink: 0, marginTop: 6 }}><Sparkle size={12} color={C.peach} /></span>
-              <div>
-                <div style={{ fontFamily: C.serif, fontSize: 19, color: C.negro, lineHeight: 1.15 }}>{c[0]}</div>
-                <div style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra, marginTop: 4, letterSpacing: "0.01em", lineHeight: 1.55 }}>{c[1]}</div>
+            <div key={i} style={{ borderRadius: 18, overflow: "hidden", border: `1px solid ${C.grisCalido}`, background: C.white }}>
+              <div style={{ position: "relative", height: 150, overflow: "hidden" }}>
+                <img src={pics[i % pics.length]} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(62,63,63,.42), transparent 55%)" }} />
+                <div style={{ position: "absolute", left: 16, right: 16, bottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+                  <Sparkle size={12} color={C.white} />
+                  <span style={{ fontFamily: C.serif, fontSize: 20, color: C.white, lineHeight: 1.1 }}>{c[0]}</span>
+                </div>
+              </div>
+              <div style={{ padding: "14px 16px 16px" }}>
+                <p style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, margin: 0, letterSpacing: "0.01em", lineHeight: 1.6 }}>{c[1]}</p>
+                <a href={moreLink(c[0])} target="_blank" rel="noopener" style={{ display: "inline-flex", alignItems: "center", gap: 7, marginTop: 12, textDecoration: "none",
+                  fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: C.negro, fontWeight: 500 }}>
+                  {es ? "Ver más" : "See more"} <Icon name="arrow" size={14} color={C.peach} />
+                </a>
               </div>
             </div>
           );
         })}
       </div>
+      <p style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, lineHeight: 1.55, margin: "18px 0 0", letterSpacing: "0.02em", fontStyle: "italic", textAlign: "center" }}>
+        {es ? "Actividades sugeridas, no gestionadas por nosotros." : "Suggested activities, not managed by us."}
+      </p>
     </div>
   );
 }

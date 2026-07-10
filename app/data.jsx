@@ -46,17 +46,12 @@ function resPhoto(res) {
   } catch (e) {}
   return HERO_GENERIC;
 }
-/* OVERVIEW ("Encontramos tu estancia") — foto REAL del anuncio en alta
-   resolución. Prioridad: foto que el admin fijó → og:image resuelto por el
-   backend (res.photo) → genérica como último recurso. El backend solo guarda
-   en res.photo una URL de og:image en alta resolución, nunca el thumbnail. */
+/* OVERVIEW ("Encontramos tu estancia") — foto genérica de marca, distinta a la
+   del bento y NO ligada a un espacio específico (detalle de bienvenida), para
+   no dar a entender que se ofrece un alojamiento distinto al reservado. */
+const HERO_OVERVIEW = IMG.welcome;
 function resListingPhoto(res) {
-  try {
-    const pi = (window.loadPropInfo ? window.loadPropInfo() : {})[res && res.propertyName] || {};
-    if (pi.photoUrl && /^https?:\/\//.test(pi.photoUrl)) return pi.photoUrl;
-  } catch (e) {}
-  if (res && res.photo && /^https?:\/\//.test(res.photo)) return res.photo;
-  return HERO_GENERIC;
+  return HERO_OVERVIEW;
 }
 function resName(res) {
   return (res && (res.propertyShort || res.propertyName || res.apartment)) || "Spacio AM";

@@ -455,17 +455,45 @@ function CheckinContent({ t, res }) {
   const unit = typeof unitFromRes === "function" ? unitFromRes(res) : res.apartment;
   const floor = b && typeof floorFromUnit === "function" ? floorFromUnit(unit, b.key) : null;
   const [flexOpen, setFlexOpen] = useStateB(false);
-  const [reqSent, setReqSent] = useStateB("");
+  const [flexMode, setFlexMode] = useStateB("");   // "" | "early" | "late"
+  const [sentMsg, setSentMsg] = useStateB("");
+  const [avail, setAvail] = useStateB(null);        // { ci, co }
 
-  const requestFlex = (kind) => {
+  // ask the backend whether an extra night is available (turnover check).
+  // CHECK-IN: not available if a checkout lands on the check-in date.
+  // CHECKOUT: not available if a check-in lands on the checkout date.
+  useEffectB(() => {
+    let alive = true;
+    if (typeof Backend !== "undefined" && Backend.isConnected && Backend.isConnected() && Backend.call) {
+      Backend.call("flexAvailability", { code: res.code, propertyName: res.propertyName, checkin: res.checkin, checkout: res.checkout })
+        .then((r) => { if (alive && r) setAvail({ ci: !!r.extraNightCheckin, co: !!r.extraNightCheckout }); })
+        .catch(() => {});
+    }
+    return () => { alive = false; };
+  }, [res.code]);
+  const extraCiOk = !avail || avail.ci;   // default to showing until we know
+  const extraCoOk = !avail || avail.co;
+
+  // reqType routes the request to the right admin flow + automatic message:
+  //  early    → availability check + auto email ~10pm the night before
+  //  luggage  → notify team (bag storage)
+  //  day      → extra-night follow-up
+  const submitFlex = (reqType, msg) => {
     const store = loadStore();
     const reqs = store.hostRequests || [];
-    reqs.push({ type: kind, code: res.code, apartment: res.apartment, at: Date.now(), status: "pending" });
+    reqs.push({ type: reqType, code: res.code, apartment: res.apartment, checkin: res.checkin, checkout: res.checkout, at: Date.now(), status: "pending" });
     saveStore({ ...store, hostRequests: reqs });
-    try { Backend.call && Backend.call("hostRequest", { kind, code: res.code, apartment: res.apartment }).catch(() => {}); } catch (e) {}
-    setReqSent(kind);
-    setTimeout(() => setReqSent(""), 3200);
+    try { Backend.call && Backend.call("hostRequest", { kind: reqType, code: res.code, apartment: res.apartment, checkin: res.checkin, checkout: res.checkout }).catch(() => {}); } catch (e) {}
+    setSentMsg(msg);
   };
+
+  const flexOpt = (title, desc, reqType, msg) => (
+    <button onClick={() => submitFlex(reqType, msg)} className="sp-btn" style={{ display: "block", width: "100%", textAlign: "left",
+      background: C.white, color: C.negro, border: `1px solid ${C.grisCalido}`, borderRadius: 13, padding: "14px 16px", cursor: "pointer" }}>
+      <div style={{ fontFamily: C.sans, fontSize: 12.5, fontWeight: 600, color: C.negro, letterSpacing: "0.01em", marginBottom: 5 }}>{title}</div>
+      <div style={{ fontFamily: C.sans, fontSize: 11.5, color: C.tierra, lineHeight: 1.55, letterSpacing: "0.01em" }}>{desc}</div>
+    </button>
+  );
 
   return (
     <>
@@ -502,24 +530,52 @@ function CheckinContent({ t, res }) {
         </p>
       )}
 
-      {/* subtle early/late — intentionally low-key */}
+      {/* subtle early/late — intentionally low-key, honest about availability */}
       <div style={{ marginTop: 22, borderTop: `1px solid ${C.beige}`, paddingTop: 14 }}>
-        <button onClick={() => setFlexOpen((v) => !v)} className="sp-btn" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%",
+        <button onClick={() => { setFlexOpen((v) => !v); setFlexMode(""); setSentMsg(""); }} className="sp-btn" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%",
           background: "transparent", border: "none", cursor: "pointer", padding: 0 }}>
           <span style={{ fontFamily: C.sans, fontSize: 11.5, color: C.tierra, letterSpacing: "0.02em" }}>{t.ckEarlyLate}</span>
           <Icon name={flexOpen ? "chevronUp" : "chevronDown"} size={16} color={C.tierra} />
         </button>
-        {flexOpen && (
+
+        {flexOpen && sentMsg && (
+          <div style={{ marginTop: 14, background: C.beige, borderRadius: 14, padding: "16px 18px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <Icon name="check" size={16} color={C.peach} />
+              <span style={{ fontFamily: C.sans, fontSize: 12, fontWeight: 600, color: C.negro, letterSpacing: "0.02em" }}>{t.ckSentTitle}</span>
+            </div>
+            <p style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra, lineHeight: 1.6, margin: 0, letterSpacing: "0.01em" }}>{sentMsg}</p>
+          </div>
+        )}
+
+        {flexOpen && !sentMsg && !flexMode && (
           <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 9 }}>
-            <button onClick={() => requestFlex("early")} className="sp-btn" style={{ background: C.white, color: C.negro, border: `1px solid ${C.grisCalido}`,
-              borderRadius: 11, padding: "11px 14px", fontFamily: C.sans, fontSize: 12, letterSpacing: "0.02em", cursor: "pointer", textAlign: "left", fontWeight: 500 }}>
-              {reqSent === "early" ? `✓ ${t.facturaSent}` : t.ckEarly}
-            </button>
-            <button onClick={() => requestFlex("late")} className="sp-btn" style={{ background: C.white, color: C.negro, border: `1px solid ${C.grisCalido}`,
-              borderRadius: 11, padding: "11px 14px", fontFamily: C.sans, fontSize: 12, letterSpacing: "0.02em", cursor: "pointer", textAlign: "left", fontWeight: 500 }}>
-              {reqSent === "late" ? `✓ ${t.facturaSent}` : t.ckLate}
-            </button>
+            <button onClick={() => setFlexMode("early")} className="sp-btn" style={{ background: C.white, color: C.negro, border: `1px solid ${C.grisCalido}`,
+              borderRadius: 11, padding: "12px 15px", fontFamily: C.sans, fontSize: 12, letterSpacing: "0.02em", cursor: "pointer", textAlign: "left", fontWeight: 500,
+              display: "flex", alignItems: "center", justifyContent: "space-between" }}>{t.ckEarly}<Icon name="arrow" size={15} color={C.tierra} /></button>
+            <button onClick={() => setFlexMode("late")} className="sp-btn" style={{ background: C.white, color: C.negro, border: `1px solid ${C.grisCalido}`,
+              borderRadius: 11, padding: "12px 15px", fontFamily: C.sans, fontSize: 12, letterSpacing: "0.02em", cursor: "pointer", textAlign: "left", fontWeight: 500,
+              display: "flex", alignItems: "center", justifyContent: "space-between" }}>{t.ckLate}<Icon name="arrow" size={15} color={C.tierra} /></button>
             <p style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, lineHeight: 1.5, margin: "2px 0 0", letterSpacing: "0.02em" }}>{t.ckFlexNote}</p>
+          </div>
+        )}
+
+        {flexOpen && !sentMsg && flexMode && (
+          <div style={{ marginTop: 12 }}>
+            <p style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra, lineHeight: 1.6, margin: "0 0 12px", letterSpacing: "0.01em" }}>{flexMode === "early" ? t.ckEarlyIntro : t.ckLateIntro}</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+              {flexMode === "early" ? <>
+                {extraCiOk && flexOpt(t.ckEO3t, t.ckEO3d, "day", t.ckSentNight)}
+                {flexOpt(t.ckEO1t, t.ckEO1d, "early", t.ckSentEarly)}
+                {flexOpt(t.ckEO2t, t.ckEO2d, "luggage", t.ckSentLuggage)}
+              </> : <>
+                {extraCoOk && flexOpt(t.ckLO2t, t.ckLO2d, "day", t.ckSentNight)}
+                {flexOpt(t.ckLO1t, t.ckLO1d, "luggage", t.ckSentLuggage)}
+              </>}
+            </div>
+            <button onClick={() => setFlexMode("")} className="sp-btn" style={{ background: "transparent", border: "none", cursor: "pointer",
+              fontFamily: C.sans, fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: C.tierra, padding: "12px 0 2px", fontWeight: 500,
+              display: "inline-flex", alignItems: "center", gap: 6 }}><Icon name="arrowLeft" size={14} color={C.tierra} /> {t.ckBack}</button>
           </div>
         )}
       </div>
@@ -746,6 +802,86 @@ function ComingSoon({ t }) {
   );
 }
 
+/* ---------- EMERGENCY: national + local by location, no host contact ---------- */
+function EmergencyContent({ t, res }) {
+  const es = t.code === "es";
+  const data = typeof emergencyForRes === "function" ? emergencyForRes(res) : { national: [], local: [] };
+  const areaLabel = { gt: "Ciudad de Guatemala", antigua: "Antigua Guatemala", likin: "Likín", monterrico: "Monterrico" }[data.zone] || "";
+  const row = (item, i, arr) => (
+    <a key={i} href={"tel:" + String(item.num).replace(/[^0-9+]/g, "")} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
+      padding: "12px 0", borderBottom: i < arr.length - 1 ? `1px solid ${C.beige}` : "none", textDecoration: "none" }}>
+      <span style={{ fontFamily: C.sans, fontSize: 12.5, color: C.negro, letterSpacing: "0.01em" }}>{es ? item.es : item.en}</span>
+      <span style={{ fontFamily: C.sans, fontSize: 14, fontWeight: 600, color: C.peach, letterSpacing: "0.02em", whiteSpace: "nowrap" }}>{item.num}</span>
+    </a>
+  );
+  const head = (s) => <div style={{ fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.16em", textTransform: "uppercase", color: C.tierra, fontWeight: 600, margin: "18px 0 2px" }}>{s}</div>;
+  return (
+    <div style={{ paddingTop: 14 }}>
+      {head(es ? "Nacional" : "National")}
+      {data.national.map((x, i) => row(x, i, data.national))}
+      {data.local.length > 0 && <>
+        {head((es ? "Local · " : "Local · ") + areaLabel)}
+        {data.local.map((x, i) => row(x, i, data.local))}
+      </>}
+    </div>
+  );
+}
+
+/* ---------- ACTIVITIES: curated, location-aware, non-mainstream ---------- */
+function ActivitiesContent({ t, res }) {
+  const es = t.code === "es";
+  const data = typeof activitiesForRes === "function" ? activitiesForRes(res) : { list: [], areaName: "" };
+  return (
+    <div style={{ paddingTop: 14 }}>
+      <p style={{ fontFamily: C.sans, fontSize: 11, letterSpacing: "0.16em", textTransform: "uppercase", color: C.tierra, fontWeight: 500, margin: "0 0 16px" }}>{data.areaName}</p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+        {data.list.map((a, i) => {
+          const c = es ? a.es : a.en;
+          return (
+            <div key={i} style={{ display: "flex", gap: 13 }}>
+              <span style={{ flexShrink: 0, marginTop: 6 }}><Sparkle size={12} color={C.peach} /></span>
+              <div>
+                <div style={{ fontFamily: C.serif, fontSize: 19, color: C.negro, lineHeight: 1.15 }}>{c[0]}</div>
+                <div style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra, marginTop: 4, letterSpacing: "0.01em", lineHeight: 1.55 }}>{c[1]}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- AMENITIES: from Hospitable listing, else "coming soon" ---------- */
+function AmenitiesContent({ t, res }) {
+  const es = t.code === "es";
+  const [state, setState] = useStateB(res.amenities && res.amenities.length ? "ok" : "loading");
+  const [items, setItems] = useStateB(res.amenities || []);
+  useEffectB(() => {
+    if (items.length) { setState("ok"); return; }
+    let alive = true;
+    if (typeof Backend !== "undefined" && Backend.isConnected && Backend.isConnected() && Backend.call) {
+      Backend.call("listingAmenities", { code: res.code, propertyName: res.propertyName })
+        .then((r) => { if (!alive) return; const a = (r && r.amenities) || []; if (a.length) { setItems(a); setState("ok"); } else setState("empty"); })
+        .catch(() => { if (alive) setState("empty"); });
+    } else { setState("empty"); }
+    return () => { alive = false; };
+  }, [res.code]);
+  if (state === "loading") return <div style={{ display: "flex", alignItems: "center", gap: 10, paddingTop: 18, fontFamily: C.sans, fontSize: 12.5, color: C.tierra }}><Spinner color={C.taupe} /> {es ? "Cargando amenidades…" : "Loading amenities…"}</div>;
+  if (state === "ok") return <Chips items={items} />;
+  return (
+    <div style={{ background: C.beige, borderRadius: 14, padding: "16px 18px", marginTop: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <Icon name="clock" size={16} color={C.peach} />
+        <span style={{ fontFamily: C.sans, fontSize: 12, fontWeight: 600, color: C.negro, letterSpacing: "0.02em" }}>{es ? "Estamos trabajando en ello" : "We're working on it"}</span>
+      </div>
+      <p style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, lineHeight: 1.65, margin: 0, letterSpacing: "0.01em" }}>
+        {es ? "Estamos preparando la lista de amenidades de este alojamiento. Muy pronto la verás aquí." : "We're preparing this property's amenities list. You'll see it here very soon."}
+      </p>
+    </div>
+  );
+}
+
 function renderTileContent(key, t, res) {
   const es = t.code === "es";
   switch (key) {
@@ -756,30 +892,20 @@ function renderTileContent(key, t, res) {
     case "visits": return <GuestAccessContent t={t} res={res} />;
     case "manual": return <ManualExtras t={t} res={res} />;
     case "chat": return <>
-      <p style={{ fontFamily: C.sans, fontSize: 13, color: C.tierra, lineHeight: 1.65, margin: "14px 0 0", letterSpacing: "0.02em" }}>
-        {es ? "Estamos para ti las 24 horas. Escríbenos y respondemos en minutos." : "We're here 24/7. Message us and we'll reply within minutes."}
-      </p>
-      <ActionBtn accent onClick={() => window.open("https://wa.me/50256909499", "_blank")}><Icon name="whatsapp" size={16} color={C.white} /> WhatsApp</ActionBtn>
-      <div style={{ height: 10 }} />
-      <Btn variant="outline" full>{es ? "Chat en la web" : "Web chat"}</Btn>
+      <div style={{ background: C.beige, borderRadius: 14, padding: "16px 18px", marginTop: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+          <Icon name="clock" size={16} color={C.peach} />
+          <span style={{ fontFamily: C.sans, fontSize: 12, fontWeight: 600, color: C.negro, letterSpacing: "0.02em" }}>{es ? "Estamos trabajando en ello" : "We're working on it"}</span>
+        </div>
+        <p style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, lineHeight: 1.65, margin: 0, letterSpacing: "0.01em" }}>
+          {es ? "El chat dentro de la app estará disponible muy pronto. Por ahora, toda la comunicación se realiza a través de la plataforma donde hiciste tu reserva (Airbnb, Booking, etc.)." : "In-app chat is coming very soon. For now, all communication happens through the platform where you booked (Airbnb, Booking, etc.)."}
+        </p>
+      </div>
     </>;
     case "review": return <SuggestionContent t={t} res={res} />;
-    case "emergency": return <>
-      <InfoRow label={es ? "Anfitrión 24/7" : "Host 24/7"} value="hola@spacioam.com" />
-      <InfoRow label={es ? "Bomberos" : "Fire dept."} value="122" />
-      <InfoRow label={es ? "Policía" : "Police"} value="110" />
-      <InfoRow label={es ? "Ambulancia" : "Ambulance"} value="1554" />
-    </>;
-    case "activities": return <div style={{ display: "flex", flexDirection: "column", gap: 16, paddingTop: 14 }}>
-      {(es ? [["Café de especialidad", "A 4 min caminando"], ["Mercado local", "Sábados por la mañana"], ["Galería de arte", "A 8 min en auto"], ["Restaurante de autor", "A 6 min caminando"]]
-           : [["Specialty coffee", "4 min walk"], ["Local market", "Saturday mornings"], ["Art gallery", "8 min drive"], ["Chef's restaurant", "6 min walk"]]).map((a, i) => (
-        <div key={i}>
-          <div style={{ fontFamily: C.serif, fontSize: 19, color: C.negro }}>{a[0]}</div>
-          <div style={{ fontFamily: C.sans, fontSize: 11.5, color: C.tierra, marginTop: 2, letterSpacing: "0.03em" }}>{a[1]}</div>
-        </div>
-      ))}
-    </div>;
-    case "amenities": return <Chips items={es ? ["Gimnasio", "Rooftop", "Coworking", "Parqueo", "Seguridad 24h", "Elevador"] : ["Gym", "Rooftop", "Coworking", "Parking", "24h security", "Elevator"]} />;
+    case "emergency": return <EmergencyContent t={t} res={res} />;
+    case "activities": return <ActivitiesContent t={t} res={res} />;
+    case "amenities": return <AmenitiesContent t={t} res={res} />;
     case "upsells": return <ComingSoon t={t} />;
     case "upsells_OLD": return <div style={{ display: "flex", flexDirection: "column", gap: 12, paddingTop: 14 }}>
       {(es ? [["Late check-out", "$20", true], ["Canasta de bienvenida", "$32", true], ["Tour privado", "Por fecha", false], ["Limpieza extra", "$26", true]]

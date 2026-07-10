@@ -276,4 +276,87 @@ function wifiForRes(res) {
 Object.assign(window, {
   CHECKIN_BUILDINGS, HOUSE_MANUAL_EXTRAS, WIFI_DEFAULT,
   floorFromUnit, matchBuilding, unitFromRes, wifiForRes,
+  emergencyForRes, activitiesForRes,
 });
+
+/* ---------- EMERGENCIAS por ubicación ----------
+   Números oficiales nacionales + los locales relevantes según la región. */
+const EMERGENCY_NATIONAL = [
+  { es: "Emergencias (todas)", en: "Emergencies (all)", num: "1554" },
+  { es: "Bomberos Voluntarios", en: "Volunteer Fire Dept.", num: "122" },
+  { es: "Bomberos Municipales", en: "Municipal Fire Dept.", num: "123" },
+  { es: "Policía Nacional (PNC)", en: "National Police", num: "110" },
+  { es: "Cruz Roja", en: "Red Cross", num: "125" },
+];
+const EMERGENCY_BY_ZONE = {
+  antigua: [
+    { es: "Bomberos Voluntarios Antigua", en: "Antigua Fire Dept.", num: "7832-0234" },
+    { es: "Policía Municipal de Tránsito", en: "Municipal Traffic Police", num: "7832-1911" },
+    { es: "Hospital Nacional Pedro de Bethancourt", en: "Pedro de Bethancourt Hospital", num: "7832-1190" },
+    { es: "Asistur (turista)", en: "Tourist Assistance (Asistur)", num: "1500" },
+  ],
+  likin: [
+    { es: "Bomberos Voluntarios Puerto San José", en: "Puerto San José Fire Dept.", num: "7881-1122" },
+    { es: "Hospital Nacional Puerto San José", en: "Puerto San José Hospital", num: "7881-1315" },
+    { es: "Capitanía de Puerto Quetzal", en: "Puerto Quetzal Harbor Master", num: "7881-5510" },
+  ],
+  monterrico: [
+    { es: "Bomberos Voluntarios Taxisco", en: "Taxisco Fire Dept.", num: "7885-0122" },
+    { es: "Centro de Salud Monterrico", en: "Monterrico Health Center", num: "5510-0000" },
+    { es: "CONRED (desastres)", en: "Disaster Agency (CONRED)", num: "1566" },
+  ],
+};
+function zoneForRes(res) {
+  const b = matchBuilding(res);
+  if (b) {
+    if (b.key === "likin") return "likin";
+    if (b.key === "monterrico") return "monterrico";
+    if (b.key === "casco" || b.key === "coloniales" || /antigua|sacatep/i.test(b.zone || "")) return "antigua";
+  }
+  const hay = `${res.propertyName || ""} ${res.apartment || ""}`.toLowerCase();
+  if (/antigua|sacatep/i.test(hay)) return "antigua";
+  if (/likin/i.test(hay)) return "likin";
+  if (/monterrico/i.test(hay)) return "monterrico";
+  return "gt"; // Ciudad de Guatemala
+}
+function emergencyForRes(res) {
+  const zone = zoneForRes(res);
+  return { zone, national: EMERGENCY_NATIONAL, local: EMERGENCY_BY_ZONE[zone] || [] };
+}
+
+/* ---------- ACTIVIDADES por ubicación ----------
+   Curadas para el concepto Spacio AM: editorial, sensorial, menos mainstream. */
+const ACTIVITIES = {
+  gt: [
+    { es: ["Café de tostador en Zona 4", "El corredor creativo de la ciudad — tostadores de especialidad, diseño y galerías en 4 Grados Norte."], en: ["Roaster coffee in Zona 4", "The city's creative corridor — specialty roasters, design and galleries around 4 Grados Norte."] },
+    { es: ["Mercado de la Placita (Zona 4)", "Productores locales, flores y fermentos los fines de semana. Ve temprano y sin lista."], en: ["Placita market (Zona 4)", "Local growers, flowers and ferments on weekends. Go early, without a list."] },
+    { es: ["Cerro del Carmen al amanecer", "Un mirador poco visitado sobre el casco antiguo. Luz dorada y ciudad en silencio."], en: ["Cerro del Carmen at dawn", "A quiet lookout over the old town. Golden light and a silent city."] },
+    { es: ["Ruta de arte en Zona 1", "Talleres, librerías de viejo y bares de azotea en el centro histórico, ya de noche."], en: ["Art walk in Zona 1", "Studios, secondhand bookshops and rooftop bars in the historic center, after dark."] },
+    { es: ["Cena de cocina de autor", "Menús de temporada con producto guatemalteco. Reserva con tiempo."], en: ["Chef's tasting dinner", "Seasonal menus built on Guatemalan produce. Book ahead."] },
+  ],
+  antigua: [
+    { es: ["Finca de café entre volcanes", "Cosecha, tueste y taza en una finca familiar en las laderas — no la versión de bus turístico."], en: ["Coffee finca between volcanoes", "Harvest, roast and cup at a family farm on the slopes — not the tour-bus version."] },
+    { es: ["Amanecer en Cerro de la Cruz", "Sube antes que los grupos: Agua enmarcada por la calma de la mañana."], en: ["Sunrise at Cerro de la Cruz", "Climb before the groups: Agua volcano framed by the morning calm."] },
+    { es: ["Taller de cacao ancestral", "Del grano a la bebida ceremonial con productores locales. Sensorial y sin prisa."], en: ["Ancestral cacao workshop", "From bean to ceremonial drink with local makers. Sensory and unhurried."] },
+    { es: ["Telares en San Antonio Aguas Calientes", "Tejedoras de varias generaciones muestran el jaspe. Compra directo, con intención."], en: ["Backstrap weaving in San Antonio", "Multi-generation weavers show the ikat craft. Buy direct, with intention."] },
+    { es: ["Ruinas al atardecer", "Santa Clara o las Capuchinas casi vacías a última hora. Piedra, jardín y silencio."], en: ["Ruins at dusk", "Santa Clara or Las Capuchinas nearly empty at closing. Stone, garden and silence."] },
+  ],
+  likin: [
+    { es: ["Canales de mangle en cayuco", "Rema entre los canales al amanecer; garzas, quietud y agua espejo."], en: ["Mangrove canals by canoe", "Paddle the canals at dawn; herons, stillness and mirror water."] },
+    { es: ["Liberación de tortugas (temporada)", "Suelta de neonatos al atardecer con el tortugario local. Septiembre a enero."], en: ["Turtle hatchling release (season)", "Sunset release with the local hatchery. September–January."] },
+    { es: ["Pesca artesanal con locales", "Sal con pescadores del puerto al amanecer y aprende el oficio."], en: ["Small-boat fishing with locals", "Head out with the port's fishermen at dawn and learn the craft."] },
+    { es: ["Playa de arena volcánica al ocaso", "Camina la orilla oscura cuando baja el sol. Pacífico abierto, sin multitud."], en: ["Volcanic-sand beach at sunset", "Walk the dark shore as the sun drops. Open Pacific, no crowds."] },
+  ],
+  monterrico: [
+    { es: ["Tour nocturno del manglar", "Reserva Monterrico-Hawaii en lancha silenciosa; cangrejos, aves y luciérnagas."], en: ["Night mangrove tour", "The Monterrico-Hawaii reserve by quiet boat; crabs, birds and fireflies."] },
+    { es: ["Liberación de tortugas (temporada)", "Al atardecer con el tortugario comunitario. Un momento, no un espectáculo."], en: ["Turtle release (season)", "At dusk with the community hatchery. A moment, not a show."] },
+    { es: ["Amanecer en la playa negra", "Arena volcánica y oleaje fuerte. Café en mano, sin nadie alrededor."], en: ["Dawn on the black-sand beach", "Volcanic sand and strong surf. Coffee in hand, no one around."] },
+    { es: ["Piscina natural entre esteros", "Rincones de agua calmada tierra adentro, lejos de la corriente."], en: ["Natural pool among estuaries", "Pockets of calm water inland, away from the current."] },
+  ],
+};
+function activitiesForRes(res) {
+  const zone = zoneForRes(res);
+  const list = ACTIVITIES[zone] || ACTIVITIES.gt;
+  const areaName = { gt: "Ciudad de Guatemala", antigua: "Antigua Guatemala", likin: "Likín", monterrico: "Monterrico" }[zone];
+  return { zone, areaName, list };
+}

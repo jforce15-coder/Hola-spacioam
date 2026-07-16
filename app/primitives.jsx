@@ -251,14 +251,26 @@ Reglas:
 - legible=false si el documento está borroso, cortado, muy oscuro o no se pueden leer nombre ni número.
 - full_name debe incluir nombres + apellidos, EXACTAMENTE como aparecen. id_number es el CUI / número de identificación. Si algo no se lee, deja el campo vacío "".`;
   try {
-    const resp = await window.claude.complete({
-      model: "claude-sonnet-4-5",
-      max_tokens: 500,
-      messages: [{ role: "user", content: [
-        { type: "text", text: prompt },
-        { type: "image", source: { type: "base64", media_type, data } },
-      ]}],
-    });
+    let resp;
+    const backend = window.Backend;
+    if (backend && backend.isConnected && backend.isConnected()) {
+      // Producción: la lectura ocurre en el backend (Anthropic Claude),
+      // la llave vive server-side. Ver readDocument_ en Code.gs.
+      const json = await backend.call("readDocument", { media_type, data, prompt });
+      resp = json && json.text || "";
+    } else if (window.claude && window.claude.complete) {
+      // Vista previa / desarrollo dentro del editor.
+      resp = await window.claude.complete({
+        model: "claude-sonnet-4-5",
+        max_tokens: 500,
+        messages: [{ role: "user", content: [
+          { type: "text", text: prompt },
+          { type: "image", source: { type: "base64", media_type, data } },
+        ]}],
+      });
+    } else {
+      return { ok: false, reason: "invalid", isDocument: true, canManual: true };
+    }
     const jm = /\{[\s\S]*\}/.exec(resp);
     if (!jm) return { ok: false, reason: "invalid", canManual: true };
     const j = JSON.parse(jm[0]);

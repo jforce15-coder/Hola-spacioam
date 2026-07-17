@@ -1201,6 +1201,20 @@ function AdminAccessScreen({ t, onToast }) {
       setTestMsg({ ok: false, text: (es ? "No se pudo enviar. " : "Could not send. ") + (error && error.message || error) });
     });
   };
+  const [waTo, setWaTo] = useStateAd("");
+  const [waMsg, setWaMsg] = useStateAd(null);
+  const [waBusy, setWaBusy] = useStateAd(false);
+  const sendWaTest = () => {
+    if (!Backend.isConnected()) { setWaMsg({ ok: false, text: es ? "El backend no está conectado." : "Backend not connected." }); return; }
+    setWaBusy(true); setWaMsg(null);
+    Backend.sendTestWhatsApp((waTo || "").trim()).then((r) => {
+      setWaBusy(false);
+      setWaMsg({ ok: true, text: (es ? "WhatsApp de prueba enviado a " : "Test WhatsApp sent to ") + (r.to || "") + "." });
+    }).catch((error) => {
+      setWaBusy(false);
+      setWaMsg({ ok: false, text: (es ? "No se pudo enviar. " : "Could not send. ") + (error && error.message || error) });
+    });
+  };
   // cross-device: load the admin list from the backend when connected
   useEffectAd(() => {
     if (Backend.isConnected()) Backend.listAdmins().then((rows) => { if (rows) setList(rows); });
@@ -1275,6 +1289,21 @@ function AdminAccessScreen({ t, onToast }) {
           <button onClick={sendTest} disabled={testBusy} className="sp-btn" style={{ background: C.negro, color: C.alabaster, border: "none", borderRadius: 11, padding: "11px 18px",
             fontFamily: C.sans, fontSize: 11, letterSpacing: "0.06em", cursor: testBusy ? "default" : "pointer", opacity: testBusy ? 0.6 : 1, fontWeight: 500, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, alignSelf: "flex-start" }}>
             <Icon name="review" size={14} color={C.alabaster} /> {testBusy ? (es ? "Enviando…" : "Sending…") : (es ? "Enviar correo de prueba" : "Send test email")}
+          </button>
+        </div>
+      </div>
+
+      <div style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 16, padding: "18px 18px", marginTop: 18 }}>
+        <div style={{ fontFamily: C.serif, fontSize: 19, color: C.negro, marginBottom: 4 }}>{es ? "Prueba de WhatsApp" : "WhatsApp test"}</div>
+        <p style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra, margin: "0 0 14px", letterSpacing: "0.02em", lineHeight: 1.55, maxWidth: 460 }}>
+          {es ? "Envía el formulario de ejemplo (PDF) por WhatsApp a los números configurados. Puedes escribir uno o dos números (con código de país, sin +) para probar; si lo dejas vacío usa los de la configuración." : "Sends the example form (PDF) via WhatsApp to the configured numbers. Enter one or two numbers (country code, no +) to test, or leave blank to use the configured ones."}
+        </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <input value={waTo} onChange={(e) => { setWaTo(e.target.value); setWaMsg(null); }} placeholder={es ? "Ej: 50255555555, 50244444444" : "e.g. 50255555555, 50244444444"} type="text" style={fieldStyle} />
+          {waMsg && <span style={{ fontFamily: C.sans, fontSize: 11.5, color: waMsg.ok ? "#1F8A5B" : C.peach, letterSpacing: "0.02em", lineHeight: 1.5 }}>{waMsg.text}</span>}
+          <button onClick={sendWaTest} disabled={waBusy} className="sp-btn" style={{ background: C.negro, color: C.alabaster, border: "none", borderRadius: 11, padding: "11px 18px",
+            fontFamily: C.sans, fontSize: 11, letterSpacing: "0.06em", cursor: waBusy ? "default" : "pointer", opacity: waBusy ? 0.6 : 1, fontWeight: 500, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, alignSelf: "flex-start" }}>
+            <Icon name="review" size={14} color={C.alabaster} /> {waBusy ? (es ? "Enviando…" : "Sending…") : (es ? "Enviar WhatsApp de prueba" : "Send test WhatsApp")}
           </button>
         </div>
       </div>

@@ -98,6 +98,8 @@ button{ font-family:inherit; }
   #print-portal .sum-guest-list > *{ margin-bottom:18px!important; }
   /* keep each individual card together only when it fits on a page */
   #print-portal .sum-card{ break-inside:avoid; page-break-inside:avoid; }
+  /* each registered guest prints on its own page; rules stay with the last guest */
+  #print-portal .sum-guest-list > .sum-card{ break-before:page!important; page-break-before:always!important; }
   #print-portal img{ max-width:100%!important; max-height:none!important; height:auto!important; display:block; }
 }
 </style>

@@ -68,6 +68,21 @@ function App() {
   // purge expired documents once, on mount
   useEffectA(() => { purgeExpiredDocuments(); }, []);
 
+  // hydrate property info (incl. house manual) from backend → localStorage, so
+  // the bento + admin panel reflect admin edits across devices.
+  const [, forcePropInfo] = useStateA(0);
+  useEffectA(() => {
+    if (!(Backend.isConnected && Backend.isConnected() && Backend.listPropertyInfo)) return;
+    Backend.listPropertyInfo().then((info) => {
+      if (!info) return;
+      try {
+        const cur = JSON.parse(localStorage.getItem("spacioam_property_info")) || {};
+        localStorage.setItem("spacioam_property_info", JSON.stringify({ ...cur, ...info }));
+        forcePropInfo((n) => n + 1);
+      } catch (e) {}
+    });
+  }, []);
+
   // invite link (#invite=CODE&email=…) — a secondary guest lands here from the
   // email; resolve the reservation by code and open account creation synced to it.
   useEffectA(() => {

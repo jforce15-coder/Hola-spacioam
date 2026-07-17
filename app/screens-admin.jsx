@@ -863,6 +863,43 @@ function PropertyInfoScreen({ t, roster, onToast }) {
   const setC = (name, patch) => setStations((s) => ({ ...s, [name]: { ...(s[name] || {}), ...patch } }));
   // building defaults from the check-in data, so instruction fields pre-fill
   const buildingOf = (name) => (typeof matchBuilding === "function" ? matchBuilding({ propertyName: name, apartment: "" }) : null);
+  const es = t.code === "es";
+
+  // ---- Manual de la casa (aplica a varias propiedades) — clave especial __manual__ ----
+  const manualSeed = () => (typeof HOUSE_MANUAL_EXTRAS !== "undefined"
+    ? Object.keys(HOUSE_MANUAL_EXTRAS).map((k) => ({ id: k, title: HOUSE_MANUAL_EXTRAS[k].title, icon: HOUSE_MANUAL_EXTRAS[k].icon || "manual", intro: HOUSE_MANUAL_EXTRAS[k].intro || "", steps: (HOUSE_MANUAL_EXTRAS[k].steps || []).slice() }))
+    : []);
+  useEffectAd(() => { if (!store.__manual__) setStore((s) => ({ ...s, __manual__: { items: manualSeed(), assign: {} } })); }, []);
+  const manual = store.__manual__ || { items: [], assign: {} };
+  const manualItems = manual.items || [];
+  const manualAssign = manual.assign || {};
+  const setManual = (patch) => setStore((s) => ({ ...s, __manual__: { ...(s.__manual__ || { items: [], assign: {} }), ...patch } }));
+  const setManualItem = (id, patch) => setManual({ items: manualItems.map((it) => it.id === id ? { ...it, ...patch } : it) });
+  const toggleAssign = (id, name) => { const cur = manualAssign[id] || []; const has = cur.includes(name); setManual({ assign: { ...manualAssign, [id]: has ? cur.filter((x) => x !== name) : [...cur, name] } }); };
+  const addManualItem = () => { const id = "m" + Date.now().toString(36); setManual({ items: [...manualItems, { id, title: "", icon: "manual", intro: "", steps: [] }] }); };
+  const removeManualItem = (id) => { const a = { ...manualAssign }; delete a[id]; setManual({ items: manualItems.filter((it) => it.id !== id), assign: a }); };
+  const [manualOpen, setManualOpen] = useStateAd(false);
+  const saveManual = () => {
+    const all = { ...loadPropInfo(), __manual__: store.__manual__ || { items: [], assign: {} } };
+    savePropInfoAll(all);
+    try { Backend.call && Backend.call("savePropertyInfo", { property: "__manual__", info: store.__manual__ || {} }).catch(() => {}); } catch (e) {}
+    onToast(es ? "Manual de la casa guardado" : "House manual saved");
+  };
+
+  // ---- Farol: campos pendientes por propiedad ----
+  const eff = (v, bv) => (v != null && String(v) !== "") ? v : bv;
+  const missingFields = (name) => {
+    const info = get(name), c = getC(name), b = buildingOf(name);
+    const miss = [];
+    if (!String(info.wifiNet || "") || !String(info.wifiPass || "")) miss.push(t.piWifi);
+    if (!String(info.lock || "")) miss.push(t.piLock);
+    if (!String(info.hasParking || "")) miss.push(t.piParking);
+    if (!(String(c.email1 || "") || String(c.phone1 || ""))) miss.push(t.piContact);
+    if (!eff(info.address, b && b.address)) miss.push(t.ckAddress);
+    if (!eff(info.arrival, b && b.arrival)) miss.push(t.ckArrival);
+    if (!String(info.propType || "")) miss.push(t.piType);
+    return miss;
+  };
 
   const save = (name) => {
     const all = { ...loadPropInfo(), [name]: store[name] || {} };
@@ -901,6 +938,53 @@ function PropertyInfoScreen({ t, roster, onToast }) {
   return (
     <div>
       <p style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, margin: "0 0 18px", letterSpacing: "0.02em", lineHeight: 1.55, maxWidth: 520 }}>{t.piSub}</p>
+
+      {/* MANUAL DE LA CASA — aplica a varias propiedades */}
+      <div style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 16, overflow: "hidden", marginBottom: 14 }}>
+        <button onClick={() => setManualOpen((o) => !o)} className="sp-btn" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%",
+          background: "transparent", border: "none", cursor: "pointer", padding: "16px 18px", textAlign: "left" }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <Icon name="manual" size={18} color={C.peach} />
+            <span style={{ fontFamily: C.serif, fontSize: 19, color: C.negro }}>{es ? "Manual de la casa" : "House manual"}</span>
+          </span>
+          <Icon name={manualOpen ? "chevronUp" : "chevronDown"} size={18} color={C.tierra} />
+        </button>
+        {manualOpen && (
+          <div style={{ padding: "0 18px 20px" }}>
+            <p style={{ fontFamily: C.sans, fontSize: 11.5, color: C.tierra, margin: "-2px 0 14px", letterSpacing: "0.02em", lineHeight: 1.55, maxWidth: 520 }}>
+              {es ? "Cada instrucción puede aplicarse a varias propiedades. Marca las propiedades a las que aplica y aparecerá en su manual del bento." : "Each instruction can apply to several properties. Select the ones it applies to and it will appear in their bento manual."}
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {manualItems.map((it) => (
+                <div key={it.id} style={{ border: `1px solid ${C.grisCalido}`, borderRadius: 14, padding: "14px 15px", background: C.alabaster }}>
+                  <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 8 }}>
+                    <input value={it.title || ""} onChange={(e) => setManualItem(it.id, { title: e.target.value })} placeholder={es ? "Título (ej. Estufa de inducción)" : "Title"} style={{ ...fieldStyle, marginTop: 0, flex: 1, fontFamily: C.serif, fontSize: 15 }} />
+                    <button onClick={() => removeManualItem(it.id)} className="sp-btn" title={es ? "Eliminar" : "Delete"} style={{ background: "transparent", border: "none", cursor: "pointer", padding: 4, flexShrink: 0 }}><Icon name="x" size={16} color={C.tierra} /></button>
+                  </div>
+                  <textarea value={it.intro || ""} onChange={(e) => setManualItem(it.id, { intro: e.target.value })} placeholder={es ? "Introducción (opcional)" : "Intro (optional)"} rows={2} style={{ ...fieldStyle, marginTop: 0, resize: "vertical" }} />
+                  <textarea value={(it.steps || []).join("\n")} onChange={(e) => setManualItem(it.id, { steps: e.target.value.split("\n").map((s) => s.trimStart()).filter((s, i, a) => s !== "" || i < a.length) })} placeholder={es ? "Pasos — uno por línea" : "Steps — one per line"} rows={4} style={{ ...fieldStyle, resize: "vertical" }} />
+                  <div style={{ fontFamily: C.sans, fontSize: 9, letterSpacing: "0.16em", textTransform: "uppercase", color: C.tierra, fontWeight: 600, margin: "12px 0 8px" }}>{es ? "Aplica a" : "Applies to"}</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                    {props.map((pn) => {
+                      const on = (manualAssign[it.id] || []).includes(pn);
+                      return <button key={pn} onClick={() => toggleAssign(it.id, pn)} className="sp-btn" style={{ background: on ? C.negro : C.white, color: on ? C.alabaster : C.negro,
+                        border: `1px solid ${on ? C.negro : C.grisCalido}`, borderRadius: 999, padding: "7px 13px", fontFamily: C.sans, fontSize: 11, letterSpacing: "0.02em", cursor: "pointer", fontWeight: on ? 600 : 500, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        {on && <Icon name="check" size={12} color={C.alabaster} />}{pn}</button>;
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
+              <button onClick={addManualItem} className="sp-btn" style={{ background: "transparent", color: C.negro, border: `1px dashed ${C.grisCalido}`, borderRadius: 11, padding: "10px 16px",
+                fontFamily: C.sans, fontSize: 11, letterSpacing: "0.04em", cursor: "pointer", fontWeight: 500, display: "inline-flex", alignItems: "center", gap: 7 }}><Icon name="user" size={14} color={C.negro} /> {es ? "Agregar instrucción" : "Add instruction"}</button>
+              <button onClick={saveManual} className="sp-btn" style={{ background: C.negro, color: C.alabaster, border: "none", borderRadius: 11, padding: "10px 18px",
+                fontFamily: C.sans, fontSize: 11, letterSpacing: "0.06em", cursor: "pointer", fontWeight: 500, display: "inline-flex", alignItems: "center", gap: 7 }}><Icon name="check" size={14} color={C.alabaster} /> {es ? "Guardar manual" : "Save manual"}</button>
+            </div>
+          </div>
+        )}
+      </div>
+
       {props.length === 0 ? (
         <div style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 16, padding: "38px 20px", textAlign: "center", fontFamily: C.sans, fontSize: 13, color: C.tierra }}>{t.stEmpty}</div>
       ) : (
@@ -908,15 +992,27 @@ function PropertyInfoScreen({ t, roster, onToast }) {
           {props.map((name) => {
             const info = get(name);
             const open = openKey === name;
+            const miss = missingFields(name);
             return (
               <div key={name} style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 16, overflow: "hidden" }}>
                 <button onClick={() => setOpenKey(open ? null : name)} className="sp-btn" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%",
                   background: "transparent", border: "none", cursor: "pointer", padding: "16px 18px", textAlign: "left" }}>
-                  <span style={{ fontFamily: C.serif, fontSize: 19, color: C.negro }}>{name}</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
+                    <span title={miss.length ? (es ? "Campos pendientes" : "Pending fields") : (es ? "Completo" : "Complete")} style={{ flexShrink: 0, width: 10, height: 10, borderRadius: "50%",
+                      background: miss.length ? C.peach : "#1F8A5B", boxShadow: `0 0 0 3px ${miss.length ? "rgba(233,130,106,.16)" : "rgba(31,138,91,.16)"}` }} />
+                    <span style={{ fontFamily: C.serif, fontSize: 19, color: C.negro, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
+                    {miss.length > 0 && <span style={{ flexShrink: 0, fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.08em", textTransform: "uppercase", color: C.peach, fontWeight: 600 }}>· {miss.length} {es ? "pendientes" : "pending"}</span>}
+                  </span>
                   <Icon name={open ? "chevronUp" : "chevronDown"} size={18} color={C.tierra} />
                 </button>
                 {open && (
                   <div style={{ padding: "0 18px 20px" }}>
+                    {miss.length > 0 && (
+                      <div style={{ background: "#FBEEEA", border: "1px solid rgba(233,130,106,.3)", borderRadius: 12, padding: "12px 15px", marginBottom: 4 }}>
+                        <div style={{ fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.16em", textTransform: "uppercase", color: C.peach, fontWeight: 700, marginBottom: 6 }}>{es ? "Campos pendientes" : "Pending fields"}</div>
+                        <div style={{ fontFamily: C.sans, fontSize: 12, color: C.negro, letterSpacing: "0.01em", lineHeight: 1.5 }}>{miss.join(" · ")}</div>
+                      </div>
+                    )}
                     {/* PARQUEO */}
                     {label(t.piParking)}
                     <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -936,6 +1032,8 @@ function PropertyInfoScreen({ t, roster, onToast }) {
                       </>}
                     </>}
 
+                    <textarea value={info.parkNote || ""} onChange={(e) => set(name, { parkNote: e.target.value })} placeholder={es ? "Nota de parqueo (texto libre que verá el huésped)" : "Parking note (free text shown to guest)"} rows={2} style={{ ...fieldStyle, resize: "vertical" }} />
+
                     {/* WIFI */}
                     {label(t.piWifi)}
                     <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -945,6 +1043,10 @@ function PropertyInfoScreen({ t, roster, onToast }) {
                     <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
                       <input value={info.wifiNetBk || ""} onChange={(e) => set(name, { wifiNetBk: e.target.value })} placeholder={`${t.piWifiBackup} — ${t.piWifiNet}`} style={{ ...fieldStyle, marginTop: 0, flex: "1 1 160px" }} />
                       <input value={info.wifiPassBk || ""} onChange={(e) => set(name, { wifiPassBk: e.target.value })} placeholder={`${t.piWifiBackup} — ${t.piWifiPass}`} style={{ ...fieldStyle, marginTop: 0, flex: "1 1 160px" }} />
+                    </div>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+                      <input value={info.wifiNetBk2 || ""} onChange={(e) => set(name, { wifiNetBk2: e.target.value })} placeholder={`${t.piWifiBackup} 2 — ${t.piWifiNet}`} style={{ ...fieldStyle, marginTop: 0, flex: "1 1 160px" }} />
+                      <input value={info.wifiPassBk2 || ""} onChange={(e) => set(name, { wifiPassBk2: e.target.value })} placeholder={`${t.piWifiBackup} 2 — ${t.piWifiPass}`} style={{ ...fieldStyle, marginTop: 0, flex: "1 1 160px" }} />
                     </div>
                     <p style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, margin: "8px 0 0", letterSpacing: "0.02em" }}>{t.piWifiBackupNote}</p>
 
@@ -981,6 +1083,22 @@ function PropertyInfoScreen({ t, roster, onToast }) {
                     <input value={info.waze != null ? info.waze : (buildingOf(name)?.waze || "")} onChange={(e) => set(name, { waze: e.target.value })} placeholder={t.ckWaze + " URL"} style={{ ...fieldStyle }} />
                     <input value={info.photoUrl || ""} onChange={(e) => set(name, { photoUrl: e.target.value })} placeholder={t.piPhotoUrl} style={{ ...fieldStyle }} />
                     <p style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, margin: "6px 0 0", letterSpacing: "0.02em", lineHeight: 1.5 }}>{t.piPhotoNote}</p>
+
+                    {/* EN SITIO */}
+                    {label(es ? "En sitio (piso, unidad, contacto)" : "On site (floor, unit, contact)")}
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                      <input value={info.floor || ""} onChange={(e) => set(name, { floor: e.target.value })} placeholder={es ? "Piso / nivel" : "Floor / level"} style={{ ...fieldStyle, marginTop: 0, flex: "1 1 120px" }} />
+                      <input value={info.unit || ""} onChange={(e) => set(name, { unit: e.target.value })} placeholder={es ? "Unidad / apto" : "Unit / apt"} style={{ ...fieldStyle, marginTop: 0, flex: "1 1 120px" }} />
+                    </div>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+                      <input value={info.contactName || ""} onChange={(e) => set(name, { contactName: e.target.value })} placeholder={es ? "Contacto en sitio (nombre)" : "On-site contact (name)"} style={{ ...fieldStyle, marginTop: 0, flex: "1 1 160px" }} />
+                      <input value={info.contactPhone || ""} onChange={(e) => set(name, { contactPhone: e.target.value })} placeholder={es ? "Teléfono del contacto" : "Contact phone"} type="tel" style={{ ...fieldStyle, marginTop: 0, flex: "1 1 160px" }} />
+                    </div>
+
+                    {/* AMENIDADES */}
+                    {label(es ? "Amenidades (una por línea)" : "Amenities (one per line)")}
+                    <textarea value={(info.amenities || []).join("\n")} onChange={(e) => set(name, { amenities: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean) })} placeholder={es ? "Piscina\nGimnasio\nRooftop" : "Pool\nGym\nRooftop"} rows={4} style={{ ...fieldStyle, marginTop: 8, resize: "vertical" }} />
+                    <p style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, margin: "6px 0 0", letterSpacing: "0.02em", lineHeight: 1.5 }}>{es ? "Si dejas esto vacío, se usan las amenidades de Hospitable." : "If left empty, Hospitable amenities are used."}</p>
 
                     <div style={{ marginTop: 20 }}>
                       <button onClick={() => save(name)} className="sp-btn" style={{ background: C.negro, color: C.alabaster, border: "none", borderRadius: 10, padding: "10px 20px",

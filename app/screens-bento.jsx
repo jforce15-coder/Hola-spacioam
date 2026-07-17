@@ -374,6 +374,11 @@ function WifiContent({ t, res }) {
   const es = t.code === "es";
   const w = (typeof wifiForRes === "function" ? wifiForRes(res) : null) || res.wifi || { network: "Spacio AM", pass: "selfloveclub" };
   const b = typeof matchBuilding === "function" ? matchBuilding(res) : null;
+  const piW = (typeof loadPropInfo === "function" ? loadPropInfo() : {})[res.propertyName] || {};
+  const piBackups = [];
+  if (piW.wifiNetBk || piW.wifiPassBk) piBackups.push({ network: piW.wifiNetBk || "", pass: piW.wifiPassBk || "" });
+  if (piW.wifiNetBk2 || piW.wifiPassBk2) piBackups.push({ network: piW.wifiNetBk2 || "", pass: piW.wifiPassBk2 || "" });
+  const backups = piBackups.length ? piBackups : ((b && b.wifiBackup) || []);
   const [copied, setCopied] = useStateB(false);
   const [connecting, setConnecting] = useStateB(false);
   const [trouble, setTrouble] = useStateB(false);
@@ -426,10 +431,10 @@ function WifiContent({ t, res }) {
             ))}
           </ol>
         )}
-        {trouble && b && b.wifiBackup && (
+        {trouble && backups.length > 0 && (
           <div style={{ marginTop: 16, background: C.beige, borderRadius: 12, padding: "14px 16px" }}>
             <div style={{ fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.16em", textTransform: "uppercase", color: C.tierra, fontWeight: 600, marginBottom: 10 }}>{t.wifiBackupTitle}</div>
-            {b.wifiBackup.map((bk, i) => (
+            {backups.map((bk, i) => (
               <div key={i} style={{ fontFamily: C.sans, fontSize: 12.5, color: C.negro, letterSpacing: "0.02em", padding: "3px 0" }}>
                 <b>{bk.network}</b> · {bk.pass}
               </div>
@@ -453,8 +458,10 @@ function CheckinContent({ t, res }) {
   const waze = (pi.waze != null && pi.waze !== "") ? pi.waze : (b && b.waze);
   const tip = (pi.tip != null && pi.tip !== "") ? pi.tip : (b && b.tip);
   const hasInfo = !!(b || addr || arrival);
-  const unit = typeof unitFromRes === "function" ? unitFromRes(res) : res.apartment;
-  const floor = b && typeof floorFromUnit === "function" ? floorFromUnit(unit, b.key) : null;
+  const unit = (pi.unit != null && pi.unit !== "") ? pi.unit : (typeof unitFromRes === "function" ? unitFromRes(res) : res.apartment);
+  const floor = (pi.floor != null && pi.floor !== "") ? pi.floor : (b && typeof floorFromUnit === "function" ? floorFromUnit(unit, b.key) : null);
+  const contactName = (pi.contactName != null && pi.contactName !== "") ? pi.contactName : (b && b.contactName);
+  const contactPhone = (pi.contactPhone != null && pi.contactPhone !== "") ? pi.contactPhone : (b && b.contactPhone);
   const [flexOpen, setFlexOpen] = useStateB(false);
   const [flexMode, setFlexMode] = useStateB("");   // "" | "early" | "late"
   const [sentMsg, setSentMsg] = useStateB("");
@@ -500,7 +507,7 @@ function CheckinContent({ t, res }) {
     <>
       <InfoRow label={t.checkin} value={`${res.checkin} · 3:00 PM`} />
       <InfoRow label={t.checkout} value={`${res.checkout} · 11:00 AM`} />
-      {b && <InfoRow label={t.ckUnit} value={unit || res.apartment} />}
+      {unit && <InfoRow label={t.ckUnit} value={unit} />}
       {floor ? <InfoRow label={t.ckFloor} value={`${floor}`} /> : null}
 
       {hasInfo ? (
@@ -523,7 +530,7 @@ function CheckinContent({ t, res }) {
             <p style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, lineHeight: 1.65, margin: 0, letterSpacing: "0.01em", whiteSpace: "pre-line" }}>{arrival}</p>
           </>}
           {tip && <p style={{ fontFamily: C.sans, fontSize: 11.5, color: C.tierra, lineHeight: 1.6, margin: "12px 0 0", letterSpacing: "0.01em", fontStyle: "italic" }}>{tip}</p>}
-          {b.contactName && <p style={{ fontFamily: C.sans, fontSize: 12, color: C.negro, margin: "12px 0 0", letterSpacing: "0.01em" }}>{t.ckContactName}: <b>{b.contactName}</b> · {b.contactPhone}</p>}
+          {contactName && <p style={{ fontFamily: C.sans, fontSize: 12, color: C.negro, margin: "12px 0 0", letterSpacing: "0.01em" }}>{t.ckContactName}: <b>{contactName}</b>{contactPhone ? ` · ${contactPhone}` : ""}</p>}
           {/^(smart|keybox|locker|box)/.test(b.lock || "") && (
             <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginTop: 16, background: C.beige, borderRadius: 12, padding: "13px 15px" }}>
               <span style={{ flexShrink: 0, marginTop: 1 }}><Icon name="lock" size={15} color={C.peach} /></span>
@@ -595,7 +602,27 @@ function ParqueoContent({ t, res }) {
   const es = t.code === "es";
   const b = typeof matchBuilding === "function" ? matchBuilding(res) : null;
   const p = b && b.parking;
+  const pi = (typeof loadPropInfo === "function" ? loadPropInfo() : {})[res.propertyName] || {};
+  const piPark = pi.hasParking || pi.parkNote || pi.parkNumber || pi.parkExtInfo || pi.parkLink;
   const kindLabel = { own: t.parkOwn, "pay-us": t.parkPayUs, "pay-building": t.parkPayBuilding, external: t.parkExternal, street: t.parkExternal };
+  if (piPark) {
+    const yes = pi.hasParking === "yes";
+    const note = pi.parkNote
+      || (yes ? ((es ? "Parqueo asignado" : "Assigned parking") + (pi.parkNumber ? ` · ${pi.parkNumber}` : ""))
+             : (pi.parkExtInfo || (es ? "Este alojamiento no cuenta con parqueo propio." : "This property has no private parking.")));
+    return (
+      <div style={{ paddingTop: 14 }}>
+        <div style={{ background: C.beige, borderRadius: 14, padding: "16px 18px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 8 }}>
+            <Icon name="parqueo" size={17} color={C.peach} />
+            <span style={{ fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.16em", textTransform: "uppercase", color: C.negro, fontWeight: 600 }}>{es ? "Parqueo" : "Parking"}</span>
+          </div>
+          <p style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, lineHeight: 1.6, margin: 0, letterSpacing: "0.01em", whiteSpace: "pre-line" }}>{note}</p>
+          {pi.parkLink && <a href={pi.parkLink} target="_blank" rel="noopener" style={{ display: "inline-flex", alignItems: "center", gap: 8, marginTop: 12, textDecoration: "none", background: C.negro, color: C.alabaster, borderRadius: 10, padding: "10px 16px", fontFamily: C.sans, fontSize: 11, letterSpacing: "0.04em", fontWeight: 500 }}><Icon name="pin" size={14} color={C.alabaster} /> {t.parkPayLink}</a>}
+        </div>
+      </div>
+    );
+  }
   if (!b || !p) {
     return <p style={{ fontFamily: C.sans, fontSize: 13, color: C.tierra, lineHeight: 1.65, margin: "14px 0 0", letterSpacing: "0.02em" }}>
       {es ? "Consulta con nuestro equipo la información de parqueo para tu alojamiento." : "Ask our team about parking for your stay."}</p>;
@@ -765,7 +792,15 @@ function ManualExtras({ t, res }) {
   ];
 
   const buildingCards = b ? ["induction", "cable", "smartHouse"].filter((k) => b[k] && extras[k]).map((k) => extras[k]) : [];
-  const cards = universal.concat(buildingCards);
+  // admin-managed house manual (Propiedades → Manual de la casa) takes over once configured
+  const pi = (typeof loadPropInfo === "function" ? loadPropInfo() : {});
+  const manual = pi.__manual__ || {};
+  const mItems = manual.items || [];
+  const mAssign = manual.assign || {};
+  const assignedCards = mItems.length
+    ? mItems.filter((it) => (mAssign[it.id] || []).includes(res.propertyName)).map((it) => ({ icon: it.icon || "manual", title: it.title, intro: it.intro || "", steps: it.steps || [] }))
+    : buildingCards;
+  const cards = universal.concat(assignedCards);
 
   const renderCard = (e, k) => (
     <div key={k} style={{ background: C.beige, borderRadius: 18, overflow: "hidden", border: `1px solid ${C.grisCalido}` }}>
@@ -921,8 +956,10 @@ function ActivitiesContent({ t, res }) {
 /* ---------- AMENITIES: from Hospitable listing, else "coming soon" ---------- */
 function AmenitiesContent({ t, res }) {
   const es = t.code === "es";
-  const [state, setState] = useStateB(res.amenities && res.amenities.length ? "ok" : "loading");
-  const [items, setItems] = useStateB(res.amenities || []);
+  const pi = (typeof loadPropInfo === "function" ? loadPropInfo() : {})[res.propertyName] || {};
+  const piAm = (pi.amenities && pi.amenities.length) ? pi.amenities : null;
+  const [state, setState] = useStateB(piAm ? "ok" : (res.amenities && res.amenities.length ? "ok" : "loading"));
+  const [items, setItems] = useStateB(piAm || res.amenities || []);
   useEffectB(() => {
     if (items.length) { setState("ok"); return; }
     let alive = true;

@@ -7,7 +7,7 @@
    · Per row: view summary · download (print → PDF) · resend email
    · Summary = all collected data + identity docs watermarked
    ============================================================ */
-const { useState: useStateAd, useMemo: useMemoAd, useEffect: useEffectAd } = React;
+const { useState: useStateAd, useMemo: useMemoAd, useEffect: useEffectAd, useRef: useRefAd } = React;
 
 /* ---------- ADMIN LOGIN MODAL ---------- */
 function AdminLogin({ t, onClose, onSuccess }) {
@@ -844,11 +844,33 @@ function loadPropInfo() { try { return JSON.parse(localStorage.getItem(PROP_INFO
 function savePropInfoAll(o) { try { localStorage.setItem(PROP_INFO_KEY, JSON.stringify(o)); } catch (e) {} }
 
 function PropertyInfoScreen({ t, roster, onToast }) {
-  const props = [...new Set((roster || []).map((r) => r.propertyName).filter(Boolean))].sort();
   const [store, setStore] = useStateAd(loadPropInfo());
   const [openKey, setOpenKey] = useStateAd(null);
+  const autosave = useRefAd({ keys: new Set(), stKeys: new Set(), t1: null, mounted: false });
   const get = (name) => store[name] || {};
-  const set = (name, patch) => setStore((s) => ({ ...s, [name]: { ...(s[name] || {}), ...patch } }));
+  const set = (name, patch) => { autosave.current.keys.add(name); setStore((s) => ({ ...s, [name]: { ...(s[name] || {}), ...patch } })); };
+  // instrucciones generales compartidas: editar una propiedad propaga a todo su grupo
+  const INSTR_FIELDS = ["address", "arrival", "tip", "maps", "waze"];
+  const instrGroup = (name) => { const a = (get(name).instrApply || []).filter((x) => x !== name); return [...new Set([name, ...a])]; };
+  const setInstr = (name, patch) => {
+    const group = instrGroup(name);
+    group.forEach((m) => autosave.current.keys.add(m));
+    setStore((s) => { const n = { ...s }; group.forEach((m) => { n[m] = { ...(n[m] || {}), ...patch }; }); return n; });
+  };
+  const toggleInstrApply = (name, target) => {
+    if (target === name) return;
+    const cur = instrGroup(name);
+    const has = cur.includes(target);
+    const group = has ? cur.filter((x) => x !== target) : [...cur, target];
+    [...cur, ...group, target].forEach((m) => autosave.current.keys.add(m));
+    setStore((s) => {
+      const n = { ...s };
+      if (!has) { const src = n[name] || {}; const inh = {}; INSTR_FIELDS.forEach((f) => { if (src[f] != null) inh[f] = src[f]; }); n[target] = { ...(n[target] || {}), ...inh }; }
+      group.forEach((m) => { n[m] = { ...(n[m] || {}), instrApply: group.filter((x) => x !== m) }; });
+      if (has) n[target] = { ...(n[target] || {}), instrApply: [] };
+      return n;
+    });
+  };
 
   // contact block per property (was the old “Contactos” tab) — 2 emails + 2 phones
   const [stations, setStations] = useStateAd({});
@@ -860,7 +882,23 @@ function PropertyInfoScreen({ t, roster, onToast }) {
     });
   }, []);
   const getC = (name) => stations[name] || {};
-  const setC = (name, patch) => setStations((s) => ({ ...s, [name]: { ...(s[name] || {}), ...patch } }));
+  const setC = (name, patch) => { autosave.current.stKeys.add(name); setStations((s) => ({ ...s, [name]: { ...(s[name] || {}), ...patch } })); };
+  // toda propiedad = reservas en la ventana ∪ todos los listados de Hospitable,
+  // así aparecen también las que no tienen una reserva próxima
+  const props = useMemoAd(() => [...new Set([...(roster || []).map((r) => r.propertyName), ...Object.keys(stations)].filter((x) => x && x !== "__manual__"))].sort(), [roster, stations]);
+  // autosave: guarda store + contactos poco después de cada cambio, sin botón
+  useEffectAd(() => {
+    savePropInfoAll(store);
+    if (!autosave.current.mounted) { autosave.current.mounted = true; return; }
+    clearTimeout(autosave.current.t1);
+    autosave.current.t1 = setTimeout(() => {
+      const keys = [...autosave.current.keys]; autosave.current.keys = new Set();
+      keys.forEach((k) => { try { Backend.call && Backend.call("savePropertyInfo", { property: k, info: store[k] || {} }).catch(() => {}); } catch (e) {} });
+      const sk = [...autosave.current.stKeys]; autosave.current.stKeys = new Set();
+      sk.forEach((k) => { const c = stations[k] || {}; try { Backend.saveStation && Backend.saveStation({ propertyId: c.propertyId || "", propertyName: k, email1: c.email1 || "", email2: c.email2 || "", phone1: c.phone1 || "", phone2: c.phone2 || "" }); } catch (e) {} });
+      if (keys.length || sk.length) onToast(t.code === "es" ? "Guardado automáticamente" : "Saved automatically");
+    }, 900);
+  }, [store, stations]);
   // building defaults from the check-in data, so instruction fields pre-fill
   const buildingOf = (name) => (typeof matchBuilding === "function" ? matchBuilding({ propertyName: name, apartment: "" }) : null);
   const es = t.code === "es";
@@ -873,7 +911,7 @@ function PropertyInfoScreen({ t, roster, onToast }) {
   const manual = store.__manual__ || { items: [], assign: {} };
   const manualItems = manual.items || [];
   const manualAssign = manual.assign || {};
-  const setManual = (patch) => setStore((s) => ({ ...s, __manual__: { ...(s.__manual__ || { items: [], assign: {} }), ...patch } }));
+  const setManual = (patch) => { autosave.current.keys.add("__manual__"); setStore((s) => ({ ...s, __manual__: { ...(s.__manual__ || { items: [], assign: {} }), ...patch } })); };
   const setManualItem = (id, patch) => setManual({ items: manualItems.map((it) => it.id === id ? { ...it, ...patch } : it) });
   const toggleAssign = (id, name) => { const cur = manualAssign[id] || []; const has = cur.includes(name); setManual({ assign: { ...manualAssign, [id]: has ? cur.filter((x) => x !== name) : [...cur, name] } }); };
   const addManualItem = () => { const id = "m" + Date.now().toString(36); setManual({ items: [...manualItems, { id, title: "", icon: "manual", intro: "", steps: [] }] }); };
@@ -1076,12 +1114,23 @@ function PropertyInfoScreen({ t, roster, onToast }) {
                     {/* INSTRUCCIONES GENERALES (edificio / condominio / región) */}
                     {label(t.piInstructions)}
                     <p style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, margin: "-2px 0 10px", letterSpacing: "0.02em", lineHeight: 1.5 }}>{t.piInstructionsNote}</p>
-                    <input value={info.address != null ? info.address : (buildingOf(name)?.address || "")} onChange={(e) => set(name, { address: e.target.value })} placeholder={t.ckAddress} style={{ ...fieldStyle, marginTop: 0 }} />
-                    <textarea value={info.arrival != null ? info.arrival : (buildingOf(name)?.arrival || "")} onChange={(e) => set(name, { arrival: e.target.value })} placeholder={t.ckArrival} rows={4} style={{ ...fieldStyle, resize: "vertical" }} />
-                    <textarea value={info.tip != null ? info.tip : (buildingOf(name)?.tip || "")} onChange={(e) => set(name, { tip: e.target.value })} placeholder={t.piCheckinNote} rows={2} style={{ ...fieldStyle, resize: "vertical" }} />
-                    <input value={info.maps != null ? info.maps : (buildingOf(name)?.maps || "")} onChange={(e) => set(name, { maps: e.target.value })} placeholder={t.ckMaps + " URL"} style={{ ...fieldStyle }} />
-                    <input value={info.waze != null ? info.waze : (buildingOf(name)?.waze || "")} onChange={(e) => set(name, { waze: e.target.value })} placeholder={t.ckWaze + " URL"} style={{ ...fieldStyle }} />
-                    <input value={info.photoUrl || ""} onChange={(e) => set(name, { photoUrl: e.target.value })} placeholder={t.piPhotoUrl} style={{ ...fieldStyle }} />
+                    <input value={info.address != null ? info.address : (buildingOf(name)?.address || "")} onChange={(e) => setInstr(name, { address: e.target.value })} placeholder={t.ckAddress} style={{ ...fieldStyle, marginTop: 0 }} />
+                    <textarea value={info.arrival != null ? info.arrival : (buildingOf(name)?.arrival || "")} onChange={(e) => setInstr(name, { arrival: e.target.value })} placeholder={t.ckArrival} rows={4} style={{ ...fieldStyle, resize: "vertical" }} />
+                    <textarea value={info.tip != null ? info.tip : (buildingOf(name)?.tip || "")} onChange={(e) => setInstr(name, { tip: e.target.value })} placeholder={t.piCheckinNote} rows={2} style={{ ...fieldStyle, resize: "vertical" }} />
+                    <input value={info.maps != null ? info.maps : (buildingOf(name)?.maps || "")} onChange={(e) => setInstr(name, { maps: e.target.value })} placeholder={t.ckMaps + " URL"} style={{ ...fieldStyle }} />
+                    <input value={info.waze != null ? info.waze : (buildingOf(name)?.waze || "")} onChange={(e) => setInstr(name, { waze: e.target.value })} placeholder={t.ckWaze + " URL"} style={{ ...fieldStyle }} />
+                    {/* Aplica estas instrucciones a otras propiedades (compartidas y sincronizadas) */}
+                    <div style={{ fontFamily: C.sans, fontSize: 9, letterSpacing: "0.16em", textTransform: "uppercase", color: C.tierra, fontWeight: 600, margin: "14px 0 4px" }}>{es ? "Aplica estas instrucciones a" : "Apply these instructions to"}</div>
+                    <p style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, margin: "0 0 9px", letterSpacing: "0.02em", lineHeight: 1.5 }}>{es ? "Las propiedades marcadas comparten estas mismas instrucciones; al editar una se actualizan todas." : "Selected properties share these instructions; editing one updates them all."}</p>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                      {props.filter((pn) => pn !== name).map((pn) => {
+                        const on = (info.instrApply || []).includes(pn);
+                        return <button key={pn} onClick={() => toggleInstrApply(name, pn)} className="sp-btn" style={{ background: on ? C.negro : C.white, color: on ? C.alabaster : C.negro,
+                          border: `1px solid ${on ? C.negro : C.grisCalido}`, borderRadius: 999, padding: "7px 13px", fontFamily: C.sans, fontSize: 11, letterSpacing: "0.02em", cursor: "pointer", fontWeight: on ? 600 : 500, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                          {on && <Icon name="check" size={12} color={C.alabaster} />}{pn}</button>;
+                      })}
+                    </div>
+                    <input value={info.photoUrl || ""} onChange={(e) => set(name, { photoUrl: e.target.value })} placeholder={t.piPhotoUrl} style={{ ...fieldStyle, marginTop: 12 }} />
                     <p style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, margin: "6px 0 0", letterSpacing: "0.02em", lineHeight: 1.5 }}>{t.piPhotoNote}</p>
 
                     {/* EN SITIO */}

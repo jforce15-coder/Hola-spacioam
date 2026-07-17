@@ -217,9 +217,12 @@ function printSummary() {
     "html,body{margin:0;padding:0;background:#fff;color:#3E3F3F;font-family:Montserrat,-apple-system,system-ui,Segoe UI,sans-serif}" +
     "body{padding:24px}" +
     "img{max-width:100%!important;height:auto!important;display:block}" +
-    ".sum-section,.sum-guest-list{break-inside:auto;page-break-inside:auto}" +
+    ".sum-section{break-inside:auto;page-break-inside:auto}" +
+    ".sum-guest-list{display:block!important;break-inside:auto;page-break-inside:auto}" +
     ".sum-guest-list>*{margin-bottom:18px}" +
     ".sum-card{break-inside:avoid;page-break-inside:avoid}" +
+    /* each registered guest prints on its own page so info/photos never split; rules stay with the last guest */
+    ".sum-guest-list>.sum-card{break-before:page;page-break-before:always}" +
     ".sum-noprint{display:none!important}";
   const doc = "<!doctype html><html><head><meta charset='utf-8'><base href='" + location.href + "'><title>Resumen de registro</title><style>" +
     css + "</style></head><body>" + clone.outerHTML + "</body></html>";

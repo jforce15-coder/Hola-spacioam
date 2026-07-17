@@ -876,6 +876,10 @@ const Backend = {
     if (!this.isConnected()) return { ok: false, offline: true };
     return this.call("testWhatsApp", { to });
   },
+  async listContacts() {
+    if (!this.isConnected()) return null;
+    try { return await this.call("listContacts"); } catch (e) { return null; }
+  },
   async listAdmins() {
     if (!this.isConnected()) return null;
     try { const json = await this.call("listAdmins"); return json.admins || []; } catch (e) { return null; }

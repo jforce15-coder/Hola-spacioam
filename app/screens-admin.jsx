@@ -1204,6 +1204,19 @@ function AdminAccessScreen({ t, onToast }) {
   const [waTo, setWaTo] = useStateAd("");
   const [waMsg, setWaMsg] = useStateAd(null);
   const [waBusy, setWaBusy] = useStateAd(false);
+  const [contacts, setContacts] = useStateAd(null);
+  const [contactsBusy, setContactsBusy] = useStateAd(false);
+  const [copied, setCopied] = useStateAd(false);
+  const loadContacts = () => {
+    if (!Backend.isConnected()) return;
+    setContactsBusy(true);
+    Backend.listContacts().then((r) => { setContactsBusy(false); if (r && r.ok) setContacts(r); }).catch(() => setContactsBusy(false));
+  };
+  useEffectAd(() => { loadContacts(); }, []);
+  const copyNums = () => {
+    const txt = (contacts && contacts.numbers || []).join(", ");
+    try { navigator.clipboard.writeText(txt); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch (e) {}
+  };
   const sendWaTest = () => {
     if (!Backend.isConnected()) { setWaMsg({ ok: false, text: es ? "El backend no está conectado." : "Backend not connected." }); return; }
     setWaBusy(true); setWaMsg(null);
@@ -1306,6 +1319,44 @@ function AdminAccessScreen({ t, onToast }) {
             <Icon name="review" size={14} color={C.alabaster} /> {waBusy ? (es ? "Enviando…" : "Sending…") : (es ? "Enviar WhatsApp de prueba" : "Send test WhatsApp")}
           </button>
         </div>
+      </div>
+
+      <div style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 16, padding: "18px 18px", marginTop: 18 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+          <div style={{ fontFamily: C.serif, fontSize: 19, color: C.negro, marginBottom: 4 }}>{es ? "Números internos para ElevenLabs" : "Internal numbers for ElevenLabs"}</div>
+          <button onClick={loadContacts} className="sp-btn" title={es ? "Actualizar" : "Refresh"} style={{ background: "transparent", border: "none", cursor: "pointer", padding: 4, flexShrink: 0 }}>
+            <Icon name="refresh" size={16} color={C.tierra} />
+          </button>
+        </div>
+        <p style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra, margin: "0 0 14px", letterSpacing: "0.02em", lineHeight: 1.55, maxWidth: 480 }}>
+          {es ? "Lista actual de WhatsApp de recepción (de todas las propiedades, sin el administrador). Cópiala y pégala en la regla de números internos del prompt del agente de ElevenLabs cada vez que agregues o cambies un número." : "Current list of reception WhatsApp numbers (all properties, admin excluded). Copy and paste it into the internal-numbers rule of the ElevenLabs agent prompt whenever a number changes."}
+        </p>
+        {contactsBusy && !contacts ? (
+          <div style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra }}>{es ? "Cargando…" : "Loading…"}</div>
+        ) : contacts ? (<>
+          <div style={{ background: C.beige, border: `1px solid ${C.grisCalido}`, borderRadius: 12, padding: "13px 15px", fontFamily: C.sans, fontSize: 13, color: C.negro, letterSpacing: "0.02em", lineHeight: 1.7, wordBreak: "break-word" }}>
+            {(contacts.numbers || []).length ? (contacts.numbers || []).join(", ") : (es ? "Sin números configurados." : "No numbers configured.")}
+          </div>
+          <button onClick={copyNums} className="sp-btn" style={{ marginTop: 12, background: C.negro, color: C.alabaster, border: "none", borderRadius: 11, padding: "10px 16px",
+            fontFamily: C.sans, fontSize: 11, letterSpacing: "0.06em", cursor: "pointer", fontWeight: 500, display: "inline-flex", alignItems: "center", gap: 8, alignSelf: "flex-start" }}>
+            <Icon name="copy" size={14} color={C.alabaster} /> {copied ? (es ? "¡Copiado!" : "Copied!") : (es ? "Copiar lista" : "Copy list")}
+          </button>
+          {(contacts.properties || []).length > 0 && (<>
+            <div style={{ fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.16em", textTransform: "uppercase", color: C.tierra, fontWeight: 600, margin: "20px 0 10px" }}>{es ? "Contactos editados desde el panel" : "Contacts edited from the panel"}</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {(contacts.properties || []).map((p, i) => (
+                <div key={i} style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 12, padding: "12px 15px" }}>
+                  <div style={{ fontFamily: C.sans, fontSize: 13, color: C.negro, letterSpacing: "0.01em", marginBottom: 4 }}>{p.name}</div>
+                  <div style={{ fontFamily: C.sans, fontSize: 11.5, color: C.tierra, letterSpacing: "0.02em", lineHeight: 1.6 }}>
+                    {[...(p.whatsapps || []).map((w) => "WA " + w), ...(p.emails || [])].join("  ·  ") || "—"}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>)}
+        </>) : (
+          <div style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra }}>{es ? "Conéctate al backend para ver la lista." : "Connect the backend to see the list."}</div>
+        )}
       </div>
     </div>
   );

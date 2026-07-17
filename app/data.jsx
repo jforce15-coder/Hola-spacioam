@@ -868,6 +868,10 @@ const Backend = {
     try { const json = await this.call("getRegistration", { code }); return json.record || null; }
     catch (e) { return null; }
   },
+  async sendTestEmail(to) {
+    if (!this.isConnected()) return { ok: false, offline: true };
+    return this.call("testEmail", { to });
+  },
   async listAdmins() {
     if (!this.isConnected()) return null;
     try { const json = await this.call("listAdmins"); return json.admins || []; } catch (e) { return null; }

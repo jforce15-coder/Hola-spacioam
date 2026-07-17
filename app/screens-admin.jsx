@@ -1184,6 +1184,23 @@ function AdminAccessScreen({ t, onToast }) {
   const [pass, setPass] = useStateAd("");
   const [err, setErr] = useStateAd("");
   const [busy, setBusy] = useStateAd(false);
+  const es = t.code === "es";
+  const [testTo, setTestTo] = useStateAd(ADMIN_CREDENTIALS.email || "");
+  const [testMsg, setTestMsg] = useStateAd(null); // { ok, text }
+  const [testBusy, setTestBusy] = useStateAd(false);
+  const sendTest = () => {
+    const e = (testTo || "").trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) { setTestMsg({ ok: false, text: es ? "Correo inválido." : "Invalid email." }); return; }
+    if (!Backend.isConnected()) { setTestMsg({ ok: false, text: es ? "El backend no está conectado." : "Backend not connected." }); return; }
+    setTestBusy(true); setTestMsg(null);
+    Backend.sendTestEmail(e).then((r) => {
+      setTestBusy(false);
+      setTestMsg({ ok: true, text: (es ? "Correo de prueba enviado a " : "Test email sent to ") + (r.to || e) + "." });
+    }).catch((error) => {
+      setTestBusy(false);
+      setTestMsg({ ok: false, text: (es ? "No se pudo enviar. " : "Could not send. ") + (error && error.message || error) });
+    });
+  };
   // cross-device: load the admin list from the backend when connected
   useEffectAd(() => {
     if (Backend.isConnected()) Backend.listAdmins().then((rows) => { if (rows) setList(rows); });
@@ -1245,6 +1262,21 @@ function AdminAccessScreen({ t, onToast }) {
             </button>
           </div>
         ))}
+      </div>
+
+      <div style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 16, padding: "18px 18px", marginTop: 22 }}>
+        <div style={{ fontFamily: C.serif, fontSize: 19, color: C.negro, marginBottom: 4 }}>{es ? "Prueba de correo" : "Email test"}</div>
+        <p style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra, margin: "0 0 14px", letterSpacing: "0.02em", lineHeight: 1.55, maxWidth: 460 }}>
+          {es ? "Envía un mensaje de prueba para verificar que el sistema de correos está funcionando." : "Send a test message to verify that outgoing email is working."}
+        </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <input value={testTo} onChange={(e) => { setTestTo(e.target.value); setTestMsg(null); }} placeholder={es ? "Correo de destino" : "Recipient email"} type="email" style={fieldStyle} />
+          {testMsg && <span style={{ fontFamily: C.sans, fontSize: 11.5, color: testMsg.ok ? "#1F8A5B" : C.peach, letterSpacing: "0.02em", lineHeight: 1.5 }}>{testMsg.text}</span>}
+          <button onClick={sendTest} disabled={testBusy} className="sp-btn" style={{ background: C.negro, color: C.alabaster, border: "none", borderRadius: 11, padding: "11px 18px",
+            fontFamily: C.sans, fontSize: 11, letterSpacing: "0.06em", cursor: testBusy ? "default" : "pointer", opacity: testBusy ? 0.6 : 1, fontWeight: 500, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, alignSelf: "flex-start" }}>
+            <Icon name="review" size={14} color={C.alabaster} /> {testBusy ? (es ? "Enviando…" : "Sending…") : (es ? "Enviar correo de prueba" : "Send test email")}
+          </button>
+        </div>
       </div>
     </div>
   );

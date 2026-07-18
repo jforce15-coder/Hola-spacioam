@@ -258,8 +258,10 @@ function printSummary() {
 /* ============================================================
    RESERVATION SUMMARY — full document (email / PDF to admins)
    ============================================================ */
-function ReservationSummary({ t, h, rec: localRec, onClose, onResend, autoPrint }) {
+function ReservationSummary({ t, h, rec: localRec, onClose, onResend, autoPrint, avail }) {
   const lang = t.code;
+  const es = lang === "es";
+  const av = avail || { email: false, whatsapp: false };
   const generated = new Date().toLocaleString(lang === "en" ? "en-US" : "es-GT", { dateStyle: "long", timeStyle: "short" });
   const [fetchedRec, setFetchedRec] = useStateAd(null);
   const [loadingRec, setLoadingRec] = useStateAd(false);
@@ -293,7 +295,8 @@ function ReservationSummary({ t, h, rec: localRec, onClose, onResend, autoPrint 
         <div className="sum-noprint" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 22, flexWrap: "wrap" }}>
           <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
             <Btn variant="peach" onClick={printSummary} style={{ padding: "11px 18px" }}><Icon name="download" size={15} color={C.white} /> {t.sumPrint}</Btn>
-            <Btn variant="ghost" onClick={onResend} style={{ padding: "11px 18px" }}><Icon name="mail" size={15} color={C.negro} /> {t.adminResend}</Btn>
+            <Btn variant="ghost" onClick={av.email ? () => onResend("email") : undefined} disabled={!av.email} style={{ padding: "11px 16px", opacity: av.email ? 1 : 0.4, cursor: av.email ? "pointer" : "not-allowed" }} title={av.email ? "" : (es ? "Sin correo en esta propiedad" : "No email")}><Icon name="mail" size={15} color={C.negro} /> {es ? "Correo" : "Email"}</Btn>
+            <Btn variant="ghost" onClick={av.whatsapp ? () => onResend("whatsapp") : undefined} disabled={!av.whatsapp} style={{ padding: "11px 16px", opacity: av.whatsapp ? 1 : 0.4, cursor: av.whatsapp ? "pointer" : "not-allowed" }} title={av.whatsapp ? (es ? "Incluye al administrador" : "") : (es ? "Sin WhatsApp en esta propiedad" : "No WhatsApp")}><Icon name="whatsapp" size={15} color={C.negro} /> WhatsApp</Btn>
           </div>
           <button onClick={onClose} className="sp-btn" style={{ width: 40, height: 40, borderRadius: 12, border: `1px solid ${C.grisCalido}`,
             background: C.white, cursor: "pointer", display: "grid", placeItems: "center" }}><Icon name="x" size={18} color={C.negro} /></button>
@@ -476,6 +479,9 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang }) {
     Backend.listCached().then((list) => { setRoster(list); setMeta(Backend._lastMeta); });
   };
   useEffectAd(() => { loadRoster(); }, []);
+  const [avail, setAvail] = useStateAd({});
+  useEffectAd(() => { if (Backend.isConnected && Backend.isConnected() && Backend.contactsAvailability) Backend.contactsAvailability().then((a) => { if (a) setAvail(a); }); }, []);
+  const availFor = (h) => avail[h.propertyName] || { email: false, whatsapp: false };
 
   const store = loadStore();
   const records = store.records || {};
@@ -528,15 +534,18 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang }) {
   const doneCount = rows ? rows.filter((r) => isDone(r.h, r.rec)).length : 0;
   const pendingCount = rows ? rows.length - doneCount : 0;
 
-  const resend = (h) => {
-    setToast(t.adminResending || "Enviando…"); 
-    const done = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
+  const resend = (h, channel) => {
+    const ch = channel || "email";
+    setToast(t.adminResending || "Enviando…");
+    const done = (msg) => { setToast(msg); setTimeout(() => setToast(""), 4000); };
     try {
       if (Backend.isConnected && Backend.isConnected() && Backend.call) {
-        Backend.call("resendRegistration", { code: h.code })
-          .then((r) => done(r && r.ok ? `${t.adminResent} ${r.to || ""}` : (t.adminResendFail || "No se pudo enviar")))
+        Backend.call("resendRegistration", { code: h.code, channel: ch })
+          .then((r) => done(r && r.ok
+            ? `${ch === "whatsapp" ? "WhatsApp" : t.adminResent} ${r.to || ""}`
+            : ((t.adminResendFail || "No se pudo enviar") + (r && r.error ? " · " + r.error : ""))))
           .catch(() => done(t.adminResendFail || "No se pudo enviar"));
-      } else { done(t.adminResendFail || "Conecta el backend para enviar correos"); }
+      } else { done(t.adminResendFail || "Conecta el backend para enviar"); }
     } catch (e) { done(t.adminResendFail || "No se pudo enviar"); }
   };
 
@@ -664,10 +673,10 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang }) {
         ) : (
           <div style={{ border: `1px solid ${C.grisCalido}`, borderRadius: 16, overflow: "hidden", background: C.white }}>
             {rows.map(({ h, rec, bucket }, idx) => (
-              <AdminRow key={(h.id || h.code) + "-" + idx} t={t} h={h} rec={rec} bucket={bucket} first={idx === 0}
+              <AdminRow key={(h.id || h.code) + "-" + idx} t={t} h={h} rec={rec} bucket={bucket} first={idx === 0} avail={availFor(h)}
                 onView={() => setSummary({ h, rec, autoPrint: false })}
                 onDownload={() => setSummary({ h, rec, autoPrint: true })}
-                onResend={() => resend(h)} />
+                onResend={(ch) => resend(h, ch)} />
             ))}
           </div>
         )}
@@ -694,8 +703,8 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang }) {
       </div>
 
       {summary && (
-        <ReservationSummary t={t} h={summary.h} rec={summary.rec} autoPrint={summary.autoPrint}
-          onClose={() => setSummary(null)} onResend={() => resend(summary.h)} />
+        <ReservationSummary t={t} h={summary.h} rec={summary.rec} autoPrint={summary.autoPrint} avail={availFor(summary.h)}
+          onClose={() => setSummary(null)} onResend={(ch) => resend(summary.h, ch)} />
       )}
       {hospOpen && (
         <HospitablePanel t={t} onClose={() => setHospOpen(false)}
@@ -713,8 +722,10 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang }) {
 }
 
 /* compact, image-free row */
-function AdminRow({ t, h, rec, bucket, first, onView, onDownload, onResend }) {
+function AdminRow({ t, h, rec, bucket, first, avail, onView, onDownload, onResend }) {
   const done = !!rec || h.statusForm === "completo";
+  const es = t.code === "es";
+  const av = avail || { email: false, whatsapp: false };
   const bucketLabel = { yesterday: t.adminYesterday, today: t.adminToday, tomorrow: t.adminTomorrow, dayAfter: t.adminDayAfter }[bucket];
   const guestName = (rec?.guests?.[0]?.name) || h.guestName;
   const actionBtn = (icon, label, onClick, dark) => (
@@ -723,6 +734,16 @@ function AdminRow({ t, h, rec, bucket, first, onView, onDownload, onResend }) {
         borderRadius: 9, padding: "7px 11px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6,
         fontFamily: C.sans, fontSize: 10, letterSpacing: "0.05em", fontWeight: 500, whiteSpace: "nowrap" }}>
       <Icon name={icon} size={13} color={dark ? C.alabaster : C.negro} /> {label}
+    </button>
+  );
+  // reenvío por canal — inactivo si la propiedad no tiene ese contacto
+  const resendBtn = (icon, on, channel, title) => (
+    <button onClick={on ? () => onResend(channel) : undefined} className="sp-btn" disabled={!on}
+      title={on ? title : (es ? "Sin " + (channel === "whatsapp" ? "WhatsApp" : "correo") + " en esta propiedad" : "No " + channel + " for this property")}
+      style={{ background: C.white, color: on ? C.negro : C.warmGrey || C.grisCalido, border: `1px solid ${C.grisCalido}`,
+        borderRadius: 9, width: 34, height: 32, cursor: on ? "pointer" : "not-allowed", opacity: on ? 1 : 0.4,
+        display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+      <Icon name={icon} size={14} color={on ? C.negro : C.tierra} />
     </button>
   );
   return (
@@ -751,10 +772,12 @@ function AdminRow({ t, h, rec, bucket, first, onView, onDownload, onResend }) {
         </span>
       </div>
       {/* actions */}
-      <div style={{ display: "flex", gap: 7, flex: "1 1 auto", justifyContent: "flex-end", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 7, flex: "1 1 auto", justifyContent: "flex-end", flexWrap: "wrap", alignItems: "center" }}>
         {actionBtn("review", t.adminView, onView, true)}
         {actionBtn("download", t.adminDownload, onDownload, false)}
-        {actionBtn("mail", t.adminResend, onResend, false)}
+        <span style={{ fontFamily: C.sans, fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: C.tierra, marginLeft: 4 }}>{es ? "Reenviar" : "Resend"}</span>
+        {resendBtn("mail", av.email, "email", es ? "Reenviar por correo" : "Resend by email")}
+        {resendBtn("whatsapp", av.whatsapp, "whatsapp", es ? "Reenviar por WhatsApp (incluye al administrador)" : "Resend by WhatsApp")}
       </div>
     </div>
   );
@@ -1374,6 +1397,14 @@ function AdminAccessScreen({ t, onToast }) {
   const [contacts, setContacts] = useStateAd(null);
   const [contactsBusy, setContactsBusy] = useStateAd(false);
   const [copied, setCopied] = useStateAd(false);
+  const [sendLog, setSendLog] = useStateAd(null);
+  const [logBusy, setLogBusy] = useStateAd(false);
+  const loadLog = () => {
+    if (!Backend.isConnected() || !Backend.listSendLog) return;
+    setLogBusy(true);
+    Backend.listSendLog(80).then((l) => { setLogBusy(false); if (l) setSendLog(l); }).catch(() => setLogBusy(false));
+  };
+  useEffectAd(() => { loadLog(); }, []);
   const loadContacts = () => {
     if (!Backend.isConnected()) return;
     setContactsBusy(true);
@@ -1486,6 +1517,48 @@ function AdminAccessScreen({ t, onToast }) {
             <Icon name="review" size={14} color={C.alabaster} /> {waBusy ? (es ? "Enviando…" : "Sending…") : (es ? "Enviar WhatsApp de prueba" : "Send test WhatsApp")}
           </button>
         </div>
+      </div>
+
+      {/* REGISTRO DE ENVÍOS — diagnóstico de correos y WhatsApp */}
+      <div style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 16, padding: "18px 18px", marginTop: 18 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 4 }}>
+          <div style={{ fontFamily: C.serif, fontSize: 19, color: C.negro }}>{es ? "Registro de envíos" : "Send log"}</div>
+          <button onClick={loadLog} disabled={logBusy} className="sp-btn" style={{ background: "transparent", color: C.negro, border: `1px solid ${C.grisCalido}`, borderRadius: 9, padding: "8px 14px",
+            fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.04em", cursor: logBusy ? "default" : "pointer", opacity: logBusy ? 0.6 : 1, fontWeight: 500, display: "inline-flex", alignItems: "center", gap: 7 }}>
+            <Icon name="review" size={13} color={C.negro} /> {logBusy ? (es ? "Cargando…" : "Loading…") : (es ? "Actualizar" : "Refresh")}
+          </button>
+        </div>
+        <p style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra, margin: "0 0 14px", letterSpacing: "0.02em", lineHeight: 1.55, maxWidth: 520 }}>
+          {es ? "Cada correo y WhatsApp enviado (automático o manual). Si algo falla, aquí verás el motivo." : "Every email and WhatsApp sent (automatic or manual). Failures show the reason here."}
+        </p>
+        {sendLog === null ? (
+          <div style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra, padding: "10px 0", letterSpacing: "0.02em" }}>{es ? "Conecta el backend para ver el registro." : "Connect the backend to view the log."}</div>
+        ) : sendLog.length === 0 ? (
+          <div style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra, padding: "10px 0", letterSpacing: "0.02em" }}>{es ? "Aún no hay envíos registrados." : "No sends logged yet."}</div>
+        ) : (
+          <div style={{ border: `1px solid ${C.beige}`, borderRadius: 12, overflow: "hidden", maxHeight: 420, overflowY: "auto" }}>
+            {sendLog.map((r, i) => {
+              const ok = r.status === "OK";
+              const chLabel = { "email": "Correo", "whatsapp": "WhatsApp", "email-huesped": "Correo huésped", "prueba-email": "Prueba correo", "prueba-whatsapp": "Prueba WhatsApp", "pdf": "PDF" }[r.channel] || r.channel;
+              let when = r.at; try { when = new Date(r.at).toLocaleString(es ? "es-GT" : "en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }); } catch (e) {}
+              return (
+                <div key={i} style={{ borderTop: i === 0 ? "none" : `1px solid ${C.beige}`, padding: "11px 14px", display: "flex", gap: 12, alignItems: "flex-start" }}>
+                  <span style={{ flexShrink: 0, marginTop: 3, width: 8, height: 8, borderRadius: "50%", background: ok ? "#1F8A5B" : C.peach }} />
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+                      <span style={{ fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 700, color: ok ? "#177A4F" : C.peach }}>{chLabel}</span>
+                      <span style={{ fontFamily: C.sans, fontSize: 12, color: C.negro, letterSpacing: "0.01em" }}>{r.property || r.code || "—"}</span>
+                      <span style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, letterSpacing: "0.02em" }}>{r.to || ""}</span>
+                    </div>
+                    {!ok && r.detail && <div style={{ fontFamily: C.sans, fontSize: 10.5, color: C.peach, letterSpacing: "0.01em", lineHeight: 1.5, marginTop: 3, wordBreak: "break-word" }}>{r.detail}</div>}
+                    {ok && r.detail && <div style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, letterSpacing: "0.01em", marginTop: 2 }}>{r.detail}</div>}
+                  </div>
+                  <span style={{ flexShrink: 0, fontFamily: C.sans, fontSize: 10, color: C.tierra, letterSpacing: "0.02em", whiteSpace: "nowrap" }}>{when}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 16, padding: "18px 18px", marginTop: 18 }}>

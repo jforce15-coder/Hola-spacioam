@@ -884,6 +884,14 @@ const Backend = {
     if (!this.isConnected()) return null;
     try { const j = await this.call("listPropertyInfo"); return j.info || {}; } catch (e) { return null; }
   },
+  async listSendLog(limit) {
+    if (!this.isConnected()) return null;
+    try { const j = await this.call("listSendLog", { limit: limit || 80 }); return j.log || []; } catch (e) { return null; }
+  },
+  async contactsAvailability() {
+    if (!this.isConnected()) return null;
+    try { const j = await this.call("contactsAvailability"); return j.availability || {}; } catch (e) { return null; }
+  },
   async listAdmins() {
     if (!this.isConnected()) return null;
     try { const json = await this.call("listAdmins"); return json.admins || []; } catch (e) { return null; }

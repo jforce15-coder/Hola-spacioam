@@ -480,7 +480,12 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang }) {
   };
   useEffectAd(() => { loadRoster(); }, []);
   const [avail, setAvail] = useStateAd({});
-  useEffectAd(() => { if (Backend.isConnected && Backend.isConnected() && Backend.contactsAvailability) Backend.contactsAvailability().then((a) => { if (a) setAvail(a); }); }, []);
+  useEffectAd(() => {
+    if (!roster || !roster.length) return;
+    if (!(Backend.isConnected && Backend.isConnected() && Backend.contactsAvailability)) return;
+    const names = [...new Set(roster.map((r) => r.propertyName).filter(Boolean))];
+    Backend.contactsAvailability(names).then((a) => { if (a) setAvail(a); });
+  }, [roster]);
   const availFor = (h) => avail[h.propertyName] || { email: false, whatsapp: false };
 
   const store = loadStore();
@@ -775,9 +780,11 @@ function AdminRow({ t, h, rec, bucket, first, avail, onView, onDownload, onResen
       <div style={{ display: "flex", gap: 7, flex: "1 1 auto", justifyContent: "flex-end", flexWrap: "wrap", alignItems: "center" }}>
         {actionBtn("review", t.adminView, onView, true)}
         {actionBtn("download", t.adminDownload, onDownload, false)}
-        <span style={{ fontFamily: C.sans, fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: C.tierra, marginLeft: 4 }}>{es ? "Reenviar" : "Resend"}</span>
-        {resendBtn("mail", av.email, "email", es ? "Reenviar por correo" : "Resend by email")}
-        {resendBtn("whatsapp", av.whatsapp, "whatsapp", es ? "Reenviar por WhatsApp (incluye al administrador)" : "Resend by WhatsApp")}
+        <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "nowrap" }}>
+          <span style={{ fontFamily: C.sans, fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: C.tierra }}>{es ? "Reenviar" : "Resend"}</span>
+          {resendBtn("mail", av.email, "email", es ? "Reenviar por correo" : "Resend by email")}
+          {resendBtn("whatsapp", av.whatsapp, "whatsapp", es ? "Reenviar por WhatsApp (incluye al administrador)" : "Resend by WhatsApp")}
+        </div>
       </div>
     </div>
   );

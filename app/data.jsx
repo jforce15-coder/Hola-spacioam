@@ -888,9 +888,9 @@ const Backend = {
     if (!this.isConnected()) return null;
     try { const j = await this.call("listSendLog", { limit: limit || 80 }); return j.log || []; } catch (e) { return null; }
   },
-  async contactsAvailability() {
+  async contactsAvailability(names) {
     if (!this.isConnected()) return null;
-    try { const j = await this.call("contactsAvailability"); return j.availability || {}; } catch (e) { return null; }
+    try { const j = await this.call("contactsAvailability", { names: names || [] }); return j.availability || {}; } catch (e) { return null; }
   },
   async listAdmins() {
     if (!this.isConnected()) return null;

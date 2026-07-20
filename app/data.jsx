@@ -884,13 +884,19 @@ const Backend = {
     if (!this.isConnected()) return null;
     try { const j = await this.call("listPropertyInfo"); return j.info || {}; } catch (e) { return null; }
   },
-  async listSendLog(limit) {
+  async listSendLog(arg) {
     if (!this.isConnected()) return null;
-    try { const j = await this.call("listSendLog", { limit: limit || 80 }); return j.log || []; } catch (e) { return null; }
+    const body = typeof arg === "object" && arg !== null ? arg : { limit: arg || 80 };
+    try { const j = await this.call("listSendLog", body); return j.log || []; } catch (e) { return null; }
   },
   async contactsAvailability(names) {
     if (!this.isConnected()) return null;
-    try { const j = await this.call("contactsAvailability", { names: names || [] }); return j.availability || {}; } catch (e) { return null; }
+    try {
+      const j = await this.call("contactsAvailability", { names: names || [] });
+      const a = j.availability || {};
+      try { localStorage.setItem("spacioam_avail", JSON.stringify(a)); } catch (e) {}
+      return a;
+    } catch (e) { return null; }
   },
   async listAdmins() {
     if (!this.isConnected()) return null;

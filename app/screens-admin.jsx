@@ -284,6 +284,13 @@ function ReservationSummary({ t, h, rec: localRec, onClose, onResend, autoPrint,
     return () => clearTimeout(id);
   }, [autoPrint, loadingRec]);
 
+  // registro de envíos de ESTA reserva (solo admin) — para ver si hubo problema
+  const [logRows, setLogRows] = useStateAd(null);
+  useEffectAd(() => {
+    if (!(Backend.isConnected && Backend.isConnected() && Backend.listSendLog)) return;
+    Backend.listSendLog({ code: h.code, limit: 20 }).then((l) => { if (l) setLogRows(l); });
+  }, []);
+
   return (
     <div className="sum-overlay" style={{ position: "fixed", inset: 0, zIndex: 300, background: "rgba(62,63,63,.42)", backdropFilter: "blur(4px)",
       display: "flex", justifyContent: "center", alignItems: "flex-start", overflowY: "auto", padding: "clamp(12px,4vh,40px) 0" }}
@@ -301,6 +308,30 @@ function ReservationSummary({ t, h, rec: localRec, onClose, onResend, autoPrint,
           <button onClick={onClose} className="sp-btn" style={{ width: 40, height: 40, borderRadius: 12, border: `1px solid ${C.grisCalido}`,
             background: C.white, cursor: "pointer", display: "grid", placeItems: "center" }}><Icon name="x" size={18} color={C.negro} /></button>
         </div>
+
+        {/* estado de envíos de esta reserva (solo admin, no se imprime) */}
+        {logRows && logRows.length > 0 && (
+          <div className="sum-noprint" style={{ border: `1px solid ${C.grisCalido}`, borderRadius: 14, padding: "12px 15px", marginBottom: 20, background: C.alabaster }}>
+            <div style={{ fontFamily: C.sans, fontSize: 9, letterSpacing: "0.16em", textTransform: "uppercase", color: C.tierra, fontWeight: 700, marginBottom: 9 }}>{es ? "Estado de envíos" : "Send status"}</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {logRows.map((r, i) => {
+                const ok = r.status === "OK";
+                const chLabel = { "email": es ? "Correo encargado" : "Manager email", "whatsapp": "WhatsApp", "email-huesped": es ? "Correo huésped" : "Guest email", "pdf": "PDF", "guardado": es ? "Guardado" : "Save" }[r.channel] || r.channel;
+                let when = ""; try { when = new Date(r.at).toLocaleString(es ? "es-GT" : "en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }); } catch (e) {}
+                return (
+                  <div key={i} style={{ display: "flex", gap: 9, alignItems: "flex-start" }}>
+                    <span style={{ flexShrink: 0, marginTop: 5, width: 7, height: 7, borderRadius: "50%", background: ok ? "#1F8A5B" : C.peach }} />
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <span style={{ fontFamily: C.sans, fontSize: 11.5, color: C.negro, letterSpacing: "0.01em" }}><b>{chLabel}</b>{r.to ? ` · ${r.to}` : ""}</span>
+                      {!ok && r.detail && <div style={{ fontFamily: C.sans, fontSize: 10.5, color: C.peach, lineHeight: 1.5, marginTop: 2, wordBreak: "break-word" }}>{r.detail}</div>}
+                    </div>
+                    <span style={{ flexShrink: 0, fontFamily: C.sans, fontSize: 9.5, color: C.tierra, whiteSpace: "nowrap" }}>{when}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* letterhead */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, paddingBottom: 20, borderBottom: `1.5px solid ${C.negro}` }}>
@@ -479,7 +510,7 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang }) {
     Backend.listCached().then((list) => { setRoster(list); setMeta(Backend._lastMeta); });
   };
   useEffectAd(() => { loadRoster(); }, []);
-  const [avail, setAvail] = useStateAd({});
+  const [avail, setAvail] = useStateAd(() => { try { return JSON.parse(localStorage.getItem("spacioam_avail")) || {}; } catch (e) { return {}; } });
   useEffectAd(() => {
     if (!roster || !roster.length) return;
     if (!(Backend.isConnected && Backend.isConnected() && Backend.contactsAvailability)) return;

@@ -58,13 +58,21 @@ function CodeScreen({ t, onResolved, onAdmin, onSwitchLang }) {
   const [showLogin, setShowLogin] = useStateO(false);
   const submit = () => {
     setErr(""); setLoading(true);
+    // acceso permitido hasta 10 días después del checkout; luego, vencida.
+    const isExpired = (res) => {
+      const co = res && res.checkout ? String(res.checkout).slice(0, 10) : "";
+      if (!co) return false;
+      const limit = new Date(co + "T12:00:00").getTime() + 10 * 86400000;
+      return Date.now() > limit;
+    };
     // demo/local codes resolve instantly; otherwise ask the backend (which
     // re-syncs from Hospitable on a miss before giving up).
     const local = findReservation(code);
-    if (local) { setTimeout(() => { setLoading(false); onResolved(local); }, 500); return; }
+    if (local) { setTimeout(() => { setLoading(false); if (isExpired(local)) { setErr(t.expired); return; } onResolved(local); }, 500); return; }
     Backend.findReservation(code).then((res) => {
       setLoading(false);
       if (!res) { setErr(t.notFound); return; }
+      if (isExpired(res)) { setErr(t.expired); return; }
       onResolved(res);
     }).catch(() => { setLoading(false); setErr(t.notFound); });
   };
@@ -84,7 +92,7 @@ function CodeScreen({ t, onResolved, onAdmin, onSwitchLang }) {
       <div className="reveal" style={{ animationDelay: ".08s", background: C.white, borderRadius: 22, padding: 26,
         border: `1px solid ${C.grisCalido}`, boxShadow: "0 4px 16px rgba(62,63,63,.05)" }}>
         <input value={code} placeholder={t.reservationPh}
-          onChange={(e) => { setCode(e.target.value.toUpperCase()); setErr(""); }}
+          onChange={(e) => { setCode(e.target.value.replace(/\s+/g, "").toUpperCase()); setErr(""); }}
           onKeyDown={(e) => e.key === "Enter" && submit()}
           style={{ width: "100%", boxSizing: "border-box", textAlign: "center", padding: "18px 12px",
             fontFamily: C.sans, fontSize: 24, letterSpacing: "0.18em", color: C.negro, fontWeight: 500,

@@ -106,6 +106,7 @@ const T = {
     codeHelp: "Tu código de reserva lo recibes por correo o mensaje al confirmar tu reserva en la plataforma (Airbnb, Booking, etc.). Suele tener entre 8 y 10 letras y números. Si no lo encuentras o no funciona, escríbenos y con gusto te ayudamos.",
     validate: "Validar reserva", validating: "Validando…",
     notFound: "No encontramos esa reserva. Revisa el código o escríbenos.",
+    expired: "Esta reserva ya ha vencido. El acceso a tu espacio está disponible hasta 10 días después del checkout. Si necesitas algo, escríbenos.",
     alreadyDone: "Bienvenido de vuelta — tu registro ya está completo.",
     pickResTitle: "Tus reservas", pickResSub: "Selecciona la estancia que quieres ver.",
     nights: "noches", guests: "huéspedes", people: "personas", upTo: "hasta",
@@ -263,6 +264,10 @@ const T = {
     segDeadline: "Vence", segNone: "Sin pendientes", segMarkDone: "Marcar hecho", segUpload: "Cargar factura", segEmpty: "Nada por aquí por ahora.",
     segReqEarly: "Early check-in", segReqLate: "Late check-out", segReqDay: "Noche adicional", segReqLuggage: "Permiso de maletas",
     segSuggestions: "Sugerencias de huéspedes",
+    segApprove: "Aprobar", segReject: "Rechazar", segDelete: "Borrar", segApproved: "Aprobado", segRejected: "Rechazado",
+    segResolveSent: "Huésped notificado por correo", segResolveNoEmail: "Sin correo del huésped", segDeleteConfirm: "¿Borrar esta solicitud? No se notifica al huésped.", segResolving: "Enviando…",
+    storTitle: "Documentos almacenados", storStored: "Documentos guardados", storOldest: "Documento más antiguo",
+    storAge: "Antigüedad", storDays: "días", storRetention: "Retención", storMonths: "meses", storNextPurge: "Próxima purga automática", storNone: "Sin documentos almacenados por ahora.",
     segInvoiceReady: "Marcar lista y avisar", segInvoiceSending: "Enviando…", segInvoiceSent: "Huésped avisado",
     stTitle: "Contactos", stSub: "Asigna a cada propiedad los correos y teléfonos que recibirán el formulario completado.",
     stEmail1: "Correo 1", stEmail2: "Correo 2", stPhone1: "Teléfono 1", stPhone2: "Teléfono 2",
@@ -371,6 +376,7 @@ const T = {
     codeHelp: "You receive your reservation code by email or message when you confirm your booking on the platform (Airbnb, Booking, etc.). It's usually 8–10 letters and numbers. If you can't find it or it doesn't work, message us and we'll gladly help.",
     validate: "Validate reservation", validating: "Validating…",
     notFound: "We couldn't find that reservation. Check the code or message us.",
+    expired: "This reservation has expired. Access to your space is available up to 10 days after checkout. If you need anything, message us.",
     alreadyDone: "Welcome back — your check-in is already complete.",
     pickResTitle: "Your reservations", pickResSub: "Select the stay you'd like to view.",
     nights: "nights", guests: "guests", people: "people", upTo: "up to",
@@ -520,6 +526,10 @@ const T = {
     segDeadline: "Due", segNone: "Nothing pending", segMarkDone: "Mark done", segUpload: "Upload invoice", segEmpty: "Nothing here for now.",
     segReqEarly: "Early check-in", segReqLate: "Late check-out", segReqDay: "Extra night", segReqLuggage: "Luggage permit",
     segSuggestions: "Guest suggestions",
+    segApprove: "Approve", segReject: "Reject", segDelete: "Delete", segApproved: "Approved", segRejected: "Rejected",
+    segResolveSent: "Guest notified by email", segResolveNoEmail: "No guest email", segDeleteConfirm: "Delete this request? The guest is not notified.", segResolving: "Sending…",
+    storTitle: "Stored documents", storStored: "Documents stored", storOldest: "Oldest document",
+    storAge: "Age", storDays: "days", storRetention: "Retention", storMonths: "months", storNextPurge: "Next automatic purge", storNone: "No documents stored yet.",
     segInvoiceReady: "Mark ready & notify", segInvoiceSending: "Sending…", segInvoiceSent: "Guest notified",
     stTitle: "Contacts", stSub: "Assign to each property the emails and phones that will receive the completed form.",
     stEmail1: "Email 1", stEmail2: "Email 2", stPhone1: "Phone 1", stPhone2: "Phone 2",
@@ -879,6 +889,18 @@ const Backend = {
   async listContacts() {
     if (!this.isConnected()) return null;
     try { return await this.call("listContacts"); } catch (e) { return null; }
+  },
+  async storageStats() {
+    if (!this.isConnected()) return null;
+    try { return await this.call("storageStats"); } catch (e) { return null; }
+  },
+  async hostRequestResolve(payload) {
+    if (!this.isConnected()) return { ok: false, offline: true };
+    return this.call("hostRequestResolve", payload);
+  },
+  async listRequests() {
+    if (!this.isConnected()) return null;
+    try { const j = await this.call("listRequests"); return j.requests || []; } catch (e) { return null; }
   },
   async listPropertyInfo() {
     if (!this.isConnected()) return null;

@@ -544,6 +544,7 @@ const Icon = ({ name, size = 22, color = C.negro, strokeWidth = 1.4 }) => {
     user: <><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 4-6 8-6s8 2 8 6" /></>,
     key: <><circle cx="8" cy="14" r="4" /><path d="M11 11l9-9M17 4l3 3M14 7l3 3" /></>,
     plus: <path d="M12 5v14M5 12h14" />,
+    trash: <><path d="M4 7h16M10 7V4h4v3M6 7l1 13h10l1-13M10 11v6M14 11v6" /></>,
     x: <path d="M6 6l12 12M18 6L6 18" />,
   };
   return <svg viewBox="0 0 24 24" style={s} aria-hidden="true">{p[name]}</svg>;

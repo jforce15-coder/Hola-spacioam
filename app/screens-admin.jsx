@@ -216,7 +216,7 @@ function printSummary() {
     "*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;box-sizing:border-box}" +
     "html,body{margin:0;padding:0;background:#fff;color:#3E3F3F;font-family:Montserrat,-apple-system,system-ui,Segoe UI,sans-serif}" +
     "body{padding:24px}" +
-    "img{max-width:100%!important;height:auto!important;display:block}" +
+    "img{max-width:100%!important;max-height:190mm!important;height:auto!important;display:block}" +
     ".sum-section{break-inside:auto;page-break-inside:auto}" +
     ".sum-guest-list{display:block!important;break-inside:auto;page-break-inside:auto}" +
     ".sum-guest-list>*{margin-bottom:18px}" +
@@ -286,6 +286,7 @@ function ReservationSummary({ t, h, rec: localRec, onClose, onResend, autoPrint,
 
   // registro de envíos de ESTA reserva (solo admin) — para ver si hubo problema
   const [logRows, setLogRows] = useStateAd(null);
+  const [logOpen, setLogOpen] = useStateAd(false);
   useEffectAd(() => {
     if (!(Backend.isConnected && Backend.isConnected() && Backend.listSendLog)) return;
     Backend.listSendLog({ code: h.code, limit: 20 }).then((l) => { if (l) setLogRows(l); });
@@ -309,11 +310,27 @@ function ReservationSummary({ t, h, rec: localRec, onClose, onResend, autoPrint,
             background: C.white, cursor: "pointer", display: "grid", placeItems: "center" }}><Icon name="x" size={18} color={C.negro} /></button>
         </div>
 
-        {/* estado de envíos de esta reserva (solo admin, no se imprime) */}
-        {logRows && logRows.length > 0 && (
-          <div className="sum-noprint" style={{ border: `1px solid ${C.grisCalido}`, borderRadius: 14, padding: "12px 15px", marginBottom: 20, background: C.alabaster }}>
-            <div style={{ fontFamily: C.sans, fontSize: 9, letterSpacing: "0.16em", textTransform: "uppercase", color: C.tierra, fontWeight: 700, marginBottom: 9 }}>{es ? "Estado de envíos" : "Send status"}</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {/* estado de envíos de esta reserva (solo admin, no se imprime) — colapsable */}
+        {logRows && logRows.length > 0 && (() => {
+          const errCount = logRows.filter((r) => r.status !== "OK").length;
+          const okCount = logRows.length - errCount;
+          return (
+          <div className="sum-noprint" style={{ border: `1px solid ${C.grisCalido}`, borderRadius: 14, marginBottom: 20, background: C.alabaster, overflow: "hidden" }}>
+            <button onClick={() => setLogOpen((v) => !v)} className="sp-btn" style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+              background: "transparent", border: "none", cursor: "pointer", padding: "12px 15px", textAlign: "left" }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                <span style={{ fontFamily: C.sans, fontSize: 9, letterSpacing: "0.16em", textTransform: "uppercase", color: C.tierra, fontWeight: 700 }}>{es ? "Estado de envíos" : "Send status"}</span>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontFamily: C.sans, fontSize: 10.5, color: "#177A4F", letterSpacing: "0.02em" }}>
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#1F8A5B" }} />{okCount}</span>
+                  {errCount > 0 && <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontFamily: C.sans, fontSize: 10.5, color: C.peach, letterSpacing: "0.02em" }}>
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.peach }} />{errCount}</span>}
+                </span>
+              </span>
+              <span style={{ flexShrink: 0, transform: logOpen ? "rotate(180deg)" : "none", transition: "transform .18s " + C.ease }}><Icon name="chevron" size={16} color={C.tierra} /></span>
+            </button>
+            {logOpen && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "2px 15px 14px" }}>
               {logRows.map((r, i) => {
                 const ok = r.status === "OK";
                 const chLabel = { "email": es ? "Correo encargado" : "Manager email", "whatsapp": "WhatsApp", "email-huesped": es ? "Correo huésped" : "Guest email", "pdf": "PDF", "guardado": es ? "Guardado" : "Save" }[r.channel] || r.channel;
@@ -323,15 +340,17 @@ function ReservationSummary({ t, h, rec: localRec, onClose, onResend, autoPrint,
                     <span style={{ flexShrink: 0, marginTop: 5, width: 7, height: 7, borderRadius: "50%", background: ok ? "#1F8A5B" : C.peach }} />
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <span style={{ fontFamily: C.sans, fontSize: 11.5, color: C.negro, letterSpacing: "0.01em" }}><b>{chLabel}</b>{r.to ? ` · ${r.to}` : ""}</span>
-                      {!ok && r.detail && <div style={{ fontFamily: C.sans, fontSize: 10.5, color: C.peach, lineHeight: 1.5, marginTop: 2, wordBreak: "break-word" }}>{r.detail}</div>}
+                      {!ok && r.detail && <div style={{ fontFamily: C.sans, fontSize: 10.5, color: C.peach, lineHeight: 1.5, marginTop: 2, wordBreak: "break-word", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }} title={r.detail}>{r.detail}</div>}
                     </div>
                     <span style={{ flexShrink: 0, fontFamily: C.sans, fontSize: 9.5, color: C.tierra, whiteSpace: "nowrap" }}>{when}</span>
                   </div>
                 );
               })}
             </div>
+            )}
           </div>
-        )}
+          );
+        })()}
 
         {/* letterhead */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, paddingBottom: 20, borderBottom: `1.5px solid ${C.negro}` }}>
@@ -1253,20 +1272,64 @@ function SeguimientoScreen({ t, roster }) {
   const store = typeof loadStore === "function" ? loadStore() : {};
   const es = t.code === "es";
   const [, force] = useStateAd(0);
-  // marca de gestión por solicitud (persistente): done + approved
+  const [busyKey, setBusyKey] = useStateAd("");
+  const connected = !!(Backend.isConnected && Backend.isConnected());
+  // marca local (fallback sin conexión): decision por solicitud
   const reqKey = (r) => `${r.type}|${r.code}|${r.at || ""}`;
-  const marks = store.reqMarks || {};
+  const [marksV, setMarksV] = useStateAd(0);
+  const marks = (loadStore().reqMarks) || {};
   const setMark = (r, patch) => {
     const s = loadStore();
     const m = { ...(s.reqMarks || {}) };
     m[reqKey(r)] = { ...(m[reqKey(r)] || {}), ...patch };
     saveStore({ ...s, reqMarks: m });
-    force((n) => n + 1);
+    setMarksV((n) => n + 1);
   };
+  // solicitudes: del backend (cualquier dispositivo) o de localStorage si no hay conexión
+  const [reqs, setReqs] = useStateAd(null);
+  const reload = () => {
+    if (connected && Backend.listRequests) {
+      Backend.listRequests().then((list) => { if (list) setReqs(list); }).catch(() => {});
+    } else {
+      setReqs((loadStore().hostRequests || []).map((r) => ({ ...r, decision: null })));
+    }
+  };
+  useEffectAd(() => { reload(); }, [connected]);
+  // decisión efectiva: la del backend, o la marca local como respaldo
+  const decisionOf = (r) => r.decision || (marks[reqKey(r)] && marks[reqKey(r)].decision) || null;
+  // aprobar / rechazar → registra y avisa al huésped por correo
+  const resolveReq = (r, decision) => {
+    setBusyKey(reqKey(r) + "|" + decision);
+    const payload = { code: r.code, kind: r.type, apartment: r.apartment, decision };
+    if (connected && Backend.hostRequestResolve) {
+      Backend.hostRequestResolve(payload).catch(() => {}).then(() => { setBusyKey(""); reload(); });
+    } else {
+      setMark(r, { decision }); setBusyKey("");
+    }
+  };
+  // borrar → quita la solicitud de la lista (sin avisar al huésped)
+  const deleteReq = (r) => {
+    if (typeof window !== "undefined" && window.confirm && !window.confirm(t.segDeleteConfirm)) return;
+    if (connected && Backend.hostRequestResolve) {
+      Backend.hostRequestResolve({ code: r.code, kind: r.type, apartment: r.apartment, decision: "deleted" }).catch(() => {}).then(() => reload());
+    } else {
+      const s = loadStore();
+      const list = (s.hostRequests || []).filter((x) => reqKey(x) !== reqKey(r));
+      const m = { ...(s.reqMarks || {}) }; delete m[reqKey(r)];
+      saveStore({ ...s, hostRequests: list, reqMarks: m });
+    }
+    setReqs((prev) => (prev || []).filter((x) => reqKey(x) !== reqKey(r)));
+  };
+  // documento más viejo + retención (control de almacenamiento)
+  const [stor, setStor] = useStateAd(null);
+  useEffectAd(() => {
+    if (!(Backend.isConnected && Backend.isConnected() && Backend.storageStats)) return;
+    Backend.storageStats().then((s) => { if (s && s.ok) setStor(s); }).catch(() => {});
+  }, []);
   // pending registrations checking-in today
   const pendingToday = (roster || []).filter((r) => checkinBucket(r.checkin) === "today" && r.statusForm !== "completo");
   const invoices = (store.invoices || []).filter((i) => i.status !== "done");
-  const hostReqs = store.hostRequests || [];
+  const hostReqs = reqs || [];
   const dayReqs = hostReqs.filter((r) => r.type === "late" || r.type === "day");
   const earlyReqs = hostReqs.filter((r) => r.type === "early" || r.type === "luggage");
   const suggestions = store.suggestions || [];
@@ -1284,16 +1347,43 @@ function SeguimientoScreen({ t, roster }) {
       </button>
     );
   };
-  const approveBtn = (r) => {
-    const ap = !!(marks[reqKey(r)] && marks[reqKey(r)].approved);
+  // aprobar · rechazar · borrar — con aviso al huésped al resolver
+  const trashBtn = (r) => (
+    <button onClick={() => deleteReq(r)} className="sp-btn" title={t.segDelete}
+      style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 34, height: 34, borderRadius: 10,
+        background: C.white, border: `1px solid ${C.grisCalido}`, color: C.tierra, cursor: "pointer" }}>
+      <Icon name="trash" size={15} color={C.tierra} />
+    </button>
+  );
+  const resolveBtns = (r) => {
+    const decision = decisionOf(r);
+    const busy = busyKey.indexOf(reqKey(r) + "|") === 0;
+    if (decision === "approved" || decision === "rejected") {
+      const ap = decision === "approved";
+      return (
+        <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 7, borderRadius: 999, padding: "7px 14px", fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.05em", fontWeight: 600,
+            background: ap ? "rgba(31,138,91,.1)" : "rgba(233,130,106,.12)", border: `1px solid ${ap ? "rgba(31,138,91,.4)" : "rgba(233,130,106,.45)"}`, color: ap ? "#177A4F" : C.peach }}>
+            <Icon name={ap ? "check" : "x"} size={13} color={ap ? "#1F8A5B" : C.peach} /> {ap ? t.segApproved : t.segRejected}
+          </span>
+          {trashBtn(r)}
+        </div>
+      );
+    }
     return (
-      <button onClick={() => { setMark(r, { approved: !ap });
-        try { Backend.call && Backend.call("hostRequestApprove", { code: r.code, kind: r.type, approved: !ap }).catch(() => {}); } catch (e) {} }}
-        className="sp-btn" style={{ display: "inline-flex", alignItems: "center", gap: 7,
-        background: ap ? "#1F8A5B" : C.negro, color: C.alabaster, border: "none", borderRadius: 999, padding: "7px 15px", cursor: "pointer",
-        fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.05em", fontWeight: 500 }}>
-        <Icon name="check" size={13} color={C.alabaster} /> {ap ? (es ? "Aprobado" : "Approved") : (es ? "Aprobar" : "Approve")}
-      </button>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <button onClick={() => resolveReq(r, "approved")} disabled={busy} className="sp-btn"
+          style={{ display: "inline-flex", alignItems: "center", gap: 7, background: C.negro, color: C.alabaster, border: "none", borderRadius: 999,
+            padding: "7px 15px", cursor: busy ? "wait" : "pointer", fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.05em", fontWeight: 500, opacity: busy ? 0.6 : 1 }}>
+          <Icon name="check" size={13} color={C.alabaster} /> {t.segApprove}
+        </button>
+        <button onClick={() => resolveReq(r, "rejected")} disabled={busy} className="sp-btn"
+          style={{ display: "inline-flex", alignItems: "center", gap: 7, background: C.white, color: C.peach, border: `1px solid rgba(233,130,106,.5)`, borderRadius: 999,
+            padding: "7px 15px", cursor: busy ? "wait" : "pointer", fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.05em", fontWeight: 500, opacity: busy ? 0.6 : 1 }}>
+          <Icon name="x" size={13} color={C.peach} /> {t.segReject}
+        </button>
+        {trashBtn(r)}
+      </div>
     );
   };
 
@@ -1308,8 +1398,36 @@ function SeguimientoScreen({ t, roster }) {
   const empty = () => <p style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra, margin: 0, letterSpacing: "0.02em" }}>{t.segEmpty}</p>;
   const reqLabel = { early: t.segReqEarly, late: t.segReqLate, day: t.segReqDay, luggage: t.segReqLuggage };
 
+  const fmtDate = (iso) => { try { return new Date(iso).toLocaleDateString(es ? "es-GT" : "en-US", { day: "numeric", month: "short", year: "numeric" }); } catch (e) { return "—"; } };
+  const storStat = (label, value, accent) => (
+    <div>
+      <div style={{ fontFamily: C.sans, fontSize: 8.5, letterSpacing: "0.16em", textTransform: "uppercase", color: C.tierra, fontWeight: 600, marginBottom: 6 }}>{label}</div>
+      <div style={{ fontFamily: C.sans, fontSize: 17, color: accent ? C.peach : C.negro, fontWeight: 500, letterSpacing: "0.01em" }}>{value}</div>
+    </div>
+  );
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 26 }}>
+      {stor && (
+        <section>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "0 0 12px" }}>
+            <Icon name="lock" size={17} color={C.peach} />
+            <span style={{ fontFamily: C.serif, fontSize: 20, color: C.negro }}>{t.storTitle}</span>
+          </div>
+          {stor.stored > 0 ? (
+            <div style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 14, padding: "18px 20px",
+              display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 18 }}>
+              {storStat(t.storOldest, stor.oldest ? fmtDate(stor.oldest) : "—")}
+              {storStat(t.storAge, stor.oldestAgeDays != null ? `${stor.oldestAgeDays} ${t.storDays}` : "—", true)}
+              {storStat(t.storStored, String(stor.stored))}
+              {storStat(t.storNextPurge, stor.nextPurge ? fmtDate(stor.nextPurge) : "—")}
+              {storStat(t.storRetention, `${stor.retentionMonths} ${t.storMonths}`)}
+            </div>
+          ) : (
+            <p style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra, margin: 0, letterSpacing: "0.02em" }}>{t.storNone}</p>
+          )}
+        </section>
+      )}
       <section>
         {sectionHead("checkin", t.segPending, pendingToday.length)}
         {pendingToday.length ? (
@@ -1361,7 +1479,7 @@ function SeguimientoScreen({ t, roster }) {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                 <div><div style={{ fontFamily: C.serif, fontSize: 16, color: C.negro }}>{r.apartment || r.code}</div>
                   <div style={{ fontFamily: C.sans, fontSize: 11, color: C.tierra, marginTop: 2 }}>{reqLabel[r.type] || r.type} · {r.code}</div></div>
-                {checkbox(r, es ? "Marcar gestionado" : "Mark handled")}
+                {resolveBtns(r)}
               </div>, i
             ))}
           </div>
@@ -1376,7 +1494,7 @@ function SeguimientoScreen({ t, roster }) {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                 <div><div style={{ fontFamily: C.serif, fontSize: 16, color: C.negro }}>{r.apartment || r.code}</div>
                   <div style={{ fontFamily: C.sans, fontSize: 11, color: C.tierra, marginTop: 2 }}>{reqLabel[r.type] || r.type} · {r.code}</div></div>
-                {r.type === "early" ? approveBtn(r) : checkbox(r, es ? "Marcar gestionado" : "Mark handled")}
+                {resolveBtns(r)}
               </div>, i
             ))}
           </div>

@@ -923,6 +923,70 @@ const PROP_INFO_KEY = "spacioam_property_info";
 function loadPropInfo() { try { return JSON.parse(localStorage.getItem(PROP_INFO_KEY)) || {}; } catch (e) { return {}; } }
 function savePropInfoAll(o) { try { localStorage.setItem(PROP_INFO_KEY, JSON.stringify(o)); } catch (e) {} }
 
+/* ============================================================
+   ESTÁNDAR LOCAL (sin IA / sin tokens)
+   ------------------------------------------------------------
+   Toma la información ya guardada de cada propiedad (llegada,
+   dirección, parqueo, nota) y la ordena en la estructura estándar
+   { arrivalIntro, arrivalSteps[], parking, wifiNote, tip }.
+   Solo reordena y limpia lo que el admin ya escribió — no inventa
+   datos y nunca incluye el código de ingreso (va aparte).
+   ============================================================ */
+function stdSplitSteps(text) {
+  if (!text) return [];
+  let t = String(text).replace(/\r/g, "");
+  t = t.replace(/[✦◾▪•●◦]/g, "\n").replace(/✔️|✔|✚|➤|→/g, "\n");
+  t = t.replace(/\s*paso\s*\d+\s*[:.\-–)]*/gi, "\n").replace(/\s*step\s*\d+\s*[:.\-–)]*/gi, "\n");
+  const parts = t.split(/\n+/).map((s) => s.trim()).filter(Boolean);
+  const skipLabel = /^(hora|horario|time|dirección|direccion|address|apartamento|apartment|número de apartamento|numero de apartamento|casa|piso|cómo encontrar|como encontrar|cómo entrar|como entrar|cómo ubicar|como ubicar|cómo llegar|como llegar|how to find|contacto|contact|internet|wi-?fi|estacionamiento|aparcamiento|parqueo|parking|basura|trash|agua|agua potable|drinkable water|códigos? de acceso|codigos? de acceso|access codes?|protocolo (de|para)( el)? ingreso|check-?in protocol|ingreso al edificio|llegada a tu apartamento|servicios extra)\s*[:：]?\s*$/i;
+  const codeRe = /(código de acceso|codigo de acceso|access code|recibir[aá]s un c[oó]digo|you will receive an access code|se habilita autom|automatically enabled|si llegas (antes|a antes)|if you arrive before)/i;
+  const dropRe = /^(wifi|wi-fi|red|network|contraseñ|contrasen|password|contacto|contact|si necesitas? (ayuda|asistencia)|si necesita ayuda|if you need (assistance|help)|el agua del ecofiltro|the water from|si necesitas? (tirar|deshacerte|dispose)|número whatsapp|numero whatsapp|clave wifi|internet)/i;
+  const steps = [];
+  parts.forEach((raw) => {
+    let l = raw.replace(/^\s*\d+\s*[).\-–]\s*/, "").trim();
+    l = l.replace(/^(protocolo[^:：]*|cómo[^:：]*|como[^:：]*|ingreso[^:：]*|llegada[^:：]*|primer paso[^:：]*)\s*[:：]\s*/i, "").trim();
+    if (!l) return;
+    if (skipLabel.test(l)) return;
+    if (codeRe.test(l)) return;
+    if (dropRe.test(l)) return;
+    if (/^(google\s*maps|mapas de google|waze)\s*[:：]?/i.test(l)) return;
+    if (/^https?:\/\//i.test(l)) return;
+    l = l.replace(/\s*https?:\/\/\S+/gi, "").trim();
+    if (l.length < 3) return;
+    steps.push(l);
+  });
+  return steps.slice(0, 6);
+}
+function localStandardize(raw) {
+  raw = raw || {};
+  const clean = (s) => String(s || "").replace(/\s+/g, " ").trim();
+  const dir = clean(raw.direccion), apt = clean(raw.apartamento), piso = clean(raw.piso);
+  const steps = stdSplitSteps(String(raw.llegada || ""));
+  let intro = "";
+  if (dir) {
+    intro = "Tu espacio está en " + dir;
+    if (apt && dir.toLowerCase().indexOf(apt.toLowerCase()) === -1) intro += ", apartamento " + apt;
+    if (piso && dir.toLowerCase().indexOf("piso") === -1) intro += ", piso " + piso;
+    intro += ".";
+  }
+  const has = raw.tieneParqueo;
+  let parking = clean(raw.notaParqueo);
+  const num = clean(raw.numeroParqueo);
+  if (!parking) {
+    if (has === "yes" || has === "si" || has === "sí") parking = "Cuentas con parqueo asignado" + (num ? " · No. " + num : "") + ".";
+    else if (has === "no") parking = clean(raw.parqueoExterno) || "Este alojamiento no cuenta con parqueo propio.";
+  } else if (num && parking.toLowerCase().indexOf(num.toLowerCase()) === -1) {
+    parking += (parking.endsWith(".") ? "" : ".") + " Parqueo No. " + num + ".";
+  }
+  if ((has === "no" || !parking) && clean(raw.parqueoExterno) && parking.toLowerCase().indexOf(clean(raw.parqueoExterno).toLowerCase()) === -1) {
+    parking = (parking ? parking + " " : "") + clean(raw.parqueoExterno);
+  }
+  const tip = clean(raw.notaAdicional);
+  if (!steps.length && !parking && !intro && !tip) return null;
+  const block = { arrivalIntro: intro, arrivalSteps: steps, parking: parking, wifiNote: "", tip: tip };
+  return { es: block, en: block };
+}
+
 function PropertyInfoScreen({ t, roster, onToast }) {
   const [store, setStore] = useStateAd(loadPropInfo());
   const [openKey, setOpenKey] = useStateAd(null);
@@ -1022,24 +1086,20 @@ function PropertyInfoScreen({ t, roster, onToast }) {
   const pendingProps = props.filter((n) => { const s = stdState(n); return s === "none" || s === "stale"; });
   const alignOne = async (name) => {
     const raw = effectiveRaw(name); const hash = hashStr(JSON.stringify(raw));
-    try {
-      const r = await (Backend.call && Backend.call("standardizeInstructions", { property: name, raw }));
-      if (r && r.ok && r.std) {
-        const patch = { std: r.std, stdMeta: { hash, at: Date.now(), model: r.model || "" } };
-        setStore((s) => ({ ...s, [name]: { ...(s[name] || {}), ...patch } }));
-        const cur = { ...loadPropInfo() }; cur[name] = { ...(cur[name] || {}), ...patch }; savePropInfoAll(cur);
-        try { Backend.call("savePropertyInfo", { property: name, info: cur[name] }).catch(() => {}); } catch (e) {}
-        return true;
-      }
-    } catch (e) {}
-    return false;
+    const std = localStandardize(raw);
+    if (!std) return false;
+    const patch = { std, stdMeta: { hash, at: Date.now(), by: "local" } };
+    setStore((s) => ({ ...s, [name]: { ...(s[name] || {}), ...patch } }));
+    const cur = { ...loadPropInfo() }; cur[name] = { ...(cur[name] || {}), ...patch }; savePropInfoAll(cur);
+    try { Backend.call && Backend.call("savePropertyInfo", { property: name, info: cur[name] }).catch(() => {}); } catch (e) {}
+    return true;
   };
   const alignSingle = async (name) => {
     if (aligning) return;
     setAligning(name); setAlignMsg("");
     const ok = await alignOne(name);
     setAligning("");
-    onToast(ok ? `${es ? "Estándar aplicado" : "Standard applied"} · ${name}` : (es ? "No se pudo alinear (revisa conexión / API)" : "Could not align"));
+    onToast(ok ? `${es ? "Estándar aplicado" : "Standard applied"} · ${name}` : (es ? "No hay información suficiente para alinear" : "Not enough info to align"));
   };
   const alignAll = async () => {
     if (aligning) return;
@@ -1052,6 +1112,127 @@ function PropertyInfoScreen({ t, roster, onToast }) {
     }
     setAligning(""); setAlignMsg("");
     onToast(`${es ? "Estándar aplicado a" : "Standard applied to"} ${done}${fail ? ` · ${fail} ${es ? "con error" : "failed"}` : ""}`);
+  };
+
+  // ---- RECONCILIACIÓN DE NOMBRES (renombres en Hospitable) ----
+  // Cuando una propiedad se renombra en Hospitable, su info queda guardada bajo el
+  // nombre viejo (huérfana). Reconciliamos por: (1) hospId durable, (2) nombre
+  // normalizado idéntico → automático; (3) parecido → confirmación manual.
+  const [recOpen, setRecOpen] = useStateAd(false);
+  const [stdOpen, setStdOpen] = useStateAd(false);
+  const [orphanTarget, setOrphanTarget] = useStateAd({}); // oldName -> chosen newName
+  const firstBatchRef = useRefAd(false);
+  const BATCH_FLAG = "spacioam_std_batch_done";
+  const normKey = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const META_ONLY = new Set(["instrApply", "std", "stdMeta", "hospId"]);
+  const recHasData = (rec) => !!rec && Object.keys(rec).some((k) => !META_ONLY.has(k) && rec[k] != null && !(typeof rec[k] === "string" && rec[k].trim() === "") && !(Array.isArray(rec[k]) && rec[k].length === 0));
+  const idOfName = (name) => (stations[name] || {}).propertyId || (get(name).hospId) || "";
+  const bigrams = (s) => { const g = {}; for (let i = 0; i < s.length - 1; i++) { const b = s.slice(i, i + 2); g[b] = (g[b] || 0) + 1; } return g; };
+  const simScore = (a, b) => { if (!a || !b) return 0; if (a === b) return 1; const ga = bigrams(a), gb = bigrams(b); let inter = 0, na = 0, nb = 0; for (const k in ga) na += ga[k]; for (const k in gb) nb += gb[k]; for (const k in ga) if (gb[k]) inter += Math.min(ga[k], gb[k]); return (2 * inter) / (na + nb || 1); };
+  const orphans = useMemoAd(() => { const cur = new Set(props); return Object.keys(store).filter((k) => k !== "__manual__" && !cur.has(k) && recHasData(store[k])); }, [store, props]);
+  const bestTargetFor = (oldName) => {
+    const oid = (store[oldName] || {}).hospId || "";
+    if (oid) { const byIdEmpty = props.find((p) => idOfName(p) === oid && !recHasData(store[p])); const byId = byIdEmpty || props.find((p) => idOfName(p) === oid); if (byId) return { name: byId, conf: "id" }; }
+    const ok = normKey(oldName);
+    const exact = props.find((p) => normKey(p) === ok);
+    if (exact) return { name: exact, conf: "exact" };
+    let best = null, bestScore = 0;
+    props.forEach((p) => { const s = simScore(ok, normKey(p)); if (s > bestScore) { bestScore = s; best = p; } });
+    if (best && bestScore >= 0.68) return { name: best, conf: "fuzzy", score: bestScore };
+    return null;
+  };
+  const manualOrphans = orphans.filter((o) => { const tt = bestTargetFor(o); return !tt || tt.conf === "fuzzy"; });
+  const mergeRecords = (oldRec, newRec, newName) => {
+    const merged = { ...(oldRec || {}) };
+    Object.keys(newRec || {}).forEach((k) => { const v = newRec[k]; if (v != null && !(typeof v === "string" && v.trim() === "") && !(Array.isArray(v) && v.length === 0)) merged[k] = v; });
+    merged.hospId = idOfName(newName) || (oldRec && oldRec.hospId) || "";
+    return merged;
+  };
+  const mergeInto = (oldName, newName) => {
+    if (!newName || newName === oldName) return;
+    const merged = mergeRecords(store[oldName], store[newName], newName);
+    const next = { ...store }; next[newName] = merged; delete next[oldName];
+    setStore(next); savePropInfoAll(next);
+    try { Backend.call && Backend.call("savePropertyInfo", { property: newName, info: merged }).catch(() => {}); } catch (e) {}
+    try { Backend.call && Backend.call("savePropertyInfo", { property: oldName, info: {} }).catch(() => {}); } catch (e) {}
+    onToast(es ? `Fusionado: ${oldName} → ${newName}` : `Merged: ${oldName} → ${newName}`);
+  };
+  const discardOrphan = (oldName) => {
+    const next = { ...store }; delete next[oldName];
+    setStore(next); savePropInfoAll(next);
+    try { Backend.call && Backend.call("savePropertyInfo", { property: oldName, info: {} }).catch(() => {}); } catch (e) {}
+    onToast(es ? `Descartada: ${oldName}` : `Discarded: ${oldName}`);
+  };
+  // estampar hospId durable en cada info que tenga estación con id (previene futuros huérfanos)
+  useEffectAd(() => {
+    const ids = {}; Object.keys(stations).forEach((n) => { if (stations[n].propertyId) ids[n] = stations[n].propertyId; });
+    if (!Object.keys(ids).length) return;
+    setStore((s) => { let ch = false; const n = { ...s }; Object.keys(ids).forEach((nm) => { if (n[nm] && n[nm].hospId !== ids[nm]) { n[nm] = { ...n[nm], hospId: ids[nm] }; ch = true; } }); return ch ? n : s; });
+  }, [stations]);
+  // auto-reconciliar coincidencias seguras (por id o nombre normalizado idéntico)
+  useEffectAd(() => {
+    if (!props.length) return;
+    const auto = orphans.map((o) => ({ o, t: bestTargetFor(o) })).filter((x) => x.t && (x.t.conf === "id" || x.t.conf === "exact"));
+    if (!auto.length) return;
+    const next = { ...store };
+    auto.forEach(({ o, t }) => {
+      if (!next[o]) return;
+      const merged = mergeRecords(next[o], next[t.name], t.name);
+      next[t.name] = merged; delete next[o];
+      try { Backend.call && Backend.call("savePropertyInfo", { property: t.name, info: merged }).catch(() => {}); } catch (e) {}
+      try { Backend.call && Backend.call("savePropertyInfo", { property: o, info: {} }).catch(() => {}); } catch (e) {}
+    });
+    setStore(next); savePropInfoAll(next);
+    onToast(es ? `Nombres reconciliados automáticamente: ${auto.length}` : `Names auto-reconciled: ${auto.length}`);
+  }, [props.join("|"), Object.keys(store).join("|"), Object.keys(stations).join("|")]);
+  // PRIMER BATCH automático: alinear todo una sola vez (local, sin tokens), tras reconciliar.
+  // Se omite si hay un estándar precargado (seed) — ese tiene prioridad.
+  useEffectAd(() => {
+    if (firstBatchRef.current) return;
+    if (window.SPACIO_STD_SEED) { firstBatchRef.current = true; return; }
+    try { if (localStorage.getItem(BATCH_FLAG)) { firstBatchRef.current = true; return; } } catch (e) {}
+    if (!props.length) return;
+    // esperar a que la reconciliación automática termine
+    const hasAutoPending = orphans.some((o) => { const tt = bestTargetFor(o); return tt && (tt.conf === "id" || tt.conf === "exact"); });
+    if (hasAutoPending) return;
+    if (!pendingProps.length) return;
+    firstBatchRef.current = true;
+    try { localStorage.setItem(BATCH_FLAG, String(Date.now())); } catch (e) {}
+    (async () => { await alignAll(); })();
+  }, [props.join("|"), pendingProps.length, orphans.length]);
+
+  // SEED estándar precargado (estandarización hecha por Claude, cero tokens del web app).
+  // Si existe window.SPACIO_STD_SEED, aplica el std ya hecho a las propiedades que coincidan.
+  useEffectAd(() => {
+    const seed = window.SPACIO_STD_SEED; if (!seed || !props.length) return;
+    const nk = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+    const entries = Array.isArray(seed) ? seed : Object.keys(seed).map((k) => ({ match: [nk(k)], std: seed[k] }));
+    const next = { ...store }; let changed = false;
+    props.forEach((name) => {
+      const rec = next[name] || {};
+      const key = nk(name);
+      const found = entries.find((e) => (e.match || []).some((m) => key.indexOf(nk(m)) !== -1));
+      if (!found || !found.std) return;
+      const sig = found.sig || (rec.stdMeta && rec.stdMeta.seedSig);
+      if (rec.stdMeta && rec.stdMeta.by === "seed" && rec.stdMeta.seedSig === (found.sig || "")) return; // ya aplicado
+      next[name] = { ...rec, std: found.std, stdMeta: { hash: rawSig(name), at: Date.now(), by: "seed", seedSig: found.sig || "" } };
+      changed = true;
+      try { Backend.call && Backend.call("savePropertyInfo", { property: name, info: next[name] }).catch(() => {}); } catch (e) {}
+    });
+    if (changed) { setStore(next); savePropInfoAll(next); onToast(es ? "Estándar precargado aplicado" : "Preloaded standard applied"); }
+  }, [props.join("|")]);
+
+  // Exportar la información guardada de todas las propiedades (para estandarizar fuera del web app)
+  const exportPropInfo = () => {
+    const out = {};
+    props.forEach((name) => { out[name] = { raw: effectiveRaw(name), stored: get(name) }; });
+    const blob = new Blob([JSON.stringify(out, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "spacioam-propiedades-info.json";
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    onToast(es ? "Información exportada" : "Info exported");
   };
 
   // ---- Manual de la casa (aplica a varias propiedades) — clave especial __manual__ ----
@@ -1128,37 +1309,95 @@ function PropertyInfoScreen({ t, roster, onToast }) {
     <div>
       <p style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, margin: "0 0 18px", letterSpacing: "0.02em", lineHeight: 1.55, maxWidth: 520 }}>{t.piSub}</p>
 
-      {/* ESTÁNDAR DE INSTRUCCIONES — propiedades nuevas o modificadas por alinear */}
-      {pendingProps.length > 0 && (
-        <div style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 16, padding: "18px 18px 16px", marginBottom: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 7 }}>
-            <span style={{ width: 10, height: 10, borderRadius: "50%", background: C.peach, boxShadow: "0 0 0 3px rgba(233,130,106,.16)" }} />
-            <span style={{ fontFamily: C.serif, fontSize: 19, color: C.negro }}>{es ? "Estándar de instrucciones" : "Instruction standard"}</span>
-          </div>
-          <p style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra, margin: "0 0 14px", letterSpacing: "0.01em", lineHeight: 1.55, maxWidth: 540 }}>
-            {es
-              ? `${pendingProps.length} ${pendingProps.length === 1 ? "propiedad nueva o modificada" : "propiedades nuevas o modificadas"} por alinear. Al alinear, se reescriben las instrucciones de check-in, parqueo y wifi con la voz de Spacio AM — sin cambiar los datos.`
-              : `${pendingProps.length} new or modified ${pendingProps.length === 1 ? "property" : "properties"} to align. Aligning rewrites the check-in, parking and wifi instructions in Spacio AM's voice — facts unchanged.`}
-          </p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
-            {pendingProps.map((n) => {
-              const st = stdState(n);
-              const busy = !!aligning;
-              return (
-                <div key={n} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: C.alabaster, border: `1px solid ${C.grisCalido}`, borderRadius: 12, padding: "9px 12px" }}>
-                  <span style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
-                    <span style={{ flexShrink: 0, fontFamily: C.sans, fontSize: 8.5, letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 700, borderRadius: 999, padding: "3px 9px", color: st === "none" ? C.peach : "#9A7B12", background: st === "none" ? "rgba(233,130,106,.12)" : "rgba(176,137,0,.14)" }}>{st === "none" ? (es ? "Nueva" : "New") : (es ? "Modificada" : "Modified")}</span>
-                    <span style={{ fontFamily: C.sans, fontSize: 13, color: C.negro, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n}</span>
-                  </span>
-                  <button onClick={() => alignSingle(n)} disabled={busy} className="sp-btn" style={{ flexShrink: 0, background: "transparent", color: busy ? C.tierra : C.negro, border: `1px solid ${C.grisCalido}`, borderRadius: 10, padding: "7px 13px", fontFamily: C.sans, fontSize: 11, letterSpacing: "0.03em", cursor: busy ? "default" : "pointer", fontWeight: 500 }}>{aligning === n ? (es ? "Alineando…" : "Aligning…") : (es ? "Alinear" : "Align")}</button>
-                </div>
-              );
-            })}
-          </div>
-          {alignMsg && <p style={{ fontFamily: C.sans, fontSize: 11.5, color: C.tierra, margin: "0 0 12px", letterSpacing: "0.01em" }}>{alignMsg}</p>}
-          <button onClick={alignAll} disabled={!!aligning} className="sp-btn" style={{ background: C.negro, color: C.alabaster, border: "none", borderRadius: 11, padding: "11px 18px", fontFamily: C.sans, fontSize: 11, letterSpacing: "0.06em", cursor: aligning ? "default" : "pointer", fontWeight: 500, opacity: aligning ? 0.6 : 1 }}>
-            {aligning === "__all__" ? (es ? "Alineando todas…" : "Aligning all…") : (es ? "Alinear todas al estándar" : "Align all to standard")}
+      {/* RECONCILIACIÓN DE NOMBRES — huérfanas por renombre en Hospitable (confirmación manual) */}
+      {manualOrphans.length > 0 && (
+        <div style={{ background: C.white, border: "1px solid rgba(233,130,106,.35)", borderRadius: 16, marginBottom: 14, overflow: "hidden" }}>
+          <button onClick={() => setRecOpen((v) => !v)} className="sp-btn" style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: "transparent", border: "none", padding: "15px 18px", cursor: "pointer", textAlign: "left" }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ width: 10, height: 10, borderRadius: "50%", background: C.peach, boxShadow: "0 0 0 3px rgba(233,130,106,.16)" }} />
+              <span style={{ fontFamily: C.serif, fontSize: 18, color: C.negro }}>{es ? "Nombres por reconciliar" : "Names to reconcile"}</span>
+              <span style={{ fontFamily: C.sans, fontSize: 10.5, fontWeight: 700, color: C.peach, background: "rgba(233,130,106,.12)", borderRadius: 999, padding: "2px 9px" }}>{manualOrphans.length}</span>
+            </span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.tierra} strokeWidth="1.25" style={{ transform: recOpen ? "rotate(180deg)" : "none", transition: "transform .18s" }}><path d="M6 9l6 6 6-6" /></svg>
           </button>
+          {recOpen && (
+            <div style={{ padding: "0 18px 16px" }}>
+              <p style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra, margin: "0 0 14px", letterSpacing: "0.01em", lineHeight: 1.55, maxWidth: 560 }}>
+                {es ? "Estas propiedades tienen información guardada bajo un nombre que ya no coincide con Hospitable. Confirma a qué propiedad actual pertenece cada una para conservar sus datos." : "These properties have info saved under a name that no longer matches Hospitable. Confirm which current property each belongs to so its data is kept."}
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {manualOrphans.map((o) => {
+                  const sug = bestTargetFor(o);
+                  const chosen = orphanTarget[o] || (sug && sug.name) || "";
+                  return (
+                    <div key={o} style={{ background: C.alabaster, border: `1px solid ${C.grisCalido}`, borderRadius: 12, padding: "12px 13px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 9, flexWrap: "wrap" }}>
+                        <span style={{ fontFamily: C.sans, fontSize: 8.5, letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 700, color: C.peach, background: "rgba(233,130,106,.12)", borderRadius: 999, padding: "3px 9px" }}>{es ? "Nombre anterior" : "Old name"}</span>
+                        <span style={{ fontFamily: C.sans, fontSize: 13, color: C.negro }}>{o}</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.tierra} strokeWidth="1.25"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+                        <select value={chosen} onChange={(e) => setOrphanTarget((m) => ({ ...m, [o]: e.target.value }))} style={{ flex: "1 1 220px", minWidth: 200, padding: "9px 11px", borderRadius: 10, border: `1px solid ${C.grisCalido}`, background: C.white, fontFamily: C.sans, fontSize: 12.5, color: C.negro, outline: "none" }}>
+                          <option value="">{es ? "Elegir propiedad actual…" : "Choose current property…"}</option>
+                          {props.map((p) => <option key={p} value={p}>{p}{normKey(p) === normKey(o) ? "  ·  =" : ""}</option>)}
+                        </select>
+                        <button onClick={() => mergeInto(o, chosen)} disabled={!chosen} className="sp-btn" style={{ background: chosen ? C.negro : C.beige, color: chosen ? C.alabaster : C.tierra, border: "none", borderRadius: 10, padding: "9px 15px", fontFamily: C.sans, fontSize: 11, letterSpacing: "0.03em", cursor: chosen ? "pointer" : "default", fontWeight: 500 }}>{es ? "Fusionar" : "Merge"}</button>
+                        <button onClick={() => discardOrphan(o)} className="sp-btn" style={{ background: "transparent", color: C.tierra, border: `1px solid ${C.grisCalido}`, borderRadius: 10, padding: "9px 13px", fontFamily: C.sans, fontSize: 11, letterSpacing: "0.03em", cursor: "pointer" }}>{es ? "Descartar" : "Discard"}</button>
+                      </div>
+                      {sug && sug.conf === "fuzzy" && <p style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, margin: "8px 0 0", letterSpacing: "0.01em" }}>{es ? "Sugerencia por similitud — verifica antes de fusionar." : "Similarity suggestion — verify before merging."}</p>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ESTÁNDAR DE INSTRUCCIONES — colapsable. Primer batch automático; luego manual (por propiedad o todas) */}
+      {pendingProps.length > 0 && (
+        <div style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 16, marginBottom: 14, overflow: "hidden" }}>
+          <button onClick={() => setStdOpen((v) => !v)} className="sp-btn" style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: "transparent", border: "none", padding: "15px 18px", cursor: "pointer", textAlign: "left" }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ width: 10, height: 10, borderRadius: "50%", background: C.peach, boxShadow: "0 0 0 3px rgba(233,130,106,.16)" }} />
+              <span style={{ fontFamily: C.serif, fontSize: 18, color: C.negro }}>{es ? "Estándar de instrucciones" : "Instruction standard"}</span>
+              <span style={{ fontFamily: C.sans, fontSize: 10.5, fontWeight: 700, color: C.peach, background: "rgba(233,130,106,.12)", borderRadius: 999, padding: "2px 9px" }}>{pendingProps.length}</span>
+            </span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.tierra} strokeWidth="1.25" style={{ transform: stdOpen ? "rotate(180deg)" : "none", transition: "transform .18s" }}><path d="M6 9l6 6 6-6" /></svg>
+          </button>
+          {stdOpen && (
+            <div style={{ padding: "0 18px 16px" }}>
+              <p style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra, margin: "0 0 14px", letterSpacing: "0.01em", lineHeight: 1.55, maxWidth: 560 }}>
+                {es
+                  ? `${pendingProps.length} ${pendingProps.length === 1 ? "propiedad nueva o modificada" : "propiedades nuevas o modificadas"} por alinear. Al alinear se ordenan las instrucciones de check-in y parqueo ya guardadas en la estructura estándar de Spacio AM — sin cambiar los datos.`
+                  : `${pendingProps.length} new or modified ${pendingProps.length === 1 ? "property" : "properties"} to align. Aligning reorders the saved check-in and parking info into Spacio AM's standard structure — facts unchanged.`}
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+                {pendingProps.map((n) => {
+                  const st = stdState(n);
+                  const busy = !!aligning;
+                  return (
+                    <div key={n} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: C.alabaster, border: `1px solid ${C.grisCalido}`, borderRadius: 12, padding: "9px 12px" }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+                        <span style={{ flexShrink: 0, fontFamily: C.sans, fontSize: 8.5, letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 700, borderRadius: 999, padding: "3px 9px", color: st === "none" ? C.peach : "#9A7B12", background: st === "none" ? "rgba(233,130,106,.12)" : "rgba(176,137,0,.14)" }}>{st === "none" ? (es ? "Nueva" : "New") : (es ? "Modificada" : "Modified")}</span>
+                        <span style={{ fontFamily: C.sans, fontSize: 13, color: C.negro, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n}</span>
+                      </span>
+                      <button onClick={() => alignSingle(n)} disabled={busy} className="sp-btn" style={{ flexShrink: 0, background: "transparent", color: busy ? C.tierra : C.negro, border: `1px solid ${C.grisCalido}`, borderRadius: 10, padding: "7px 13px", fontFamily: C.sans, fontSize: 11, letterSpacing: "0.03em", cursor: busy ? "default" : "pointer", fontWeight: 500 }}>{aligning === n ? (es ? "Alineando…" : "Aligning…") : (es ? "Alinear" : "Align")}</button>
+                    </div>
+                  );
+                })}
+              </div>
+              {alignMsg && <p style={{ fontFamily: C.sans, fontSize: 11.5, color: C.tierra, margin: "0 0 12px", letterSpacing: "0.01em" }}>{alignMsg}</p>}
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <button onClick={alignAll} disabled={!!aligning} className="sp-btn" style={{ background: C.negro, color: C.alabaster, border: "none", borderRadius: 11, padding: "11px 18px", fontFamily: C.sans, fontSize: 11, letterSpacing: "0.06em", cursor: aligning ? "default" : "pointer", fontWeight: 500, opacity: aligning ? 0.6 : 1 }}>
+                  {aligning === "__all__" ? (es ? "Alineando todas…" : "Aligning all…") : (es ? "Alinear todas al estándar" : "Align all to standard")}
+                </button>
+                <button onClick={exportPropInfo} className="sp-btn" style={{ background: "transparent", color: C.negro, border: `1px solid ${C.grisCalido}`, borderRadius: 11, padding: "11px 18px", fontFamily: C.sans, fontSize: 11, letterSpacing: "0.04em", cursor: "pointer", fontWeight: 500 }}>
+                  {es ? "Exportar información" : "Export info"}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

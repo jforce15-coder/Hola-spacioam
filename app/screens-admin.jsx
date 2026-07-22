@@ -849,11 +849,28 @@ function StationsScreen({ t, onToast }) {
   const [drafts, setDrafts] = useStateAd({});
   const [savingIdx, setSavingIdx] = useStateAd(-1);
 
+  // Nombre para MOSTRAR: normaliza los guiones al formato de Hospitable
+  // ("Z10-Fiamene-404" → "Z10 - Fiamene - 404").
+  const nk = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+  const disp = (s) => (/-/.test(s) ? String(s).replace(/\s*[-–—]\s*/g, " - ").replace(/\s{2,}/g, " ").trim() : s);
+
   useEffectAd(() => {
     Backend.listStations().then((rows) => {
-      setList(rows || []);
+      // reconciliar filas cuyo nombre difiere solo en espacios/guiones: se fusionan
+      // en una sola tarjeta con el nombre en formato Hospitable.
+      const byKey = new Map();
+      (rows || []).forEach((r) => {
+        const k = nk(r.propertyName); const cur = byKey.get(k);
+        const merged = cur ? { ...cur } : { propertyName: disp(r.propertyName), propertyId: "", email1: "", email2: "", phone1: "", phone2: "" };
+        merged.propertyName = disp(r.propertyName);
+        merged.propertyId = merged.propertyId || r.propertyId || "";
+        ["email1", "email2", "phone1", "phone2"].forEach((f) => { if (!merged[f] && r[f]) merged[f] = r[f]; });
+        byKey.set(k, merged);
+      });
+      const clean = [...byKey.values()].sort((a, b) => a.propertyName.localeCompare(b.propertyName));
+      setList(clean);
       const d = {};
-      (rows || []).forEach((r) => { d[r.propertyName] = { email1: r.email1 || "", email2: r.email2 || "", phone1: r.phone1 || "", phone2: r.phone2 || "" }; });
+      clean.forEach((r) => { d[r.propertyName] = { email1: r.email1 || "", email2: r.email2 || "", phone1: r.phone1 || "", phone2: r.phone2 || "" }; });
       setDrafts(d);
     });
   }, []);

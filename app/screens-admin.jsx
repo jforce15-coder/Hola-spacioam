@@ -1034,6 +1034,13 @@ function PropertyInfoScreen({ t, roster, onToast }) {
   const nkName = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
   const liveNames = useMemoAd(() => [...new Set((roster || []).map((r) => r.propertyName).filter(Boolean))], [roster]);
   const canonName = useCallbackAd((name) => { const k = nkName(name); return liveNames.find((n) => nkName(n) === k) || name; }, [liveNames]);
+  // nombre para MOSTRAR: usa el exacto de Hospitable si está; si no, normaliza los
+  // guiones al formato de Hospitable ("Z10-Fiamene-404" → "Z10 - Fiamene - 404").
+  const displayName = useCallbackAd((name) => {
+    const live = canonName(name);
+    if (live !== name) return live;
+    return /-/.test(name) ? String(name).replace(/\s*[-–—]\s*/g, " - ").replace(/\s{2,}/g, " ").trim() : name;
+  }, [canonName]);
   const props = useMemoAd(() => {
     const byKey = new Map(); // nk -> nombre a mostrar (prefiere el de Hospitable)
     const add = (nm, isLive) => {
@@ -1434,7 +1441,7 @@ function PropertyInfoScreen({ t, roster, onToast }) {
                     <div key={n} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: C.alabaster, border: `1px solid ${C.grisCalido}`, borderRadius: 12, padding: "9px 12px" }}>
                       <span style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
                         <span style={{ flexShrink: 0, fontFamily: C.sans, fontSize: 8.5, letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 700, borderRadius: 999, padding: "3px 9px", color: st === "none" ? C.peach : "#9A7B12", background: st === "none" ? "rgba(233,130,106,.12)" : "rgba(176,137,0,.14)" }}>{st === "none" ? (es ? "Nueva" : "New") : (es ? "Modificada" : "Modified")}</span>
-                        <span style={{ fontFamily: C.sans, fontSize: 13, color: C.negro, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n}</span>
+                        <span style={{ fontFamily: C.sans, fontSize: 13, color: C.negro, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName(n)}</span>
                       </span>
                       <button onClick={() => alignSingle(n)} disabled={busy} className="sp-btn" style={{ flexShrink: 0, background: "transparent", color: busy ? C.tierra : C.negro, border: `1px solid ${C.grisCalido}`, borderRadius: 10, padding: "7px 13px", fontFamily: C.sans, fontSize: 11, letterSpacing: "0.03em", cursor: busy ? "default" : "pointer", fontWeight: 500 }}>{aligning === n ? (es ? "Alineando…" : "Aligning…") : (es ? "Alinear" : "Align")}</button>
                     </div>
@@ -1516,7 +1523,7 @@ function PropertyInfoScreen({ t, roster, onToast }) {
                   <span style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
                     <span title={miss.length ? (es ? "Campos pendientes" : "Pending fields") : (es ? "Completo" : "Complete")} style={{ flexShrink: 0, width: 10, height: 10, borderRadius: "50%",
                       background: miss.length ? C.peach : "#1F8A5B", boxShadow: `0 0 0 3px ${miss.length ? "rgba(233,130,106,.16)" : "rgba(31,138,91,.16)"}` }} />
-                    <span style={{ fontFamily: C.serif, fontSize: 19, color: C.negro, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
+                    <span style={{ fontFamily: C.serif, fontSize: 19, color: C.negro, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName(name)}</span>
                     {miss.length > 0 && <span style={{ flexShrink: 0, fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.08em", textTransform: "uppercase", color: C.peach, fontWeight: 600 }}>· {miss.length} {es ? "pendientes" : "pending"}</span>}
                   </span>
                   <Icon name={open ? "chevronUp" : "chevronDown"} size={18} color={C.tierra} />

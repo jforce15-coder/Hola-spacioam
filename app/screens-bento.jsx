@@ -375,6 +375,7 @@ function WifiContent({ t, res }) {
   const w = (typeof wifiForRes === "function" ? wifiForRes(res) : null) || res.wifi || { network: "Spacio AM", pass: "selfloveclub" };
   const b = typeof matchBuilding === "function" ? matchBuilding(res) : null;
   const piW = (typeof loadPropInfo === "function" ? loadPropInfo() : {})[res.propertyName] || {};
+  const stdcW = (piW.std && piW.std[es ? "es" : "en"]) || null;
   const piBackups = [];
   if (piW.wifiNetBk || piW.wifiPassBk) piBackups.push({ network: piW.wifiNetBk || "", pass: piW.wifiPassBk || "" });
   if (piW.wifiNetBk2 || piW.wifiPassBk2) piBackups.push({ network: piW.wifiNetBk2 || "", pass: piW.wifiPassBk2 || "" });
@@ -396,6 +397,7 @@ function WifiContent({ t, res }) {
 
   return (
     <>
+      {stdcW && stdcW.wifiNote && <p style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, lineHeight: 1.6, margin: "12px 0 2px", letterSpacing: "0.01em" }}>{stdcW.wifiNote}</p>}
       {w.byLevel && <p style={{ fontFamily: C.sans, fontSize: 11.5, color: C.tierra, lineHeight: 1.55, margin: "12px 0 0", letterSpacing: "0.02em" }}>{t.wifiByLevelNote} <b style={{ color: C.negro }}>({es ? "Nivel" : "Level"} {w.byLevel})</b></p>}
       <InfoRow label={es ? "Red / Network" : "Network"} value={w.network} />
       <InfoRow label="Password" value={w.pass} />
@@ -452,6 +454,7 @@ function CheckinContent({ t, res }) {
   const b = typeof matchBuilding === "function" ? matchBuilding(res) : null;
   // admin overrides (Propiedades tab) take priority over building defaults
   const pi = (typeof loadPropInfo === "function" ? loadPropInfo() : {})[res.propertyName] || {};
+  const stdc = (pi.std && pi.std[es ? "es" : "en"]) || null;
   const addr = (pi.address != null && pi.address !== "") ? pi.address : (b && b.address);
   const arrival = (pi.arrival != null && pi.arrival !== "") ? pi.arrival : (b && b.arrival);
   const maps = (pi.maps != null && pi.maps !== "") ? pi.maps : (b && b.maps);
@@ -525,7 +528,19 @@ function CheckinContent({ t, res }) {
               <Icon name="pin" size={14} color={C.peach} /> {t.ckWaze}</a>}
           </div>
 
-          {arrival && <>
+          {(stdc && stdc.arrivalSteps && stdc.arrivalSteps.length) ? <>
+            <div style={{ fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.16em", textTransform: "uppercase", color: C.tierra, fontWeight: 600, margin: "18px 0 8px" }}>{t.ckArrival}</div>
+            {stdc.arrivalIntro && <p style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, lineHeight: 1.65, margin: "0 0 12px", letterSpacing: "0.01em" }}>{stdc.arrivalIntro}</p>}
+            <ol style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 12 }}>
+              {stdc.arrivalSteps.map((s, i) => (
+                <li key={i} style={{ display: "flex", gap: 12 }}>
+                  <span style={{ flexShrink: 0, width: 24, height: 24, borderRadius: "50%", background: C.peach, color: C.white, fontFamily: C.sans, fontSize: 12, fontWeight: 600, display: "grid", placeItems: "center" }}>{i + 1}</span>
+                  <span style={{ fontFamily: C.sans, fontSize: 13, color: C.negro, lineHeight: 1.55, letterSpacing: "0.01em", paddingTop: 2 }}>{s}</span>
+                </li>
+              ))}
+            </ol>
+            {stdc.tip && <p style={{ fontFamily: C.sans, fontSize: 11.5, color: C.tierra, lineHeight: 1.6, margin: "14px 0 0", letterSpacing: "0.01em", fontStyle: "italic" }}>{stdc.tip}</p>}
+          </> : arrival && <>
             <div style={{ fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.16em", textTransform: "uppercase", color: C.tierra, fontWeight: 600, margin: "18px 0 8px" }}>{t.ckArrival}</div>
             <p style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, lineHeight: 1.65, margin: 0, letterSpacing: "0.01em", whiteSpace: "pre-line" }}>{arrival}</p>
           </>}
@@ -603,11 +618,12 @@ function ParqueoContent({ t, res }) {
   const b = typeof matchBuilding === "function" ? matchBuilding(res) : null;
   const p = b && b.parking;
   const pi = (typeof loadPropInfo === "function" ? loadPropInfo() : {})[res.propertyName] || {};
-  const piPark = pi.hasParking || pi.parkNote || pi.parkNumber || pi.parkExtInfo || pi.parkLink;
+  const stdc = (pi.std && pi.std[es ? "es" : "en"]) || null;
+  const piPark = pi.hasParking || pi.parkNote || pi.parkNumber || pi.parkExtInfo || pi.parkLink || (stdc && stdc.parking);
   const kindLabel = { own: t.parkOwn, "pay-us": t.parkPayUs, "pay-building": t.parkPayBuilding, external: t.parkExternal, street: t.parkExternal };
   if (piPark) {
     const yes = pi.hasParking === "yes";
-    const note = pi.parkNote
+    const note = (stdc && stdc.parking) || pi.parkNote
       || (yes ? ((es ? "Parqueo asignado" : "Assigned parking") + (pi.parkNumber ? ` · ${pi.parkNumber}` : ""))
              : (pi.parkExtInfo || (es ? "Este alojamiento no cuenta con parqueo propio." : "This property has no private parking.")));
     return (

@@ -983,6 +983,77 @@ function PropertyInfoScreen({ t, roster, onToast }) {
   const buildingOf = (name) => (typeof matchBuilding === "function" ? matchBuilding({ propertyName: name, apartment: "" }) : null);
   const es = t.code === "es";
 
+  // ---- Estándar de instrucciones (copywriting con IA, disparado manualmente) ----
+  const [aligning, setAligning] = useStateAd("");   // "" | "<name>" | "__all__"
+  const [alignMsg, setAlignMsg] = useStateAd("");
+  const hashStr = (s) => { let h = 5381; s = String(s || ""); for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) & 0xffffffff; return (h >>> 0).toString(36); };
+  const bff = (v, bv) => (v != null && String(v) !== "") ? v : (bv != null ? bv : "");
+  const effectiveRaw = (name) => {
+    const info = get(name), b = buildingOf(name) || {};
+    return {
+      propiedad: name,
+      apartamento: bff(info.unit, b.apartment) || "",
+      piso: String(info.floor || ""),
+      direccion: bff(info.address, b.address) || "",
+      llegada: bff(info.arrival, b.arrival) || "",
+      notaAdicional: bff(info.tip, b.tip) || "",
+      cerradura: bff(info.lock, b.lock) || "",
+      contactoNombre: bff(info.contactName, b.contactName) || "",
+      contactoTelefono: bff(info.contactPhone, b.contactPhone) || "",
+      tieneParqueo: info.hasParking || "",
+      numeroParqueo: info.parkNumber || "",
+      parqueoPropiedad: info.parkOwnership || "",
+      hayOpcionParqueo: info.parkOption || "",
+      parqueoExterno: info.parkExtInfo || "",
+      enlaceParqueo: info.parkLink || "",
+      notaParqueo: info.parkNote || "",
+      wifiRed: info.wifiNet || "",
+      wifiClave: info.wifiPass || "",
+    };
+  };
+  const rawSig = (name) => hashStr(JSON.stringify(effectiveRaw(name)));
+  const hasStdContent = (name) => { const r = effectiveRaw(name); return !!(String(r.llegada).trim() || String(r.notaParqueo).trim() || String(r.parqueoExterno).trim() || r.tieneParqueo); };
+  const stdState = (name) => {
+    if (!hasStdContent(name)) return "empty";
+    const meta = get(name).stdMeta;
+    if (!meta || !meta.hash) return "none";
+    return meta.hash === rawSig(name) ? "ok" : "stale";
+  };
+  const pendingProps = props.filter((n) => { const s = stdState(n); return s === "none" || s === "stale"; });
+  const alignOne = async (name) => {
+    const raw = effectiveRaw(name); const hash = hashStr(JSON.stringify(raw));
+    try {
+      const r = await (Backend.call && Backend.call("standardizeInstructions", { property: name, raw }));
+      if (r && r.ok && r.std) {
+        const patch = { std: r.std, stdMeta: { hash, at: Date.now(), model: r.model || "" } };
+        setStore((s) => ({ ...s, [name]: { ...(s[name] || {}), ...patch } }));
+        const cur = { ...loadPropInfo() }; cur[name] = { ...(cur[name] || {}), ...patch }; savePropInfoAll(cur);
+        try { Backend.call("savePropertyInfo", { property: name, info: cur[name] }).catch(() => {}); } catch (e) {}
+        return true;
+      }
+    } catch (e) {}
+    return false;
+  };
+  const alignSingle = async (name) => {
+    if (aligning) return;
+    setAligning(name); setAlignMsg("");
+    const ok = await alignOne(name);
+    setAligning("");
+    onToast(ok ? `${es ? "Estándar aplicado" : "Standard applied"} · ${name}` : (es ? "No se pudo alinear (revisa conexión / API)" : "Could not align"));
+  };
+  const alignAll = async () => {
+    if (aligning) return;
+    const list = [...pendingProps]; if (!list.length) return;
+    setAligning("__all__");
+    let done = 0, fail = 0;
+    for (const name of list) {
+      setAlignMsg(`${es ? "Alineando" : "Aligning"} ${name}… (${done + fail + 1}/${list.length})`);
+      (await alignOne(name)) ? done++ : fail++;
+    }
+    setAligning(""); setAlignMsg("");
+    onToast(`${es ? "Estándar aplicado a" : "Standard applied to"} ${done}${fail ? ` · ${fail} ${es ? "con error" : "failed"}` : ""}`);
+  };
+
   // ---- Manual de la casa (aplica a varias propiedades) — clave especial __manual__ ----
   const manualSeed = () => (typeof HOUSE_MANUAL_EXTRAS !== "undefined"
     ? Object.keys(HOUSE_MANUAL_EXTRAS).map((k) => ({ id: k, title: HOUSE_MANUAL_EXTRAS[k].title, icon: HOUSE_MANUAL_EXTRAS[k].icon || "manual", intro: HOUSE_MANUAL_EXTRAS[k].intro || "", steps: (HOUSE_MANUAL_EXTRAS[k].steps || []).slice() }))
@@ -1056,6 +1127,40 @@ function PropertyInfoScreen({ t, roster, onToast }) {
   return (
     <div>
       <p style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, margin: "0 0 18px", letterSpacing: "0.02em", lineHeight: 1.55, maxWidth: 520 }}>{t.piSub}</p>
+
+      {/* ESTÁNDAR DE INSTRUCCIONES — propiedades nuevas o modificadas por alinear */}
+      {pendingProps.length > 0 && (
+        <div style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 16, padding: "18px 18px 16px", marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 7 }}>
+            <span style={{ width: 10, height: 10, borderRadius: "50%", background: C.peach, boxShadow: "0 0 0 3px rgba(233,130,106,.16)" }} />
+            <span style={{ fontFamily: C.serif, fontSize: 19, color: C.negro }}>{es ? "Estándar de instrucciones" : "Instruction standard"}</span>
+          </div>
+          <p style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra, margin: "0 0 14px", letterSpacing: "0.01em", lineHeight: 1.55, maxWidth: 540 }}>
+            {es
+              ? `${pendingProps.length} ${pendingProps.length === 1 ? "propiedad nueva o modificada" : "propiedades nuevas o modificadas"} por alinear. Al alinear, se reescriben las instrucciones de check-in, parqueo y wifi con la voz de Spacio AM — sin cambiar los datos.`
+              : `${pendingProps.length} new or modified ${pendingProps.length === 1 ? "property" : "properties"} to align. Aligning rewrites the check-in, parking and wifi instructions in Spacio AM's voice — facts unchanged.`}
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+            {pendingProps.map((n) => {
+              const st = stdState(n);
+              const busy = !!aligning;
+              return (
+                <div key={n} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: C.alabaster, border: `1px solid ${C.grisCalido}`, borderRadius: 12, padding: "9px 12px" }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+                    <span style={{ flexShrink: 0, fontFamily: C.sans, fontSize: 8.5, letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 700, borderRadius: 999, padding: "3px 9px", color: st === "none" ? C.peach : "#9A7B12", background: st === "none" ? "rgba(233,130,106,.12)" : "rgba(176,137,0,.14)" }}>{st === "none" ? (es ? "Nueva" : "New") : (es ? "Modificada" : "Modified")}</span>
+                    <span style={{ fontFamily: C.sans, fontSize: 13, color: C.negro, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n}</span>
+                  </span>
+                  <button onClick={() => alignSingle(n)} disabled={busy} className="sp-btn" style={{ flexShrink: 0, background: "transparent", color: busy ? C.tierra : C.negro, border: `1px solid ${C.grisCalido}`, borderRadius: 10, padding: "7px 13px", fontFamily: C.sans, fontSize: 11, letterSpacing: "0.03em", cursor: busy ? "default" : "pointer", fontWeight: 500 }}>{aligning === n ? (es ? "Alineando…" : "Aligning…") : (es ? "Alinear" : "Align")}</button>
+                </div>
+              );
+            })}
+          </div>
+          {alignMsg && <p style={{ fontFamily: C.sans, fontSize: 11.5, color: C.tierra, margin: "0 0 12px", letterSpacing: "0.01em" }}>{alignMsg}</p>}
+          <button onClick={alignAll} disabled={!!aligning} className="sp-btn" style={{ background: C.negro, color: C.alabaster, border: "none", borderRadius: 11, padding: "11px 18px", fontFamily: C.sans, fontSize: 11, letterSpacing: "0.06em", cursor: aligning ? "default" : "pointer", fontWeight: 500, opacity: aligning ? 0.6 : 1 }}>
+            {aligning === "__all__" ? (es ? "Alineando todas…" : "Aligning all…") : (es ? "Alinear todas al estándar" : "Align all to standard")}
+          </button>
+        </div>
+      )}
 
       {/* MANUAL DE LA CASA — aplica a varias propiedades */}
       <div style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 16, overflow: "hidden", marginBottom: 14 }}>
@@ -1131,6 +1236,38 @@ function PropertyInfoScreen({ t, roster, onToast }) {
                         <div style={{ fontFamily: C.sans, fontSize: 12, color: C.negro, letterSpacing: "0.01em", lineHeight: 1.5 }}>{miss.join(" · ")}</div>
                       </div>
                     )}
+                    {/* ESTÁNDAR DE INSTRUCCIONES — estado + botón + vista previa de pasos */}
+                    {hasStdContent(name) && (() => {
+                      const st = stdState(name);
+                      const sc = (info.std && info.std[es ? "es" : "en"]) || null;
+                      const busy = !!aligning;
+                      return (
+                        <div style={{ background: C.alabaster, border: `1px solid ${C.grisCalido}`, borderRadius: 12, padding: "14px 15px", margin: "12px 0 4px" }}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <span style={{ width: 9, height: 9, borderRadius: "50%", background: st === "ok" ? "#1F8A5B" : C.peach }} />
+                              <span style={{ fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.16em", textTransform: "uppercase", color: C.tierra, fontWeight: 600 }}>{es ? "Estándar de instrucciones" : "Instruction standard"}</span>
+                            </span>
+                            <button onClick={() => alignSingle(name)} disabled={busy} className="sp-btn" style={{ background: st === "ok" ? "transparent" : C.negro, color: st === "ok" ? C.negro : C.alabaster, border: `1px solid ${st === "ok" ? C.grisCalido : C.negro}`, borderRadius: 10, padding: "7px 13px", fontFamily: C.sans, fontSize: 11, letterSpacing: "0.03em", cursor: busy ? "default" : "pointer", fontWeight: 500 }}>{aligning === name ? (es ? "Alineando…" : "Aligning…") : st === "ok" ? (es ? "Rehacer" : "Redo") : (es ? "Alinear al estándar" : "Align to standard")}</button>
+                          </div>
+                          <p style={{ fontFamily: C.sans, fontSize: 11, color: C.tierra, margin: "9px 0 0", letterSpacing: "0.01em", lineHeight: 1.5 }}>
+                            {st === "ok" ? (es ? "Alineado. Los textos que ve el huésped usan la versión estándar." : "Aligned. Guest-facing texts use the standard version.")
+                              : st === "stale" ? (es ? "Se modificaron las instrucciones desde la última alineación." : "Instructions changed since last alignment.")
+                              : (es ? "Aún sin alinear al estándar." : "Not aligned to the standard yet.")}
+                          </p>
+                          {sc && sc.arrivalSteps && sc.arrivalSteps.length > 0 && (
+                            <ol style={{ margin: "12px 0 0", padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 8 }}>
+                              {sc.arrivalSteps.map((s, i) => (
+                                <li key={i} style={{ display: "flex", gap: 10 }}>
+                                  <span style={{ flexShrink: 0, width: 20, height: 20, borderRadius: "50%", background: C.peach, color: C.white, fontFamily: C.sans, fontSize: 10.5, display: "grid", placeItems: "center" }}>{i + 1}</span>
+                                  <span style={{ fontFamily: C.sans, fontSize: 12, color: C.negro, lineHeight: 1.5, letterSpacing: "0.01em" }}>{s}</span>
+                                </li>
+                              ))}
+                            </ol>
+                          )}
+                        </div>
+                      );
+                    })()}
                     {/* PARQUEO */}
                     {label(t.piParking)}
                     <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>

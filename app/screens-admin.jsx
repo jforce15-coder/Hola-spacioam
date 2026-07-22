@@ -7,7 +7,7 @@
    · Per row: view summary · download (print → PDF) · resend email
    · Summary = all collected data + identity docs watermarked
    ============================================================ */
-const { useState: useStateAd, useMemo: useMemoAd, useEffect: useEffectAd, useRef: useRefAd } = React;
+const { useState: useStateAd, useMemo: useMemoAd, useEffect: useEffectAd, useRef: useRefAd, useCallback: useCallbackAd } = React;
 
 /* ---------- ADMIN LOGIN MODAL ---------- */
 function AdminLogin({ t, onClose, onSuccess }) {
@@ -1028,8 +1028,24 @@ function PropertyInfoScreen({ t, roster, onToast }) {
   const getC = (name) => stations[name] || {};
   const setC = (name, patch) => { autosave.current.stKeys.add(name); setStations((s) => ({ ...s, [name]: { ...(s[name] || {}), ...patch } })); };
   // toda propiedad = reservas en la ventana ∪ todos los listados de Hospitable,
-  // así aparecen también las que no tienen una reserva próxima
-  const props = useMemoAd(() => [...new Set([...(roster || []).map((r) => r.propertyName), ...Object.keys(stations)].filter((x) => x && x !== "__manual__"))].sort(), [roster, stations]);
+  // así aparecen también las que no tienen una reserva próxima.
+  // El nombre de Hospitable (roster) es la fuente de verdad: si un registro
+  // guardado difiere solo en espacios/guiones/mayúsculas, se colapsa al de Hospitable.
+  const nkName = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+  const liveNames = useMemoAd(() => [...new Set((roster || []).map((r) => r.propertyName).filter(Boolean))], [roster]);
+  const canonName = useCallbackAd((name) => { const k = nkName(name); return liveNames.find((n) => nkName(n) === k) || name; }, [liveNames]);
+  const props = useMemoAd(() => {
+    const byKey = new Map(); // nk -> nombre a mostrar (prefiere el de Hospitable)
+    const add = (nm, isLive) => {
+      if (!nm || nm === "__manual__") return;
+      const k = nkName(nm); const cur = byKey.get(k);
+      if (!cur || (isLive && !cur.live)) byKey.set(k, { name: isLive ? nm : canonName(nm), live: isLive || (cur && cur.live) });
+    };
+    (roster || []).forEach((r) => add(r.propertyName, true));
+    Object.keys(stations).forEach((n) => add(n, false));
+    Object.keys(store).forEach((n) => { if (n !== "__manual__") add(n, false); });
+    return [...byKey.values()].map((v) => v.name).sort();
+  }, [roster, stations, store, liveNames]);
   // autosave: guarda store + contactos poco después de cada cambio, sin botón
   useEffectAd(() => {
     savePropInfoAll(store);
@@ -1163,6 +1179,44 @@ function PropertyInfoScreen({ t, roster, onToast }) {
     try { Backend.call && Backend.call("savePropertyInfo", { property: oldName, info: {} }).catch(() => {}); } catch (e) {}
     onToast(es ? `Descartada: ${oldName}` : `Discarded: ${oldName}`);
   };
+  // MIGRAR nombres a la ortografía exacta de Hospitable: si un registro guardado
+  // (info o contacto) coincide en forma normalizada con un nombre del roster pero
+  // difiere en espacios/guiones/mayúsculas, se mueve al nombre exacto de Hospitable.
+  useEffectAd(() => {
+    if (!liveNames.length) return;
+    const liveByKey = {}; liveNames.forEach((n) => { liveByKey[nkName(n)] = n; });
+    // info store
+    setStore((s) => {
+      let ch = false; const n = { ...s };
+      Object.keys(s).forEach((old) => {
+        if (old === "__manual__") return;
+        const live = liveByKey[nkName(old)];
+        if (live && live !== old) {
+          const merged = { ...(n[live] || {}) };
+          Object.keys(s[old] || {}).forEach((k) => { const v = s[old][k]; if (v != null && !(typeof v === "string" && v.trim() === "") && !(Array.isArray(v) && v.length === 0)) merged[k] = v; });
+          n[live] = merged; delete n[old]; ch = true;
+          try { Backend.call && Backend.call("savePropertyInfo", { property: live, info: merged }).catch(() => {}); } catch (e) {}
+          try { Backend.call && Backend.call("savePropertyInfo", { property: old, info: {} }).catch(() => {}); } catch (e) {}
+        }
+      });
+      if (ch) savePropInfoAll(n);
+      return ch ? n : s;
+    });
+    // contactos (stations)
+    setStations((s) => {
+      let ch = false; const n = { ...s };
+      Object.keys(s).forEach((old) => {
+        const live = liveByKey[nkName(old)];
+        if (live && live !== old) {
+          const merged = { ...(n[live] || {}), ...Object.fromEntries(Object.entries(s[old] || {}).filter(([, v]) => v != null && v !== "")) };
+          n[live] = merged; delete n[old]; ch = true;
+          try { Backend.saveStation && Backend.saveStation({ propertyId: merged.propertyId || "", propertyName: live, email1: merged.email1 || "", email2: merged.email2 || "", phone1: merged.phone1 || "", phone2: merged.phone2 || "" }); } catch (e) {}
+        }
+      });
+      return ch ? n : s;
+    });
+  }, [liveNames.join("|")]);
+
   // estampar hospId durable en cada info que tenga estación con id (previene futuros huérfanos)
   useEffectAd(() => {
     const ids = {}; Object.keys(stations).forEach((n) => { if (stations[n].propertyId) ids[n] = stations[n].propertyId; });

@@ -1300,6 +1300,43 @@ function PropertyInfoScreen({ t, roster, onToast }) {
     if (changed) { setStore(next); savePropInfoAll(next); onToast(es ? "Estándar precargado aplicado" : "Preloaded standard applied"); }
   }, [props.join("|")]);
 
+  // MERGE dirigido (window.SPACIO_MERGE_MAP): fusiona nombres distintos que NO
+  // coinciden por normalización (ej. "…- 11102" → "…- 1102"). Corre una vez por
+  // sig y escribe al backend, así aplica en todos los dispositivos.
+  useEffectAd(() => {
+    const map = window.SPACIO_MERGE_MAP; if (!map || !map.length) return;
+    const nkm = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+    const findKey = (obj, name) => { const k = nkm(name); return Object.keys(obj).find((n) => nkm(n) === k); };
+    map.forEach((m) => {
+      const flag = "spacioam_merge_" + nkm(m.from) + "_" + nkm(m.to) + "_" + (m.sig || "v1");
+      try { if (localStorage.getItem(flag)) return; } catch (e) {}
+      // info store
+      setStore((s) => {
+        const fromK = findKey(s, m.from); if (!fromK) return s;
+        const toName = findKey(s, m.to) || m.to;
+        const merged = { ...(s[toName] || {}) };
+        Object.keys(s[fromK] || {}).forEach((k) => { const v = s[fromK][k]; const cur = merged[k]; const curEmpty = cur == null || (typeof cur === "string" && cur.trim() === "") || (Array.isArray(cur) && cur.length === 0); if (curEmpty && v != null && !(typeof v === "string" && v.trim() === "") && !(Array.isArray(v) && v.length === 0)) merged[k] = v; });
+        const n = { ...s }; n[toName] = merged; delete n[fromK];
+        savePropInfoAll(n);
+        try { Backend.call && Backend.call("savePropertyInfo", { property: toName, info: merged }).catch(() => {}); } catch (e) {}
+        try { Backend.call && Backend.call("savePropertyInfo", { property: fromK, info: {} }).catch(() => {}); } catch (e) {}
+        return n;
+      });
+      // contactos
+      setStations((s) => {
+        const fromK = findKey(s, m.from); if (!fromK) return s;
+        const toName = findKey(s, m.to) || m.to;
+        const merged = { ...(s[toName] || {}) };
+        Object.entries(s[fromK] || {}).forEach(([k, v]) => { if ((merged[k] == null || merged[k] === "") && v) merged[k] = v; });
+        const n = { ...s }; n[toName] = merged; delete n[fromK];
+        try { Backend.saveStation && Backend.saveStation({ propertyId: merged.propertyId || "", propertyName: toName, email1: merged.email1 || "", email2: merged.email2 || "", phone1: merged.phone1 || "", phone2: merged.phone2 || "" }); } catch (e) {}
+        return n;
+      });
+      try { localStorage.setItem(flag, String(Date.now())); } catch (e) {}
+      onToast(es ? `Fusionado: ${m.from} → ${m.to}` : `Merged: ${m.from} → ${m.to}`);
+    });
+  }, [props.join("|"), Object.keys(store).join("|")]);
+
   // Exportar la información guardada de todas las propiedades (para estandarizar fuera del web app)
   const exportPropInfo = () => {
     const out = {};

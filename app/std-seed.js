@@ -1,6 +1,9 @@
 /* Estándar de instrucciones precargado — estandarización editorial por Claude (cero tokens del web app).
    Voz Spacio AM, bilingüe es/en, sin código de ingreso (se envía por la plataforma).
    Generado desde la info guardada de cada propiedad. sig="v1" — sube el sig para forzar re-aplicación. */
+window.SPACIO_MERGE_MAP = [
+  { from: "Z10 - Ignacio - 11102", to: "Z10 - Ignacio - 1102", sig: "v1" }
+];
 window.SPACIO_STD_SEED = [
  {
   "match": [

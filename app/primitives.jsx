@@ -545,6 +545,8 @@ const Icon = ({ name, size = 22, color = C.negro, strokeWidth = 1.4 }) => {
     key: <><circle cx="8" cy="14" r="4" /><path d="M11 11l9-9M17 4l3 3M14 7l3 3" /></>,
     plus: <path d="M12 5v14M5 12h14" />,
     trash: <><path d="M4 7h16M10 7V4h4v3M6 7l1 13h10l1-13M10 11v6M14 11v6" /></>,
+    eye: <><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" /></>,
+    eyeOff: <><path d="M3 3l18 18M10.6 10.6a3 3 0 004.2 4.2M9.9 5.1A9.6 9.6 0 0112 5c6.5 0 10 7 10 7a17 17 0 01-3.3 4M6.6 6.6A17 17 0 002 12s3.5 7 10 7a9.6 9.6 0 003.6-.7" /></>,
     x: <path d="M6 6l12 12M18 6L6 18" />,
   };
   return <svg viewBox="0 0 24 24" style={s} aria-hidden="true">{p[name]}</svg>;

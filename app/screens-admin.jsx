@@ -1061,7 +1061,7 @@ function PropertyInfoScreen({ t, roster, onToast }) {
   const props = useMemoAd(() => {
     const byKey = new Map(); // nk -> nombre a mostrar (prefiere el de Hospitable)
     const add = (nm, isLive) => {
-      if (!nm || nm === "__manual__") return;
+      if (!nm || nm === "__manual__" || nm === "__hidden__") return;
       const k = nkName(nm); const cur = byKey.get(k);
       if (!cur || (isLive && !cur.live)) byKey.set(k, { name: isLive ? nm : canonName(nm), live: isLive || (cur && cur.live) });
     };
@@ -1169,7 +1169,7 @@ function PropertyInfoScreen({ t, roster, onToast }) {
   const idOfName = (name) => (stations[name] || {}).propertyId || (get(name).hospId) || "";
   const bigrams = (s) => { const g = {}; for (let i = 0; i < s.length - 1; i++) { const b = s.slice(i, i + 2); g[b] = (g[b] || 0) + 1; } return g; };
   const simScore = (a, b) => { if (!a || !b) return 0; if (a === b) return 1; const ga = bigrams(a), gb = bigrams(b); let inter = 0, na = 0, nb = 0; for (const k in ga) na += ga[k]; for (const k in gb) nb += gb[k]; for (const k in ga) if (gb[k]) inter += Math.min(ga[k], gb[k]); return (2 * inter) / (na + nb || 1); };
-  const orphans = useMemoAd(() => { const cur = new Set(props); return Object.keys(store).filter((k) => k !== "__manual__" && !cur.has(k) && recHasData(store[k])); }, [store, props]);
+  const orphans = useMemoAd(() => { const cur = new Set(props); return Object.keys(store).filter((k) => k !== "__manual__" && k !== "__hidden__" && !cur.has(k) && recHasData(store[k])); }, [store, props]);
   const bestTargetFor = (oldName) => {
     const oid = (store[oldName] || {}).hospId || "";
     if (oid) { const byIdEmpty = props.find((p) => idOfName(p) === oid && !recHasData(store[p])); const byId = byIdEmpty || props.find((p) => idOfName(p) === oid); if (byId) return { name: byId, conf: "id" }; }
@@ -1407,6 +1407,37 @@ function PropertyInfoScreen({ t, roster, onToast }) {
     onToast(`${t.piSaved} · ${name}`);
   };
 
+  // ---- Ocultar / eliminar propiedades ----
+  const [showHidden, setShowHidden] = useStateAd(false);
+  const hiddenList = (store.__hidden__ && store.__hidden__.names) || [];
+  const isHidden = (name) => hiddenList.some((h) => nkName(h) === nkName(name));
+  const inRoster = (name) => (roster || []).some((r) => nkName(r.propertyName) === nkName(name));
+  const persistHidden = (names) => {
+    const rec = { names };
+    setStore((s) => ({ ...s, __hidden__: rec }));
+    const all = { ...loadPropInfo(), __hidden__: rec }; savePropInfoAll(all);
+    try { Backend.call && Backend.call("savePropertyInfo", { property: "__hidden__", info: rec }).catch(() => {}); } catch (e) {}
+  };
+  const toggleHidden = (name) => {
+    const on = isHidden(name);
+    persistHidden(on ? hiddenList.filter((h) => nkName(h) !== nkName(name)) : [...hiddenList, canonName(name)]);
+    if (openKey === name) setOpenKey(null);
+    onToast(on ? (es ? `Se muestra: ${name}` : `Shown: ${name}`) : (es ? `Oculta: ${name}` : `Hidden: ${name}`));
+  };
+  // eliminar: solo para propiedades que ya NO existen en Hospitable (huérfanas);
+  // las que siguen en el roster reaparecerían, así que esas solo se ocultan.
+  const deleteProp = (name) => {
+    if (!window.confirm(es ? `¿Eliminar \u00ab${name}\u00bb y toda su información guardada? Esta acción no se puede deshacer.` : `Delete \u201c${name}\u201d and all its saved info? This cannot be undone.`)) return;
+    setStore((s) => { const n = { ...s }; const k = Object.keys(n).find((x) => nkName(x) === nkName(name)); if (k) delete n[k]; if (n.__hidden__) n.__hidden__ = { names: (n.__hidden__.names || []).filter((h) => nkName(h) !== nkName(name)) }; savePropInfoAll(n); return n; });
+    setStations((s) => { const n = { ...s }; const k = Object.keys(n).find((x) => nkName(x) === nkName(name)); if (k) delete n[k]; return n; });
+    const k = Object.keys(store).find((x) => nkName(x) === nkName(name)) || name;
+    try { Backend.call && Backend.call("savePropertyInfo", { property: k, info: {} }).catch(() => {}); } catch (e) {}
+    if (openKey === name) setOpenKey(null);
+    onToast(es ? `Eliminada: ${name}` : `Deleted: ${name}`);
+  };
+  const visibleProps = props.filter((n) => showHidden || !isHidden(n));
+  const hiddenCount = props.filter((n) => isHidden(n)).length;
+
   const seg = (name, field, options) => (
     <div style={{ display: "inline-flex", gap: 4, background: C.beige, border: `1px solid ${C.grisCalido}`, borderRadius: 10, padding: 3, flexWrap: "wrap" }}>
       {options.map(([val, label]) => {
@@ -1566,22 +1597,34 @@ function PropertyInfoScreen({ t, roster, onToast }) {
         <div style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 16, padding: "38px 20px", textAlign: "center", fontFamily: C.sans, fontSize: 13, color: C.tierra }}>{t.stEmpty}</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {props.map((name) => {
+          {hiddenCount > 0 && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "2px 4px 6px" }}>
+              <span style={{ fontFamily: C.sans, fontSize: 11, color: C.tierra, letterSpacing: "0.02em" }}>{hiddenCount} {es ? (hiddenCount === 1 ? "propiedad oculta" : "propiedades ocultas") : (hiddenCount === 1 ? "hidden property" : "hidden properties")}</span>
+              <button onClick={() => setShowHidden((v) => !v)} className="sp-btn" style={{ background: "transparent", color: C.negro, border: `1px solid ${C.grisCalido}`, borderRadius: 999, padding: "6px 13px", fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.04em", cursor: "pointer", fontWeight: 500 }}>{showHidden ? (es ? "Ocultar" : "Hide") : (es ? "Mostrar ocultas" : "Show hidden")}</button>
+            </div>
+          )}
+          {visibleProps.map((name) => {
             const info = get(name);
             const open = openKey === name;
             const miss = missingFields(name);
+            const hid = isHidden(name);
             return (
-              <div key={name} style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 16, overflow: "hidden" }}>
-                <button onClick={() => setOpenKey(open ? null : name)} className="sp-btn" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%",
-                  background: "transparent", border: "none", cursor: "pointer", padding: "16px 18px", textAlign: "left" }}>
-                  <span style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
-                    <span title={miss.length ? (es ? "Campos pendientes" : "Pending fields") : (es ? "Completo" : "Complete")} style={{ flexShrink: 0, width: 10, height: 10, borderRadius: "50%",
-                      background: miss.length ? C.peach : "#1F8A5B", boxShadow: `0 0 0 3px ${miss.length ? "rgba(233,130,106,.16)" : "rgba(31,138,91,.16)"}` }} />
-                    <span style={{ fontFamily: C.serif, fontSize: 19, color: C.negro, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName(name)}</span>
-                    {miss.length > 0 && <span style={{ flexShrink: 0, fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.08em", textTransform: "uppercase", color: C.peach, fontWeight: 600 }}>· {miss.length} {es ? "pendientes" : "pending"}</span>}
-                  </span>
-                  <Icon name={open ? "chevronUp" : "chevronDown"} size={18} color={C.tierra} />
-                </button>
+              <div key={name} style={{ background: C.white, border: `1px solid ${hid ? C.grisCalido : C.grisCalido}`, borderRadius: 16, overflow: "hidden", opacity: hid ? 0.62 : 1 }}>
+                <div style={{ display: "flex", alignItems: "center", padding: "16px 12px 16px 18px", gap: 8 }}>
+                  <button onClick={() => setOpenKey(open ? null : name)} className="sp-btn" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flex: 1, minWidth: 0,
+                    background: "transparent", border: "none", cursor: "pointer", padding: 0, textAlign: "left" }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
+                      <span title={miss.length ? (es ? "Campos pendientes" : "Pending fields") : (es ? "Completo" : "Complete")} style={{ flexShrink: 0, width: 10, height: 10, borderRadius: "50%",
+                        background: miss.length ? C.peach : "#1F8A5B", boxShadow: `0 0 0 3px ${miss.length ? "rgba(233,130,106,.16)" : "rgba(31,138,91,.16)"}` }} />
+                      <span style={{ fontFamily: C.serif, fontSize: 19, color: C.negro, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName(name)}</span>
+                      {hid && <span style={{ flexShrink: 0, fontFamily: C.sans, fontSize: 8.5, letterSpacing: "0.12em", textTransform: "uppercase", color: C.tierra, fontWeight: 700, border: `1px solid ${C.grisCalido}`, borderRadius: 999, padding: "2px 9px" }}>{es ? "Oculta" : "Hidden"}</span>}
+                      {miss.length > 0 && !hid && <span style={{ flexShrink: 0, fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.08em", textTransform: "uppercase", color: C.peach, fontWeight: 600 }}>· {miss.length} {es ? "pendientes" : "pending"}</span>}
+                    </span>
+                    <Icon name={open ? "chevronUp" : "chevronDown"} size={18} color={C.tierra} />
+                  </button>
+                  <button onClick={() => toggleHidden(name)} className="sp-btn" title={hid ? (es ? "Mostrar" : "Show") : (es ? "Ocultar" : "Hide")} style={{ flexShrink: 0, background: "transparent", border: `1px solid ${C.grisCalido}`, borderRadius: 9, padding: "6px 7px", cursor: "pointer", display: "grid", placeItems: "center" }}><Icon name={hid ? "eye" : "eyeOff"} size={15} color={C.tierra} /></button>
+                  {!inRoster(name) && <button onClick={() => deleteProp(name)} className="sp-btn" title={es ? "Eliminar" : "Delete"} style={{ flexShrink: 0, background: "transparent", border: `1px solid ${C.grisCalido}`, borderRadius: 9, padding: "6px 7px", cursor: "pointer", display: "grid", placeItems: "center" }}><Icon name="trash" size={15} color={C.tierra} /></button>}
+                </div>
                 {open && (
                   <div style={{ padding: "0 18px 20px" }}>
                     {miss.length > 0 && (

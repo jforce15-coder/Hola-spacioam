@@ -545,7 +545,6 @@ function CheckinContent({ t, res }) {
             <div style={{ fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.16em", textTransform: "uppercase", color: C.tierra, fontWeight: 600, margin: "18px 0 8px" }}>{t.ckArrival}</div>
             <p style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, lineHeight: 1.65, margin: 0, letterSpacing: "0.01em", whiteSpace: "pre-line" }}>{arrival}</p>
           </>}
-          {!(stdc && stdc.tip) && tip && <p style={{ fontFamily: C.sans, fontSize: 11.5, color: C.tierra, lineHeight: 1.6, margin: "12px 0 0", letterSpacing: "0.01em", fontStyle: "italic" }}>{tip}</p>}
           {contactName && <p style={{ fontFamily: C.sans, fontSize: 12, color: C.negro, margin: "12px 0 0", letterSpacing: "0.01em" }}>{t.ckContactName}: <b>{contactName}</b>{contactPhone ? ` · ${contactPhone}` : ""}</p>}
           {/^(smart|keybox|locker|box)/.test(lock || "") && (
             <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginTop: 16, background: C.beige, borderRadius: 12, padding: "13px 15px" }}>
@@ -560,10 +559,28 @@ function CheckinContent({ t, res }) {
         </p>
       )}
 
-      {/* Check-out — estandarizado; el admin puede personalizarlo por propiedad */}
-      <div style={{ marginTop: 20, background: C.beige, borderRadius: 14, padding: "16px 18px" }}>
-        <div style={{ fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.16em", textTransform: "uppercase", color: C.tierra, fontWeight: 600, marginBottom: 8 }}>{t.ckCheckoutTitle}</div>
-        <p style={{ fontFamily: C.sans, fontSize: 12.5, color: C.negro, lineHeight: 1.7, margin: 0, letterSpacing: "0.01em", whiteSpace: "pre-line" }}>{(pi.checkoutMsg != null && pi.checkoutMsg !== "") ? pi.checkoutMsg : t.ckCheckoutDefault}</p>
+      {/* ---------- CHECK-OUT (pasos estándar + nota específica por propiedad) ---------- */}
+      <div style={{ marginTop: 26, borderTop: `1px solid ${C.grisCalido}`, paddingTop: 22 }}>
+        <div style={{ fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.16em", textTransform: "uppercase", color: C.tierra, fontWeight: 600, marginBottom: 12 }}>{t.ckCheckoutTitle}</div>
+        <ol style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 12 }}>
+          {(t.ckCheckoutSteps || []).map((s, i) => (
+            <li key={i} style={{ display: "flex", gap: 12 }}>
+              <span style={{ flexShrink: 0, width: 24, height: 24, borderRadius: "50%", background: C.peach, color: C.white, fontFamily: C.sans, fontSize: 12, fontWeight: 600, display: "grid", placeItems: "center" }}>{i + 1}</span>
+              <span style={{ fontFamily: C.sans, fontSize: 13, color: C.negro, lineHeight: 1.55, letterSpacing: "0.01em", paddingTop: 2 }}>{s}</span>
+            </li>
+          ))}
+        </ol>
+        {(() => {
+          const drop = ((stdc && stdc.tip) || tip || "").trim();
+          const hasFee = /\$|costo|cargo|reposici|reemplazo|fee|charge/i.test(drop);
+          const note = drop ? (hasFee ? drop : `${drop} ${t.ckCheckoutFee}`) : t.ckCheckoutFee;
+          return (
+            <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginTop: 16, background: C.beige, borderRadius: 12, padding: "13px 15px" }}>
+              <span style={{ flexShrink: 0, marginTop: 1 }}><Icon name="lock" size={15} color={C.peach} /></span>
+              <p style={{ fontFamily: C.sans, fontSize: 11.5, color: C.negro, lineHeight: 1.6, margin: 0, letterSpacing: "0.01em" }}>{note}</p>
+            </div>
+          );
+        })()}
       </div>
 
       {/* subtle early/late — intentionally low-key, honest about availability */}

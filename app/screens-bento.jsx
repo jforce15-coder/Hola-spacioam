@@ -465,6 +465,7 @@ function CheckinContent({ t, res }) {
   const floor = (pi.floor != null && pi.floor !== "") ? pi.floor : (b && typeof floorFromUnit === "function" ? floorFromUnit(unit, b.key) : null);
   const contactName = (pi.contactName != null && pi.contactName !== "") ? pi.contactName : (b && b.contactName);
   const contactPhone = (pi.contactPhone != null && pi.contactPhone !== "") ? pi.contactPhone : (b && b.contactPhone);
+  const lock = (pi.lock != null && pi.lock !== "") ? pi.lock : (b && b.lock);
   const [flexOpen, setFlexOpen] = useStateB(false);
   const [flexMode, setFlexMode] = useStateB("");   // "" | "early" | "late"
   const [sentMsg, setSentMsg] = useStateB("");
@@ -546,7 +547,7 @@ function CheckinContent({ t, res }) {
           </>}
           {tip && <p style={{ fontFamily: C.sans, fontSize: 11.5, color: C.tierra, lineHeight: 1.6, margin: "12px 0 0", letterSpacing: "0.01em", fontStyle: "italic" }}>{tip}</p>}
           {contactName && <p style={{ fontFamily: C.sans, fontSize: 12, color: C.negro, margin: "12px 0 0", letterSpacing: "0.01em" }}>{t.ckContactName}: <b>{contactName}</b>{contactPhone ? ` · ${contactPhone}` : ""}</p>}
-          {/^(smart|keybox|locker|box)/.test(b.lock || "") && (
+          {/^(smart|keybox|locker|box)/.test(lock || "") && (
             <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginTop: 16, background: C.beige, borderRadius: 12, padding: "13px 15px" }}>
               <span style={{ flexShrink: 0, marginTop: 1 }}><Icon name="lock" size={15} color={C.peach} /></span>
               <p style={{ fontFamily: C.sans, fontSize: 11.5, color: C.negro, lineHeight: 1.6, margin: 0, letterSpacing: "0.01em" }}>{t.ckCodeNote}</p>

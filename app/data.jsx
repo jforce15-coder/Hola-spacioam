@@ -321,7 +321,7 @@ const T = {
       general:     "General",
     },
 
-    ckInstructions: "Instrucciones de llegada", ckAddress: "Dirección", ckFloor: "Piso", ckUnit: "Unidad", ckHowToArrive: "Cómo llegar", ckMaps: "Google Maps", ckWaze: "Waze", ckArrival: "Al llegar", ckContactName: "Te recibe",
+    ckInstructions: "Instrucciones de llegada", ckAddress: "Dirección", ckFloor: "Piso", ckUnit: "Unidad", ckHowToArrive: "Cómo llegar", ckMaps: "Google Maps", ckWaze: "Waze", ckArrival: "Al llegar", ckContactName: "Te recibe", ckCodeNote: "El acceso es con código digital. Te compartimos el código por WhatsApp el día de tu llegada.",
     ckEarlyLate: "¿Necesitas ajustar tus horarios?", ckEarly: "Solicitar early check-in", ckLate: "Solicitar late check-out", ckFlexNote: "Estas opciones no garantizan el ingreso o salida anticipada; las coordinamos según disponibilidad.",
     ckEarlyIntro: "Nuestro check-in estándar es a las 3:00 p.m. No podemos garantizar el ingreso anticipado, pero tenemos estas opciones para ti:",
     ckLateIntro: "Nuestra salida estándar es a las 11:00 a.m. No podemos garantizar la salida tardía, pero tenemos estas opciones:",
@@ -583,7 +583,7 @@ const T = {
       general:     "General",
     },
 
-    ckInstructions: "Arrival instructions", ckAddress: "Address", ckFloor: "Floor", ckUnit: "Unit", ckHowToArrive: "How to get there", ckMaps: "Google Maps", ckWaze: "Waze", ckArrival: "On arrival", ckContactName: "Welcomed by",
+    ckInstructions: "Arrival instructions", ckAddress: "Address", ckFloor: "Floor", ckUnit: "Unit", ckHowToArrive: "How to get there", ckMaps: "Google Maps", ckWaze: "Waze", ckArrival: "On arrival", ckContactName: "Welcomed by", ckCodeNote: "Access is via a digital code. We'll share it on WhatsApp the day you arrive.",
     ckEarlyLate: "Need to adjust your times?", ckEarly: "Request early check-in", ckLate: "Request late check-out", ckFlexNote: "These options don't guarantee early entry or late departure; we coordinate them based on availability.",
     ckEarlyIntro: "Our standard check-in is 3:00 p.m. We can't guarantee early entry, but here are your options:",
     ckLateIntro: "Our standard checkout is 11:00 a.m. We can't guarantee a late departure, but here are your options:",

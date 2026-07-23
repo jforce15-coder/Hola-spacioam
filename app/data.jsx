@@ -256,7 +256,7 @@ const T = {
     piType: "Tipo de propiedad", piTypeApt: "Apartamento en edificio", piTypeCondo: "Casa en condominio", piTypeOff: "Propiedad fuera de condominio",
     piContact: "Contacto (recepción)", piContactNote: "A estos correos se envía el formulario completado de esta propiedad.",
     piInstructions: "Instrucciones generales", piInstructionsNote: "Aplican a todo el edificio, condominio o región. Editar aquí actualiza lo que ve el huésped en su check-in.",
-    piCheckinNote: "Nota adicional (ej. dejar llaves y tarjeta en el buzón)",
+    piCheckinNote: "Nota adicional (ej. dejar llaves y tarjeta en el buzón)", piCheckoutNote: "Mensaje de check-out que ve el huésped. Si lo dejas vacío se usa el estándar de Spacio AM.",
     piPhotoUrl: "Foto del alojamiento (URL)",
     piPhotoNote: "Pega el enlace del anuncio (Airbnb, Booking) o una URL de imagen directa. Usamos la imagen en alta resolución.",
     piSave: "Guardar", piSaved: "Guardado",
@@ -321,7 +321,7 @@ const T = {
       general:     "General",
     },
 
-    ckInstructions: "Instrucciones de llegada", ckAddress: "Dirección", ckFloor: "Piso", ckUnit: "Unidad", ckHowToArrive: "Cómo llegar", ckMaps: "Google Maps", ckWaze: "Waze", ckArrival: "Al llegar", ckContactName: "Te recibe", ckCodeNote: "El acceso es con código digital. Te compartimos el código por WhatsApp el día de tu llegada.",
+    ckInstructions: "Instrucciones de llegada", ckAddress: "Dirección", ckFloor: "Piso", ckUnit: "Unidad", ckHowToArrive: "Cómo llegar", ckMaps: "Google Maps", ckWaze: "Waze", ckArrival: "Al llegar", ckContactName: "Te recibe", ckCodeNote: "El acceso es con código digital. Encontrarás tu código en la misma plataforma donde hiciste la reserva (Airbnb, Booking, etc.).", ckCheckoutTitle: "Tu check-out", ckCheckoutDefault: "Esperamos que hayas disfrutado de tu estadía con nosotros y que hayas encontrado tiempo para reconectar contigo mismo.\n\nQueríamos compartir contigo las instrucciones para tu check-out:\n\n✦ Lo único que tienes que hacer es avisarnos en el momento de tu salida y dejar la tarjeta o llave en el mismo lugar donde las encontraste al ingresar.\n\n✦ El personal de limpieza llega a las 11 a.m. para preparar todo para los próximos huéspedes.\n\nFue un placer hospedarte y esperamos volver a verte pronto.\n\nSpacio AM ✦",
     ckEarlyLate: "¿Necesitas ajustar tus horarios?", ckEarly: "Solicitar early check-in", ckLate: "Solicitar late check-out", ckFlexNote: "Estas opciones no garantizan el ingreso o salida anticipada; las coordinamos según disponibilidad.",
     ckEarlyIntro: "Nuestro check-in estándar es a las 3:00 p.m. No podemos garantizar el ingreso anticipado, pero tenemos estas opciones para ti:",
     ckLateIntro: "Nuestra salida estándar es a las 11:00 a.m. No podemos garantizar la salida tardía, pero tenemos estas opciones:",
@@ -583,7 +583,7 @@ const T = {
       general:     "General",
     },
 
-    ckInstructions: "Arrival instructions", ckAddress: "Address", ckFloor: "Floor", ckUnit: "Unit", ckHowToArrive: "How to get there", ckMaps: "Google Maps", ckWaze: "Waze", ckArrival: "On arrival", ckContactName: "Welcomed by", ckCodeNote: "Access is via a digital code. We'll share it on WhatsApp the day you arrive.",
+    ckInstructions: "Arrival instructions", ckAddress: "Address", ckFloor: "Floor", ckUnit: "Unit", ckHowToArrive: "How to get there", ckMaps: "Google Maps", ckWaze: "Waze", ckArrival: "On arrival", ckContactName: "Welcomed by", ckCodeNote: "Access is via a digital code. You'll find it on the same platform where you booked (Airbnb, Booking, etc.).", ckCheckoutTitle: "Your check-out", ckCheckoutDefault: "We hope you enjoyed your stay with us and found time to reconnect with yourself.\n\nWe'd like to share your check-out instructions:\n\n✦ All you have to do is let us know when you're leaving and leave the card or key in the same place where you found them on arrival.\n\n✦ Our housekeeping team arrives at 11 a.m. to get everything ready for the next guests.\n\nIt was a pleasure hosting you, and we hope to see you again soon.\n\nSpacio AM ✦",
     ckEarlyLate: "Need to adjust your times?", ckEarly: "Request early check-in", ckLate: "Request late check-out", ckFlexNote: "These options don't guarantee early entry or late departure; we coordinate them based on availability.",
     ckEarlyIntro: "Our standard check-in is 3:00 p.m. We can't guarantee early entry, but here are your options:",
     ckLateIntro: "Our standard checkout is 11:00 a.m. We can't guarantee a late departure, but here are your options:",

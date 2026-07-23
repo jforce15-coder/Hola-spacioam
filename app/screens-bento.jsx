@@ -545,7 +545,7 @@ function CheckinContent({ t, res }) {
             <div style={{ fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.16em", textTransform: "uppercase", color: C.tierra, fontWeight: 600, margin: "18px 0 8px" }}>{t.ckArrival}</div>
             <p style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, lineHeight: 1.65, margin: 0, letterSpacing: "0.01em", whiteSpace: "pre-line" }}>{arrival}</p>
           </>}
-          {tip && <p style={{ fontFamily: C.sans, fontSize: 11.5, color: C.tierra, lineHeight: 1.6, margin: "12px 0 0", letterSpacing: "0.01em", fontStyle: "italic" }}>{tip}</p>}
+          {!(stdc && stdc.tip) && tip && <p style={{ fontFamily: C.sans, fontSize: 11.5, color: C.tierra, lineHeight: 1.6, margin: "12px 0 0", letterSpacing: "0.01em", fontStyle: "italic" }}>{tip}</p>}
           {contactName && <p style={{ fontFamily: C.sans, fontSize: 12, color: C.negro, margin: "12px 0 0", letterSpacing: "0.01em" }}>{t.ckContactName}: <b>{contactName}</b>{contactPhone ? ` · ${contactPhone}` : ""}</p>}
           {/^(smart|keybox|locker|box)/.test(lock || "") && (
             <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginTop: 16, background: C.beige, borderRadius: 12, padding: "13px 15px" }}>
@@ -556,9 +556,15 @@ function CheckinContent({ t, res }) {
         </div>
       ) : (
         <p style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, lineHeight: 1.65, margin: "16px 0 0", letterSpacing: "0.02em" }}>
-          {es ? "El acceso es con código digital. Te lo enviamos por WhatsApp el día de tu llegada." : "Access is via digital code. We'll send it on WhatsApp the day you arrive."}
+          {es ? "El acceso es con código digital. Encontrarás tu código en la misma plataforma donde hiciste la reserva (Airbnb, Booking, etc.)." : "Access is via a digital code. You'll find it on the same platform where you booked (Airbnb, Booking, etc.)."}
         </p>
       )}
+
+      {/* Check-out — estandarizado; el admin puede personalizarlo por propiedad */}
+      <div style={{ marginTop: 20, background: C.beige, borderRadius: 14, padding: "16px 18px" }}>
+        <div style={{ fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.16em", textTransform: "uppercase", color: C.tierra, fontWeight: 600, marginBottom: 8 }}>{t.ckCheckoutTitle}</div>
+        <p style={{ fontFamily: C.sans, fontSize: 12.5, color: C.negro, lineHeight: 1.7, margin: 0, letterSpacing: "0.01em", whiteSpace: "pre-line" }}>{(pi.checkoutMsg != null && pi.checkoutMsg !== "") ? pi.checkoutMsg : t.ckCheckoutDefault}</p>
+      </div>
 
       {/* subtle early/late — intentionally low-key, honest about availability */}
       <div style={{ marginTop: 22, borderTop: `1px solid ${C.beige}`, paddingTop: 14 }}>

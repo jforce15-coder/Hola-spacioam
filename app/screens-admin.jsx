@@ -1011,7 +1011,7 @@ function PropertyInfoScreen({ t, roster, onToast }) {
   const get = (name) => store[name] || {};
   const set = (name, patch) => { autosave.current.keys.add(name); setStore((s) => ({ ...s, [name]: { ...(s[name] || {}), ...patch } })); };
   // instrucciones generales compartidas: editar una propiedad propaga a todo su grupo
-  const INSTR_FIELDS = ["address", "arrival", "tip", "maps", "waze"];
+  const INSTR_FIELDS = ["address", "arrival", "tip", "maps", "waze", "checkoutMsg"];
   const instrGroup = (name) => { const a = (get(name).instrApply || []).filter((x) => x !== name); return [...new Set([name, ...a])]; };
   const setInstr = (name, patch) => {
     const group = instrGroup(name);
@@ -1733,6 +1733,9 @@ function PropertyInfoScreen({ t, roster, onToast }) {
                     <textarea value={info.tip != null ? info.tip : (buildingOf(name)?.tip || "")} onChange={(e) => setInstr(name, { tip: e.target.value })} placeholder={t.piCheckinNote} rows={2} style={{ ...fieldStyle, resize: "vertical" }} />
                     <input value={info.maps != null ? info.maps : (buildingOf(name)?.maps || "")} onChange={(e) => setInstr(name, { maps: e.target.value })} placeholder={t.ckMaps + " URL"} style={{ ...fieldStyle }} />
                     <input value={info.waze != null ? info.waze : (buildingOf(name)?.waze || "")} onChange={(e) => setInstr(name, { waze: e.target.value })} placeholder={t.ckWaze + " URL"} style={{ ...fieldStyle }} />
+                    {label(t.ckCheckoutTitle)}
+                    <p style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, margin: "-2px 0 10px", letterSpacing: "0.02em", lineHeight: 1.5 }}>{t.piCheckoutNote}</p>
+                    <textarea value={info.checkoutMsg != null ? info.checkoutMsg : ""} onChange={(e) => setInstr(name, { checkoutMsg: e.target.value })} placeholder={t.ckCheckoutDefault} rows={8} style={{ ...fieldStyle, resize: "vertical" }} />
                     {/* Aplica estas instrucciones a otras propiedades (compartidas y sincronizadas) */}
                     <div style={{ fontFamily: C.sans, fontSize: 9, letterSpacing: "0.16em", textTransform: "uppercase", color: C.tierra, fontWeight: 600, margin: "14px 0 4px" }}>{es ? "Aplica estas instrucciones a" : "Apply these instructions to"}</div>
                     <p style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, margin: "0 0 9px", letterSpacing: "0.02em", lineHeight: 1.5 }}>{es ? "Las propiedades marcadas comparten estas mismas instrucciones; al editar una se actualizan todas." : "Selected properties share these instructions; editing one updates them all."}</p>

@@ -496,7 +496,7 @@ function AdSelect({ label, value, onChange, options }) {
    ADMIN SCREEN — roster with dropdown filters + actions
    ============================================================ */
 function AdminScreen({ t, adminEmail, onBack, onSwitchLang }) {
-  const [mode, setMode] = useStateAd("next3");        // yesterday · today · tomorrow · next3 · last3 · range
+  const [mode, setMode] = useStateAd("today");        // yesterday · today · tomorrow · next3 · last3 · range
   const [status, setStatus] = useStateAd("both");     // both · pending · done
   const [property, setProperty] = useStateAd("all");
   const [from, setFrom] = useStateAd("");
@@ -507,6 +507,7 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang }) {
   const [roster, setRoster] = useStateAd(null);       // null = loading
   const [meta, setMeta] = useStateAd(null);
   const [tab, setTab] = useStateAd("registros");
+  const [focusProp, setFocusProp] = useStateAd("");
   const [connected, setConnected] = useStateAd(HospitableAPI.isConnected());
   const [refreshing, setRefreshing] = useStateAd(false);
 
@@ -626,6 +627,9 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang }) {
     <div style={{ minHeight: "100vh", background: C.alabaster, position: "relative", overflow: "hidden" }}>
       <div style={{ maxWidth: 1040, margin: "0 auto", padding: "clamp(22px,4vh,36px) clamp(16px,4vw,30px) 64px", position: "relative", zIndex: 2 }}>
 
+        {/* notificaciones: en flujo, arriba de todo — nunca tapan el encabezado */}
+        <AdminAlertsBar t={t} refreshing={refreshing} onGoTab={setTab} onRefresh={() => loadRoster({ full: true })} />
+
         {/* header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 20, flexWrap: "wrap" }}>
           <div style={{ minWidth: 0 }}>
@@ -669,8 +673,10 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang }) {
           </div>
         </div>
 
-        {/* alertas: pendientes que requieren atención, arriba de todo */}
-        <AdminAlertsBar t={t} refreshing={refreshing} onGoTab={setTab} onRefresh={() => loadRoster({ full: true })} />
+        {/* buscador global: reservas + propiedades, sin importar la pestaña */}
+        <AdminGlobalSearch t={t} roster={roster} recordFor={recordFor}
+          onOpenReservation={(h) => { setTab("registros"); setSummary({ h, rec: recordFor(h), autoPrint: false }); }}
+          onOpenProperty={(name) => { setTab("propiedades"); setFocusProp(name); }} />
 
         {/* tabs: Registros | Estaciones */}
         <div style={{ display: "inline-flex", gap: 4, background: C.beige, border: `1px solid ${C.grisCalido}`, borderRadius: 12, padding: 4, marginBottom: 16 }}>
@@ -686,7 +692,7 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang }) {
           ))}
         </div>
 
-        {tab === "propiedades" && <PropertyInfoScreen t={t} roster={roster} onToast={(m) => { setToast(m); setTimeout(() => setToast(""), 2600); }} />}
+        {tab === "propiedades" && <PropertyInfoScreen t={t} roster={roster} focusProp={focusProp} onToast={(m) => { setToast(m); setTimeout(() => setToast(""), 2600); }} />}
         {tab === "seguimiento" && <SeguimientoScreen t={t} roster={roster} />}
         {tab === "accesos" && isPrimaryAdmin(adminEmail) && <AdminAccessScreen t={t} onToast={(m) => { setToast(m); setTimeout(() => setToast(""), 2600); }} />}
 
@@ -1016,9 +1022,11 @@ function localStandardize(raw) {
   return { es: block, en: block };
 }
 
-function PropertyInfoScreen({ t, roster, onToast }) {
+function PropertyInfoScreen({ t, roster, focusProp, onToast }) {
   const [store, setStore] = useStateAd(loadPropInfo());
   const [openKey, setOpenKey] = useStateAd(null);
+  // el buscador global puede pedir abrir una propiedad concreta
+  useEffectAd(() => { if (focusProp) setOpenKey(focusProp); }, [focusProp]);
   const autosave = useRefAd({ keys: new Set(), stKeys: new Set(), t1: null, mounted: false });
   const get = (name) => store[name] || {};
   const set = (name, patch) => { autosave.current.keys.add(name); setStore((s) => ({ ...s, [name]: { ...(s[name] || {}), ...patch } })); };
@@ -1615,7 +1623,13 @@ function PropertyInfoScreen({ t, roster, onToast }) {
               <button onClick={() => setShowHidden((v) => !v)} className="sp-btn" style={{ background: "transparent", color: C.negro, border: `1px solid ${C.grisCalido}`, borderRadius: 999, padding: "6px 13px", fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.04em", cursor: "pointer", fontWeight: 500 }}>{showHidden ? (es ? "Ocultar" : "Hide") : (es ? "Mostrar ocultas" : "Show hidden")}</button>
             </div>
           )}
-          {visibleProps.map((name) => {
+          {renderPropertyTree(visibleProps, renderProp, es, openKey, (n) => missingFields(n).length)}
+        </div>
+      )}
+    </div>
+  );
+
+  function renderProp(name) {
             const info = get(name);
             const open = openKey === name;
             const miss = missingFields(name);
@@ -1785,10 +1799,94 @@ function PropertyInfoScreen({ t, roster, onToast }) {
                 )}
               </div>
             );
-          })}
-        </div>
-      )}
+  }
+}
+
+/* ============================================================
+   CARPETAS DE PROPIEDADES — Zona › Edificio › Propiedad
+   Los nombres vienen jerarquizados de Hospitable con "-" entre niveles
+   ("Z10 - Fiamene - 404"). Se agrupan en carpetas plegables; un nombre sin
+   guiones queda suelto al final. La carpeta se abre sola si contiene la
+   propiedad que está expandida.
+   ============================================================ */
+function splitPropName(name) {
+  const parts = String(name || "").split(/\s*[-–—]\s*/).map((p) => p.trim()).filter(Boolean);
+  if (parts.length >= 3) return { zone: parts[0], building: parts[1], leaf: parts.slice(2).join(" - ") };
+  if (parts.length === 2) return { zone: parts[0], building: parts[1], leaf: "" };
+  return { zone: "", building: "", leaf: name };
+}
+
+function PropFolder({ label, count, pending, tone, defaultOpen, children }) {
+  const [open, setOpen] = useStateAd(!!defaultOpen);
+  // si el buscador enfoca una propiedad de dentro, la carpeta se abre sola
+  useEffectAd(() => { if (defaultOpen) setOpen(true); }, [defaultOpen]);
+  const deep = tone === "building";
+  return (
+    <div style={{ background: deep ? C.white : C.beige, border: `1px solid ${C.grisCalido}`, borderRadius: deep ? 14 : 16, overflow: "hidden" }}>
+      <button onClick={() => setOpen((v) => !v)} className="sp-btn"
+        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", gap: 10,
+          background: "transparent", border: "none", cursor: "pointer", padding: deep ? "13px 14px" : "15px 16px", textAlign: "left" }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
+          <Icon name={open ? "folderOpen" : "folder"} size={deep ? 15 : 17} color={deep ? C.tierra : C.negro} />
+          <span style={{ fontFamily: deep ? C.sans : C.serif, fontSize: deep ? 13 : 18, letterSpacing: deep ? "0.05em" : "0",
+            color: C.negro, fontWeight: deep ? 600 : 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 9, flexShrink: 0 }}>
+          {pending > 0 ? (
+            <span title={`${pending} con campos pendientes`} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontFamily: C.sans, fontSize: 10.5,
+              color: C.peach, background: "rgba(233,130,106,.12)", border: "1px solid rgba(233,130,106,.34)", borderRadius: 999, padding: "3px 9px", fontWeight: 600 }}>
+              <span style={{ width: 6, height: 6, borderRadius: 999, background: C.peach }} />{pending}/{count}
+            </span>
+          ) : (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontFamily: C.sans, fontSize: 10.5, color: "#177A4F",
+              background: "rgba(31,138,91,.1)", border: "1px solid rgba(31,138,91,.32)", borderRadius: 999, padding: "3px 9px", fontWeight: 600 }}>
+              <span style={{ width: 6, height: 6, borderRadius: 999, background: "#1F8A5B" }} />{count}
+            </span>
+          )}
+          <span style={{ display: "grid", placeItems: "center", transform: open ? "rotate(180deg)" : "none", transition: "transform 180ms cubic-bezier(.22,.61,.36,1)" }}>
+            <Icon name="chevron" size={14} color={C.taupe} />
+          </span>
+        </span>
+      </button>
+      {open && <div style={{ padding: deep ? "0 12px 12px" : "0 12px 13px", display: "flex", flexDirection: "column", gap: 9 }}>{children}</div>}
     </div>
+  );
+}
+
+function renderPropertyTree(names, renderProp, es, openKey, missingCount) {
+  const pendingIn = (list) => list.filter((n) => (missingCount ? missingCount(n) : 0) > 0).length;
+  const zones = new Map();
+  const loose = [];
+  names.forEach((n) => {
+    const { zone, building } = splitPropName(n);
+    if (!zone) { loose.push(n); return; }
+    if (!zones.has(zone)) zones.set(zone, new Map());
+    const b = zones.get(zone);
+    const bk = building || (es ? "Sin edificio" : "No building");
+    if (!b.has(bk)) b.set(bk, []);
+    b.get(bk).push(n);
+  });
+  const openZone = openKey ? splitPropName(openKey).zone : "";
+  const openBuilding = openKey ? splitPropName(openKey).building : "";
+  const zoneKeys = [...zones.keys()].sort((a, b) => a.localeCompare(b, "es"));
+  return (
+    <>
+      {zoneKeys.map((z) => {
+        const buildings = zones.get(z);
+        const total = [...buildings.values()].reduce((n, l) => n + l.length, 0);
+        const bKeys = [...buildings.keys()].sort((a, b) => a.localeCompare(b, "es"));
+        return (
+          <PropFolder key={z} label={z} count={total} pending={pendingIn([...buildings.values()].flat())} defaultOpen={z === openZone}>
+            {bKeys.map((b) => (
+              <PropFolder key={b} label={b} count={buildings.get(b).length} pending={pendingIn(buildings.get(b))} tone="building" defaultOpen={z === openZone && b === openBuilding}>
+                {buildings.get(b).sort((x, y) => x.localeCompare(y, "es", { numeric: true })).map((n) => renderProp(n))}
+              </PropFolder>
+            ))}
+          </PropFolder>
+        );
+      })}
+      {loose.map((n) => renderProp(n))}
+    </>
   );
 }
 
@@ -1796,12 +1894,12 @@ function PropertyInfoScreen({ t, roster, onToast }) {
    SEGUIMIENTO — pendientes hoy, facturas, día adicional, early
    ============================================================ */
 /* botón admin: avisar al huésped que la factura está lista */
-function InvoiceNotifyButton({ t, iv }) {
+function InvoiceNotifyButton({ t, iv, onDone }) {
   const [state, setState] = useStateAd(""); // "" | sending | done | fail
   const notify = () => {
     setState("sending");
     Backend.call("notifyInvoiceReady", { code: iv.code, apartment: iv.apartment })
-      .then((r) => setState(r && r.ok ? "done" : "fail"))
+      .then((r) => { setState(r && r.ok ? "done" : "fail"); if (r && r.ok && onDone) setTimeout(onDone, 900); })
       .catch(() => setState("fail"));
   };
   if (state === "done") return <span style={{ fontFamily: C.sans, fontSize: 11, color: "#1F8A5B", letterSpacing: "0.02em", display: "inline-flex", alignItems: "center", gap: 6 }}><Icon name="check" size={14} color="#1F8A5B" /> {t.segInvoiceSent}</span>;
@@ -1815,11 +1913,151 @@ function InvoiceNotifyButton({ t, iv }) {
 }
 
 /* ============================================================
-   ALERTAS DEL PANEL — franja superior con lo que requiere atención
-   Cada alerta lleva a su sección; la de sincronización actualiza en el sitio.
+   BUSCADOR GLOBAL — reservas + propiedades desde cualquier pestaña
+   Con 54 propiedades es más rápido escribir "1402" o un nombre que navegar
+   carpetas. Resultados agrupados; al elegir, salta a la pestaña correcta.
    ============================================================ */
+function AdminGlobalSearch({ t, roster, recordFor, onOpenReservation, onOpenProperty }) {
+  const [q, setQ] = useStateAd("");
+  const [focused, setFocused] = useStateAd(false);
+  const es = t.code === "es";
+  const nq = String(q || "").trim().toLowerCase();
+  const results = useMemoAd(() => {
+    if (nq.length < 2) return { resv: [], props: [] };
+    const hit = (s) => String(s || "").toLowerCase().indexOf(nq) >= 0;
+    const resv = (roster || []).filter((h) =>
+      hit(h.code) || hit(h.guestFirstName) || hit(h.guestLastName) || hit(h.guestName) || hit(h.propertyName) || hit(h.apartment)
+    ).sort((a, b) => String(a.checkin || "").localeCompare(String(b.checkin || ""))).slice(0, 6);
+    const props = [...new Set((roster || []).map((r) => r.propertyName).filter(Boolean))]
+      .filter((p) => hit(p)).sort((a, b) => a.localeCompare(b, "es", { numeric: true })).slice(0, 6);
+    return { resv, props };
+  }, [nq, roster]);
+  const total = results.resv.length + results.props.length;
+  const open = focused && nq.length >= 2;
+  const rowStyle = { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, width: "100%",
+    background: "transparent", border: "none", borderTop: `1px solid ${C.beige}`, padding: "11px 15px", cursor: "pointer", textAlign: "left" };
+  const groupLabel = (txt) => (
+    <div style={{ fontFamily: C.sans, fontSize: 9, letterSpacing: "0.2em", textTransform: "uppercase", color: C.taupe,
+      fontWeight: 600, padding: "11px 15px 5px" }}>{txt}</div>
+  );
+  return (
+    <div style={{ position: "relative", marginBottom: 14, maxWidth: 520 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, background: C.white, border: `1px solid ${C.grisCalido}`,
+        borderRadius: open ? "14px 14px 0 0" : 14, padding: "11px 14px" }}>
+        <Icon name="search" size={16} color={C.taupe} />
+        <input value={q} onChange={(e) => setQ(e.target.value)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setTimeout(() => setFocused(false), 160)}
+          placeholder={t.searchPlaceholder}
+          style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none",
+            fontFamily: C.sans, fontSize: 12.5, letterSpacing: "0.03em", color: C.negro }} />
+        {q && (
+          <button onClick={() => setQ("")} className="sp-btn" aria-label="limpiar"
+            style={{ width: 22, height: 22, borderRadius: 999, background: C.beige, border: "none", display: "grid", placeItems: "center", cursor: "pointer" }}>
+            <Icon name="x" size={11} color={C.tierra} />
+          </button>
+        )}
+      </div>
+      {open && (
+        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 30, background: C.white,
+          border: `1px solid ${C.grisCalido}`, borderTop: "none", borderRadius: "0 0 14px 14px",
+          boxShadow: "0 18px 48px rgba(62,63,63,.12)", overflow: "hidden", maxHeight: 380, overflowY: "auto" }}>
+          {!total && (
+            <div style={{ fontFamily: C.sans, fontSize: 11.5, color: C.taupe, letterSpacing: "0.04em", padding: "16px 15px" }}>{t.searchEmpty}</div>
+          )}
+          {results.resv.length > 0 && groupLabel(t.searchResv)}
+          {results.resv.map((h) => {
+            const done = h.statusForm === "completo" || !!(recordFor && recordFor(h));
+            return (
+              <button key={h.id || h.code} onClick={() => { setQ(""); onOpenReservation(h); }} className="sp-row" style={rowStyle}>
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ display: "block", fontFamily: C.sans, fontSize: 12, color: C.negro, letterSpacing: "0.05em", fontWeight: 500 }}>{h.code}</span>
+                  <span style={{ display: "block", fontFamily: C.sans, fontSize: 10.5, color: C.tierra, letterSpacing: "0.03em", marginTop: 2,
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {[h.guestFirstName, h.guestLastName].filter(Boolean).join(" ") || h.guestName || "—"} · {h.propertyName}
+                  </span>
+                </span>
+                <span style={{ display: "flex", alignItems: "center", gap: 9, flexShrink: 0 }}>
+                  <span style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra }}>{h.checkin}</span>
+                  <span style={{ width: 7, height: 7, borderRadius: 999, background: done ? "#1F8A5B" : C.peach }} />
+                </span>
+              </button>
+            );
+          })}
+          {results.props.length > 0 && groupLabel(t.searchProps)}
+          {results.props.map((p) => (
+            <button key={p} onClick={() => { setQ(""); onOpenProperty(p); }} className="sp-row" style={rowStyle}>
+              <span style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                <Icon name="folderOpen" size={15} color={C.tierra} />
+                <span style={{ fontFamily: C.sans, fontSize: 12, color: C.negro, letterSpacing: "0.04em",
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p}</span>
+              </span>
+              <span style={{ fontFamily: C.sans, fontSize: 10.5, color: C.peach, letterSpacing: "0.05em", flexShrink: 0 }}>{t.searchOpen}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
+   ALERTAS DEL PANEL — notificaciones flotantes estilo iOS
+   Se apilan arriba al centro, con blur y sombra suave. Cada una lleva a su
+   sección; la de sincronización actualiza en el sitio. Se pueden descartar
+   (vuelven al recargar si el pendiente sigue ahí) y se colapsan en una píldora
+   cuando hay más de dos.
+   ============================================================ */
+function AlertToast({ item, index, expanded, onExpand, onDismiss, disabled }) {
+  const [inn, setInn] = useStateAd(false);
+  useEffectAd(() => { const id = setTimeout(() => setInn(true), 40 + index * 70); return () => clearTimeout(id); }, []);
+  // Colapsadas: la primera va en flujo y las demás quedan DETRÁS, absolutas y
+  // empujadas hacia abajo, de modo que solo asoman por el borde inferior. Así
+  // no hay constantes de altura que fallen cuando una tarjeta ocupa 3 líneas.
+  const behind = !expanded && index > 0;
+  const depth = Math.min(index, 2);
+  return (
+    <div onClick={behind ? onExpand : undefined}
+      style={{ cursor: behind ? "pointer" : "default",
+        position: behind ? "absolute" : "relative", top: behind ? 0 : "auto", left: 0, right: 0,
+        marginBottom: expanded ? 8 : 0, zIndex: 40 - index,
+        transform: inn ? `translateY(${behind ? depth * 7 : 0}px) scale(${behind ? 1 - depth * 0.04 : 1})` : "translateY(-14px) scale(.97)",
+        opacity: inn ? (behind && depth >= 2 ? 0.55 : 1) : 0,
+        transition: "transform 360ms cubic-bezier(.22,.61,.36,1), opacity 360ms cubic-bezier(.22,.61,.36,1)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 13, width: "100%", boxSizing: "border-box",
+        background: "rgba(250,250,250,.9)", backdropFilter: "blur(20px) saturate(140%)", WebkitBackdropFilter: "blur(20px) saturate(140%)",
+        border: `1px solid ${item.urgent ? "rgba(233,130,106,.34)" : "rgba(62,63,63,.08)"}`,
+        borderRadius: 20, padding: "12px 13px 12px 15px", boxShadow: "0 14px 42px rgba(62,63,63,.13)" }}>
+        <span style={{ width: 30, height: 30, borderRadius: 9, flexShrink: 0, display: "grid", placeItems: "center",
+          background: item.urgent ? "rgba(233,130,106,.14)" : "rgba(62,63,63,.06)" }}>
+          <Icon name={item.icon} size={15} color={item.urgent ? C.peach : C.tierra} />
+        </span>
+        <span style={{ minWidth: 0, flex: 1 }}>
+          <span style={{ display: "block", fontFamily: C.sans, fontSize: 12, letterSpacing: "0.03em", color: C.negro, fontWeight: 600, lineHeight: 1.35 }}>{item.label}</span>
+          {item.sub && <span style={{ display: "block", fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.03em", color: C.tierra, marginTop: 2,
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.sub}</span>}
+        </span>
+        <button onClick={(e) => { e.stopPropagation(); item.act(); }} disabled={disabled} className="sp-btn"
+          style={{ flexShrink: 0, background: item.urgent ? C.negro : "transparent", color: item.urgent ? C.alabaster : C.tierra,
+            border: item.urgent ? "none" : `1px solid ${C.grisCalido}`, borderRadius: 999, padding: "7px 14px", fontFamily: C.sans,
+            fontSize: 10.5, letterSpacing: "0.05em", cursor: "pointer", fontWeight: 500, opacity: disabled ? 0.5 : 1 }}>
+          {disabled ? "…" : item.cta}
+        </button>
+        <button onClick={(e) => { e.stopPropagation(); onDismiss(); }} className="sp-btn" aria-label="cerrar"
+          style={{ flexShrink: 0, width: 26, height: 26, borderRadius: 999, background: "transparent", border: "none",
+            display: "grid", placeItems: "center", cursor: "pointer" }}>
+          <Icon name="x" size={13} color={C.taupe} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function AdminAlertsBar({ t, onGoTab, onRefresh, refreshing }) {
   const [a, setA] = useStateAd(null);
+  const [hidden, setHidden] = useStateAd({});
+  const [expanded, setExpanded] = useStateAd(false);
+  const [muted, setMuted] = useStateAd(false);
   const load = () => { Backend.adminAlerts().then((r) => r && setA(r)).catch(() => {}); };
   useEffectAd(() => {
     load();
@@ -1827,31 +2065,61 @@ function AdminAlertsBar({ t, onGoTab, onRefresh, refreshing }) {
     return () => clearInterval(iv);
   }, []);
   if (!a) return null;
-  const items = [];
-  if (a.staleSync) items.push({ key: "sync", label: t.alertStale, cta: t.alertStaleCta, act: () => { onRefresh(); setTimeout(load, 4000); }, urgent: true });
-  if (a.incidents) items.push({ key: "inc", label: t.alertIncidents(a.incidents), cta: t.alertGoTo, act: () => onGoTab("seguimiento"), urgent: true });
-  if (a.invoices) items.push({ key: "inv", label: t.alertInvoices(a.invoices), cta: t.alertGoTo, act: () => onGoTab("seguimiento") });
-  if (a.requests) items.push({ key: "req", label: t.alertRequests(a.requests), cta: t.alertGoTo, act: () => onGoTab("seguimiento") });
+  const all = [];
+  if (a.staleSync) all.push({ key: "sync", icon: "refresh", label: t.alertStale, sub: t.alertStaleSub, cta: t.alertStaleCta, act: () => { onRefresh(); setTimeout(load, 4000); }, urgent: true });
+  if (a.incidents) all.push({ key: "inc", icon: "review", label: t.alertIncidents(a.incidents), cta: t.alertGoTo, act: () => onGoTab("seguimiento"), urgent: true });
+  if (a.invoices) all.push({ key: "inv", icon: "factura", label: t.alertInvoices(a.invoices), cta: t.alertGoTo, act: () => onGoTab("seguimiento") });
+  if (a.requests) all.push({ key: "req", icon: "clock", label: t.alertRequests(a.requests), cta: t.alertGoTo, act: () => onGoTab("seguimiento") });
+  const items = all.filter((i) => !hidden[i.key]);
+
   if (!items.length) return (
     <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 16, fontFamily: C.sans, fontSize: 11, letterSpacing: "0.06em", color: C.tierra }}>
       <Icon name="check" size={14} color="#1F8A5B" /> {t.alertAllClear}
     </div>
   );
+  // silenciadas → píldora discreta para volver a mostrarlas
+  if (muted) return (
+    <button onClick={() => setMuted(false)} className="sp-btn"
+      style={{ display: "inline-flex", alignItems: "center", gap: 8, marginBottom: 16, background: C.white,
+        border: `1px solid ${C.grisCalido}`, borderRadius: 999, padding: "7px 14px", cursor: "pointer",
+        fontFamily: C.sans, fontSize: 11, letterSpacing: "0.05em", color: C.negro, fontWeight: 500 }}>
+      <span style={{ width: 6, height: 6, borderRadius: 999, background: C.peach }} />
+      {t.alertShow(items.length)}
+    </button>
+  );
+  const shown = expanded ? items : items.slice(0, 3);
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 18 }}>
-      {items.map((it) => (
-        <div key={it.key} style={{ display: "inline-flex", alignItems: "center", gap: 12, background: it.urgent ? "rgba(233,130,106,.09)" : C.white,
-          border: `1px solid ${it.urgent ? "rgba(233,130,106,.38)" : C.grisCalido}`, borderRadius: 999, padding: "8px 8px 8px 15px" }}>
-          <span style={{ width: 6, height: 6, borderRadius: 999, background: it.urgent ? C.peach : C.taupe, flexShrink: 0 }} />
-          <span style={{ fontFamily: C.sans, fontSize: 11.5, letterSpacing: "0.04em", color: C.negro, fontWeight: 500 }}>{it.label}</span>
-          <button onClick={it.act} disabled={it.key === "sync" && refreshing} className="sp-btn"
-            style={{ background: it.urgent ? C.negro : "transparent", color: it.urgent ? C.alabaster : C.tierra,
-              border: it.urgent ? "none" : `1px solid ${C.grisCalido}`, borderRadius: 999, padding: "6px 13px", fontFamily: C.sans,
-              fontSize: 10.5, letterSpacing: "0.05em", cursor: "pointer", fontWeight: 500, opacity: it.key === "sync" && refreshing ? 0.5 : 1 }}>
-            {it.key === "sync" && refreshing ? "…" : it.cta}
-          </button>
+    <div style={{ display: "flex", justifyContent: "center", marginBottom: 18 }}>
+        <div style={{ width: "100%", maxWidth: 470 }}>
+          <div style={{ position: "relative", paddingBottom: expanded ? 0 : (shown.length > 1 ? 16 : 0) }}>
+            {shown.map((it, i) => (
+              <AlertToast key={it.key} item={it} index={i} expanded={expanded}
+                onExpand={() => setExpanded(true)}
+                onDismiss={() => setHidden((h) => ({ ...h, [it.key]: 1 }))}
+                disabled={it.key === "sync" && refreshing} />
+            ))}
+          </div>
+          {items.length > 1 && (
+            <div style={{ display: "flex", justifyContent: "center", gap: 16, marginTop: 8 }}>
+              {!expanded && (
+                <button onClick={() => setExpanded(true)} className="sp-btn" style={{ background: "transparent", border: "none", cursor: "pointer",
+                  fontFamily: C.sans, fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: C.tierra, fontWeight: 500 }}>
+                  {t.alertExpand(items.length)}
+                </button>
+              )}
+              {expanded && (
+                <button onClick={() => setExpanded(false)} className="sp-btn" style={{ background: "transparent", border: "none", cursor: "pointer",
+                  fontFamily: C.sans, fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: C.tierra, fontWeight: 500 }}>
+                  {t.alertCollapse}
+                </button>
+              )}
+              <button onClick={() => setMuted(true)} className="sp-btn" style={{ background: "transparent", border: "none", cursor: "pointer",
+                fontFamily: C.sans, fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: C.taupe, fontWeight: 500 }}>
+                {t.alertMute}
+              </button>
+            </div>
+          )}
         </div>
-      ))}
     </div>
   );
 }
@@ -2035,7 +2303,10 @@ function SeguimientoScreen({ t, roster }) {
   }, []);
   // pending registrations checking-in today
   const pendingToday = (roster || []).filter((r) => checkinBucket(r.checkin) === "today" && r.statusForm !== "completo");
-  const invoices = (store.invoices || []).filter((i) => i.status !== "done");
+  // facturas: de la hoja (mismo origen que el contador de alertas), no de localStorage
+  const [invoices, setInvoices] = useStateAd(null);
+  const reloadInvoices = () => Backend.listInvoices().then((l) => setInvoices(l || [])).catch(() => setInvoices([]));
+  useEffectAd(() => { reloadInvoices(); }, []);
   const hostReqs = reqs || [];
   const dayReqs = hostReqs.filter((r) => r.type === "late" || r.type === "day");
   const earlyReqs = hostReqs.filter((r) => r.type === "early" || r.type === "luggage");
@@ -2151,11 +2422,11 @@ function SeguimientoScreen({ t, roster }) {
       </section>
 
       <section>
-        {sectionHead("factura", t.segInvoices, invoices.length)}
-        {invoices.length ? (
+        {sectionHead("factura", t.segInvoices, (invoices || []).length)}
+        {(invoices || []).length ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {invoices.map((iv, i) => {
-              const deadline = new Date((iv.at || Date.now()) + 5 * 86400000);
+            {(invoices || []).map((iv, i) => {
+              const deadline = iv.deadline ? new Date(iv.deadline) : new Date((iv.at || Date.now()) + 5 * 86400000);
               return card(
                 <div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
@@ -2168,8 +2439,15 @@ function SeguimientoScreen({ t, roster }) {
                       {t.segDeadline}: {deadline.toISOString().slice(0, 10)}
                     </span>
                   </div>
-                  <div style={{ marginTop: 12 }}>
-                    <InvoiceNotifyButton t={t} iv={iv} />
+                  <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <InvoiceNotifyButton t={t} iv={iv} onDone={reloadInvoices} />
+                    {iv.id && (
+                      <button onClick={() => Backend.resolveInvoice({ id: iv.id, action: "done" }).then(reloadInvoices).catch(reloadInvoices)} className="sp-btn"
+                        style={{ background: "transparent", color: C.tierra, border: `1px solid ${C.grisCalido}`, borderRadius: 10, padding: "8px 14px",
+                          fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.05em", cursor: "pointer" }}>
+                        {t.segInvoiceDone}
+                      </button>
+                    )}
                   </div>
                 </div>, i
               );

@@ -132,11 +132,20 @@ const T = {
     seekReportSending: "Enviando aviso…",
     seekReportRef: "Referencia",
     seekTryAgainLater: "Intentar de nuevo",
+    segInvoiceDone: "Marcar resuelta",
     alertsTitle: "Pendientes",
     alertInvoices: (n) => n === 1 ? "1 factura pendiente" : `${n} facturas pendientes`,
     alertIncidents: (n) => n === 1 ? "1 error pendiente de revisión" : `${n} errores pendientes de revisión`,
     alertRequests: (n) => n === 1 ? "1 solicitud sin responder" : `${n} solicitudes sin responder`,
     alertStale: "Reservas sin actualizar",
+    alertStaleSub: "La última sincronización fue hace más de 45 minutos",
+    alertExpand: (n) => `Ver las ${n}`,
+    alertMute: "Silenciar",
+    alertCollapse: "Agrupar",
+    searchPlaceholder: "Buscar reserva, huésped o propiedad…",
+    searchResv: "Reservas", searchProps: "Propiedades",
+    searchEmpty: "Sin resultados.", searchOpen: "Abrir",
+    alertShow: (n) => n === 1 ? "1 notificación" : `${n} notificaciones`,
     alertStaleCta: "Actualizar ahora",
     alertGoTo: "Ver",
     alertAllClear: "Todo al día",
@@ -457,11 +466,20 @@ const T = {
     seekReportSending: "Sending notice…",
     seekReportRef: "Reference",
     seekTryAgainLater: "Try again",
+    segInvoiceDone: "Mark resolved",
     alertsTitle: "Pending",
     alertInvoices: (n) => n === 1 ? "1 invoice pending" : `${n} invoices pending`,
     alertIncidents: (n) => n === 1 ? "1 error pending review" : `${n} errors pending review`,
     alertRequests: (n) => n === 1 ? "1 request unanswered" : `${n} requests unanswered`,
     alertStale: "Reservations out of date",
+    alertStaleSub: "Last sync was over 45 minutes ago",
+    alertExpand: (n) => `Show all ${n}`,
+    alertMute: "Mute",
+    alertCollapse: "Collapse",
+    searchPlaceholder: "Search reservation, guest or property…",
+    searchResv: "Reservations", searchProps: "Properties",
+    searchEmpty: "No results.", searchOpen: "Open",
+    alertShow: (n) => n === 1 ? "1 notification" : `${n} notifications`,
     alertStaleCta: "Refresh now",
     alertGoTo: "View",
     alertAllClear: "All up to date",
@@ -1046,6 +1064,24 @@ const Backend = {
       incidents: (s.incidents || []).filter((i) => i.status === "pendiente").length,
       staleSync: false, lastSync: "", requests: 0,
     };
+  },
+
+  async listInvoices() {
+    if (this.isConnected()) {
+      try { const j = await this.call("listInvoices"); return j.invoices || []; } catch (e) {}
+    }
+    const s = typeof loadStore === "function" ? loadStore() : {};
+    return (s.invoices || []).filter((i) => i.status !== "done").map((i, n) => ({ ...i, id: (i.at || n) + "|" + (i.code || "") }));
+  },
+  async resolveInvoice(payload) {
+    if (this.isConnected()) {
+      try { await this.call("resolveInvoice", payload); return { ok: true }; } catch (e) {}
+    }
+    if (typeof loadStore !== "function") return { ok: true };
+    const s = loadStore();
+    const list = (s.invoices || []).map((i, n) => ((i.at || n) + "|" + (i.code || "")) === payload.id ? { ...i, status: payload.action === "reopen" ? "pendiente" : "done" } : i);
+    saveStore({ ...s, invoices: list });
+    return { ok: true, local: true };
   },
 
   async findReservation(code, sync) {

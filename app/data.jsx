@@ -1034,7 +1034,7 @@ const Backend = {
   },
   async listIncidents() {
     if (this.isConnected()) {
-      try { const j = await this.call("listIncidents"); return { pending: j.pending || [], frequent: j.frequent || [] }; } catch (e) {}
+      try { const j = await this.call("listIncidents"); return { pending: j.pending || [], frequent: j.frequent || [] }; } catch (e) { return { pending: [], frequent: [] }; }
     }
     if (typeof loadStore !== "function") return { pending: [], frequent: [] };
     const list = (loadStore().incidents || []).map((i) => ({ ...i, id: i.at + "|" + i.code }));
@@ -1053,9 +1053,17 @@ const Backend = {
     saveStore({ ...s, incidents: list });
     return { ok: true, local: true };
   },
+  // Una sola fuente de verdad: si hay backend, los contadores salen SIEMPRE de
+  // la hoja. localStorage solo se usa cuando no hay conexión — antes un fallo
+  // silencioso mezclaba ambos y el contador no coincidía con la lista.
   async adminAlerts() {
     if (this.isConnected()) {
       try { return await this.call("adminAlerts"); } catch (e) {}
+      try {
+        const [inv, inc] = await Promise.all([this.listInvoices(), this.listIncidents()]);
+        return { ok: true, invoices: (inv || []).length, incidents: ((inc && inc.pending) || []).length, staleSync: false, lastSync: "", requests: 0 };
+      } catch (e) {}
+      return { ok: true, invoices: 0, incidents: 0, staleSync: false, lastSync: "", requests: 0 };
     }
     const s = typeof loadStore === "function" ? loadStore() : {};
     return {
@@ -1068,7 +1076,7 @@ const Backend = {
 
   async listInvoices() {
     if (this.isConnected()) {
-      try { const j = await this.call("listInvoices"); return j.invoices || []; } catch (e) {}
+      try { const j = await this.call("listInvoices"); return j.invoices || []; } catch (e) { return []; }
     }
     const s = typeof loadStore === "function" ? loadStore() : {};
     return (s.invoices || []).filter((i) => i.status !== "done").map((i, n) => ({ ...i, id: (i.at || n) + "|" + (i.code || "") }));

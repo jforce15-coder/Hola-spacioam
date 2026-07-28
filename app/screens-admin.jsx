@@ -511,13 +511,15 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang }) {
   const [refreshing, setRefreshing] = useStateAd(false);
 
   // cache-first: the stored DB is always the source of truth for display.
-  const loadRoster = ({ full } = {}) => {
+  const loadRoster = ({ full, deep } = {}) => {
     if (full) {
       // Actualizar: sync live from Hospitable (persists names/photos to the
       // sheet), THEN re-read the cache so what we show == what's stored —
       // including status_form (completed), which the live feed doesn't carry.
+      // Default = fast window: today + next 5 days, no photo scraping (seconds).
+      // deep = full 6-month sync (minutes) — only when explicitly asked.
       setRefreshing(true);
-      Backend.listReservations()
+      Backend.listReservations(deep ? { days: 0, fast: false } : { days: 5, fast: true })
         .then(() => Backend.listCached())
         .then((list) => { setRoster(list); setMeta(Backend._lastMeta); setRefreshing(false); })
         .catch(() => setRefreshing(false));
@@ -653,12 +655,22 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang }) {
                 <Icon name="refresh" size={14} color={C.negro} /> {t.adminRefreshNow}
               </button>
             )}
+            {connected && (
+              <button onClick={() => loadRoster({ full: true, deep: true })} disabled={refreshing} className="sp-btn" title={t.adminSyncAllHint}
+                style={{ background: "transparent", color: C.tierra, border: "none", padding: "8px 4px",
+                  fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.06em", cursor: "pointer", opacity: refreshing ? 0.4 : 1 }}>
+                {t.adminSyncAll}
+              </button>
+            )}
             <button onClick={() => setHospOpen(true)} className="sp-btn" style={{ background: C.white, color: C.negro, border: `1px solid ${C.grisCalido}`,
               borderRadius: 10, padding: "8px 14px", fontFamily: C.sans, fontSize: 11, letterSpacing: "0.04em", cursor: "pointer", fontWeight: 500, display: "inline-flex", alignItems: "center", gap: 7 }}>
               <Icon name="settings" size={14} color={C.negro} /> {connected ? t.hospManage : t.hospConnect}
             </button>
           </div>
         </div>
+
+        {/* alertas: pendientes que requieren atención, arriba de todo */}
+        <AdminAlertsBar t={t} refreshing={refreshing} onGoTab={setTab} onRefresh={() => loadRoster({ full: true })} />
 
         {/* tabs: Registros | Estaciones */}
         <div style={{ display: "inline-flex", gap: 4, background: C.beige, border: `1px solid ${C.grisCalido}`, borderRadius: 12, padding: 4, marginBottom: 16 }}>
@@ -1802,6 +1814,167 @@ function InvoiceNotifyButton({ t, iv }) {
   );
 }
 
+/* ============================================================
+   ALERTAS DEL PANEL — franja superior con lo que requiere atención
+   Cada alerta lleva a su sección; la de sincronización actualiza en el sitio.
+   ============================================================ */
+function AdminAlertsBar({ t, onGoTab, onRefresh, refreshing }) {
+  const [a, setA] = useStateAd(null);
+  const load = () => { Backend.adminAlerts().then((r) => r && setA(r)).catch(() => {}); };
+  useEffectAd(() => {
+    load();
+    const iv = setInterval(load, 120000); // se refresca solo cada 2 min
+    return () => clearInterval(iv);
+  }, []);
+  if (!a) return null;
+  const items = [];
+  if (a.staleSync) items.push({ key: "sync", label: t.alertStale, cta: t.alertStaleCta, act: () => { onRefresh(); setTimeout(load, 4000); }, urgent: true });
+  if (a.incidents) items.push({ key: "inc", label: t.alertIncidents(a.incidents), cta: t.alertGoTo, act: () => onGoTab("seguimiento"), urgent: true });
+  if (a.invoices) items.push({ key: "inv", label: t.alertInvoices(a.invoices), cta: t.alertGoTo, act: () => onGoTab("seguimiento") });
+  if (a.requests) items.push({ key: "req", label: t.alertRequests(a.requests), cta: t.alertGoTo, act: () => onGoTab("seguimiento") });
+  if (!items.length) return (
+    <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 16, fontFamily: C.sans, fontSize: 11, letterSpacing: "0.06em", color: C.tierra }}>
+      <Icon name="check" size={14} color="#1F8A5B" /> {t.alertAllClear}
+    </div>
+  );
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 18 }}>
+      {items.map((it) => (
+        <div key={it.key} style={{ display: "inline-flex", alignItems: "center", gap: 12, background: it.urgent ? "rgba(233,130,106,.09)" : C.white,
+          border: `1px solid ${it.urgent ? "rgba(233,130,106,.38)" : C.grisCalido}`, borderRadius: 999, padding: "8px 8px 8px 15px" }}>
+          <span style={{ width: 6, height: 6, borderRadius: 999, background: it.urgent ? C.peach : C.taupe, flexShrink: 0 }} />
+          <span style={{ fontFamily: C.sans, fontSize: 11.5, letterSpacing: "0.04em", color: C.negro, fontWeight: 500 }}>{it.label}</span>
+          <button onClick={it.act} disabled={it.key === "sync" && refreshing} className="sp-btn"
+            style={{ background: it.urgent ? C.negro : "transparent", color: it.urgent ? C.alabaster : C.tierra,
+              border: it.urgent ? "none" : `1px solid ${C.grisCalido}`, borderRadius: 999, padding: "6px 13px", fontFamily: C.sans,
+              fontSize: 10.5, letterSpacing: "0.05em", cursor: "pointer", fontWeight: 500, opacity: it.key === "sync" && refreshing ? 0.5 : 1 }}>
+            {it.key === "sync" && refreshing ? "…" : it.cta}
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ============================================================
+   INCIDENCIAS — problemas por resolver + errores frecuentes
+   ============================================================ */
+const INC_ERR_KEY = { "codigo-incompleto": "errCodigoIncompleto", "caracter-confundido": "errCaracterConfundido",
+  "orden-invertido": "errOrdenInvertido", "codigo-distinto": "errCodigoDistinto",
+  "reserva-no-sincronizada": "errReservaNoSincronizada", otro: "errOtro" };
+
+function IncidentLinkPicker({ t, inc, roster, onDone }) {
+  const [q, setQ] = useStateAd("");
+  const [busy, setBusy] = useStateAd(false);
+  const list = (roster || []).filter((r) => {
+    if (!q.trim()) return false;
+    const s = `${r.code} ${r.guestFirstName || ""} ${r.guestLastName || ""} ${r.propertyName || ""} ${r.apartment || ""}`.toLowerCase();
+    return s.indexOf(q.trim().toLowerCase()) >= 0;
+  }).slice(0, 6);
+  const link = (r) => { setBusy(true); Backend.resolveIncident({ id: inc.id, action: "link", linkedCode: r.code }).then(() => onDone()).catch(() => onDone()); };
+  return (
+    <div style={{ marginTop: 12, padding: 14, background: C.alabaster, border: `1px solid ${C.grisCalido}`, borderRadius: 12 }}>
+      <div style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, letterSpacing: "0.04em", lineHeight: 1.7, marginBottom: 10 }}>{t.segIncLinkHint}</div>
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.segIncSearch}
+        style={{ width: "100%", boxSizing: "border-box", background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 10,
+          padding: "10px 12px", fontFamily: C.sans, fontSize: 12, letterSpacing: "0.04em", color: C.negro, outline: "none" }} />
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+        {list.map((r) => (
+          <button key={r.code} onClick={() => link(r)} disabled={busy} className="sp-row"
+            style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: C.white,
+              border: `1px solid ${C.grisCalido}`, borderRadius: 10, padding: "9px 12px", cursor: "pointer", textAlign: "left" }}>
+            <span style={{ minWidth: 0 }}>
+              <span style={{ display: "block", fontFamily: C.sans, fontSize: 12, color: C.negro, letterSpacing: "0.05em", fontWeight: 500 }}>{r.code}</span>
+              <span style={{ display: "block", fontFamily: C.sans, fontSize: 10.5, color: C.tierra, letterSpacing: "0.04em", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {[r.guestFirstName, r.guestLastName].filter(Boolean).join(" ")} · {r.propertyName}{r.apartment ? ` · ${r.apartment}` : ""}
+              </span>
+            </span>
+            <span style={{ fontFamily: C.sans, fontSize: 10.5, color: C.peach, letterSpacing: "0.05em", flexShrink: 0 }}>{t.segIncLinkCta}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function IncidentsBlock({ t, roster, sectionTitle, sectionNote, onCount }) {
+  const [data, setData] = useStateAd(null);
+  const [openId, setOpenId] = useStateAd("");
+  const reload = () => Backend.listIncidents().then((d) => { setData(d); if (onCount) onCount((d.pending || []).length); }).catch(() => {});
+  useEffectAd(() => { reload(); }, []);
+  if (!data) return null;
+  const pending = data.pending || [], frequent = data.frequent || [];
+  const fmt = (ms) => { const d = new Date(ms); return isNaN(d) ? "" : d.toLocaleString(); };
+  const groups = {};
+  frequent.forEach((f) => { const k = f.errorType || "otro"; (groups[k] = groups[k] || []).push(f); });
+  return (
+    <>
+      <div style={{ marginTop: 30 }}>
+        <h3 style={{ fontFamily: C.serif, fontSize: 19, color: C.negro, margin: "0 0 5px" }}>{t.segIncTitle}</h3>
+        <p style={{ fontFamily: C.sans, fontSize: 11, color: C.tierra, letterSpacing: "0.04em", lineHeight: 1.75, margin: "0 0 14px", maxWidth: 620, textWrap: "pretty" }}>{t.segIncNote}</p>
+        {!pending.length ? (
+          <div style={{ fontFamily: C.sans, fontSize: 11.5, color: C.taupe, letterSpacing: "0.04em" }}>{t.segIncEmpty}</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {pending.map((inc) => (
+              <div key={inc.id} style={{ background: C.white, border: "1px solid rgba(233,130,106,.38)", borderRadius: 16, padding: "15px 17px", boxShadow: "0 4px 16px rgba(62,63,63,.05)" }}>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.22em", textTransform: "uppercase", color: C.taupe, fontWeight: 500 }}>{t.segIncCode}</div>
+                    <div style={{ fontFamily: C.sans, fontSize: 16, letterSpacing: "0.14em", color: C.negro, fontWeight: 500, marginTop: 3 }}>{inc.code}</div>
+                    <div style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, letterSpacing: "0.04em", marginTop: 4 }}>{fmt(inc.at)}</div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button onClick={() => setOpenId(openId === inc.id ? "" : inc.id)} className="sp-btn"
+                      style={{ background: C.negro, color: C.alabaster, border: "none", borderRadius: 999, padding: "8px 15px",
+                        fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.05em", cursor: "pointer", fontWeight: 500 }}>
+                      {t.segIncLink}
+                    </button>
+                    <button onClick={() => Backend.resolveIncident({ id: inc.id, action: "dismiss" }).then(reload).catch(reload)} className="sp-btn"
+                      style={{ background: "transparent", color: C.tierra, border: `1px solid ${C.grisCalido}`, borderRadius: 999, padding: "8px 15px",
+                        fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.05em", cursor: "pointer" }}>
+                      {t.segIncDismiss}
+                    </button>
+                  </div>
+                </div>
+                {openId === inc.id && <IncidentLinkPicker t={t} inc={inc} roster={roster} onDone={() => { setOpenId(""); reload(); }} />}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div style={{ marginTop: 30 }}>
+        <h3 style={{ fontFamily: C.serif, fontSize: 19, color: C.negro, margin: "0 0 5px" }}>{t.segFreqTitle}</h3>
+        <p style={{ fontFamily: C.sans, fontSize: 11, color: C.tierra, letterSpacing: "0.04em", lineHeight: 1.75, margin: "0 0 14px", maxWidth: 620, textWrap: "pretty" }}>{t.segFreqNote}</p>
+        {!frequent.length ? (
+          <div style={{ fontFamily: C.sans, fontSize: 11.5, color: C.taupe, letterSpacing: "0.04em" }}>{t.segFreqEmpty}</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {Object.keys(groups).map((k) => (
+              <div key={k} style={{ background: C.beige, border: `1px solid ${C.grisCalido}`, borderRadius: 16, padding: "14px 17px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <span style={{ fontFamily: C.sans, fontSize: 11.5, letterSpacing: "0.05em", color: C.negro, fontWeight: 600 }}>{t[INC_ERR_KEY[k] || "errOtro"] || k}</span>
+                  <span style={{ fontFamily: C.sans, fontSize: 11.5, color: C.peach, fontWeight: 600 }}>{groups[k].length}</span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 10 }}>
+                  {groups[k].map((f) => (
+                    <div key={f.id} style={{ display: "flex", gap: 10, flexWrap: "wrap", fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.04em", color: C.tierra }}>
+                      <span>{t.segFreqTyped}: <b style={{ color: C.negro, fontWeight: 500 }}>{f.code}</b></span>
+                      <span style={{ color: C.warmGrey || C.grisCalido }}>→</span>
+                      <span>{t.segFreqReal}: <b style={{ color: C.negro, fontWeight: 500 }}>{f.linkedCode}</b></span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
 function SeguimientoScreen({ t, roster }) {
   const store = typeof loadStore === "function" ? loadStore() : {};
   const es = t.code === "es";
@@ -2034,6 +2207,8 @@ function SeguimientoScreen({ t, roster }) {
           </div>
         ) : empty()}
       </section>
+
+      <IncidentsBlock t={t} roster={roster} />
 
       <section>
         {sectionHead("review", t.segSuggestions, suggestions.length)}

@@ -106,6 +106,59 @@ const T = {
     codeHelp: "Tu código de reserva lo recibes por correo o mensaje al confirmar tu reserva en la plataforma (Airbnb, Booking, etc.). Suele tener entre 8 y 10 letras y números. Si no lo encuentras o no funciona, escríbenos y con gusto te ayudamos.",
     validate: "Validar reserva", validating: "Validando…",
     notFound: "No encontramos esa reserva. Revisa el código o escríbenos.",
+    seekTitle: "Tu reserva podría ser muy reciente",
+    seekBody: "Todavía no aparece en nuestro sistema. Si reservaste hace poco, buscarla en vivo suele resolverlo. También vale revisar que el código esté completo.",
+    seekCta: "Encontrar mi reserva",
+    seekEta: "Tiempo estimado:", seekEtaQuick: "unos 30 segundos", seekEtaWide: "1 a 2 minutos",
+    seekCodeLabel: "Código ingresado",
+    seekRunningTitle: "Buscando tu reserva",
+    seekRunningBody: "Estamos consultando la plataforma donde reservaste. Suele tardar menos de lo estimado.",
+    seekElapsed: "Transcurrido:", seekRemaining: "Faltan", seekAlmost: "Casi listo…",
+    seekDontClose: "No cierres esta ventana mientras buscamos.",
+    seekWiderTitle: "Aún no aparece",
+    seekWiderBody: "Buscamos entre las reservas de los próximos días y no está. Podemos ampliar la búsqueda a los próximos dos meses.",
+    seekWiderCta: "Ampliar la búsqueda",
+    seekNoneTitle: "No pudimos encontrarla",
+    seekNoneBody: "Revisa que el código esté tal como aparece en tu confirmación — sin espacios y con todas sus letras. Si está correcto, notifícanos el problema aquí y el equipo lo revisa con tu código de referencia.",
+    seekBackToCode: "Revisar mi código", seekClose: "Cerrar",
+    seekSlowTitle: "La búsqueda tardó más de lo normal",
+    seekSlowBody: "No alcanzamos a terminar. Suele funcionar al segundo intento — tu reserva no se pierde.",
+    seekOfflineTitle: "No pudimos conectar",
+    seekOfflineBody: "Revisa tu conexión e inténtalo otra vez. Si sigue igual, notifícanos el problema y el equipo lo resuelve con tu código de referencia.",
+    seekRetryCta: "Intentar de nuevo",
+    seekContact: "Notificar problema al host",
+    seekReportTitle: "Aviso enviado",
+    seekReportBody: "Ya notificamos al equipo con tu código de referencia. Estamos revisándolo y te contactaremos en breve. Puedes volver a intentar en unos minutos.",
+    seekReportSending: "Enviando aviso…",
+    seekReportRef: "Referencia",
+    seekTryAgainLater: "Intentar de nuevo",
+    alertsTitle: "Pendientes",
+    alertInvoices: (n) => n === 1 ? "1 factura pendiente" : `${n} facturas pendientes`,
+    alertIncidents: (n) => n === 1 ? "1 error pendiente de revisión" : `${n} errores pendientes de revisión`,
+    alertRequests: (n) => n === 1 ? "1 solicitud sin responder" : `${n} solicitudes sin responder`,
+    alertStale: "Reservas sin actualizar",
+    alertStaleCta: "Actualizar ahora",
+    alertGoTo: "Ver",
+    alertAllClear: "Todo al día",
+    segIncTitle: "Problemas por resolver",
+    segIncNote: "Huéspedes que no encontraron su reserva y notificaron el problema. Si al actualizar la reserva aparece con ese mismo código, la alerta se cierra sola.",
+    segIncEmpty: "Sin problemas pendientes.",
+    segIncCode: "Código que ingresó el huésped",
+    segIncLink: "Vincular a una reserva",
+    segIncLinkHint: "Elige la reserva real. La alerta se archiva y el error queda registrado para análisis.",
+    segIncLinkCta: "Vincular",
+    segIncDismiss: "Descartar",
+    segIncSearch: "Buscar por código, nombre o propiedad",
+    segFreqTitle: "Errores frecuentes de huéspedes",
+    segFreqNote: "Incidencias ya vinculadas, agrupadas por tipo de error. Sirven para encontrar patrones y mejorar el flujo.",
+    segFreqEmpty: "Aún no hay errores registrados.",
+    segFreqTyped: "Ingresó", segFreqReal: "Reserva real",
+    errCodigoIncompleto: "Código incompleto",
+    errCaracterConfundido: "Carácter confundido",
+    errOrdenInvertido: "Orden invertido",
+    errCodigoDistinto: "Código distinto",
+    errReservaNoSincronizada: "Reserva no sincronizada",
+    errOtro: "Otro",
     expired: "Esta reserva ya ha vencido. El acceso a tu espacio está disponible hasta 10 días después del checkout. Si necesitas algo, escríbenos.",
     alreadyDone: "Bienvenido de vuelta — tu registro ya está completo.",
     pickResTitle: "Tus reservas", pickResSub: "Selecciona la estancia que quieres ver.",
@@ -239,6 +292,8 @@ const T = {
     adminDoneElsewhere: "Este registro se completó desde otro dispositivo. Los datos y documentos están guardados en la base de datos (hoja ‘Formularios’/‘Huespedes’ y carpeta de Drive).",
     sumViewDoc: "Ver documento", sumOpenFolder: "Abrir carpeta de documentos",
     adminSyncNote: "Reservas obtenidas de Hospitable", adminSeeded: "Demo", adminRefreshNow: "Actualizar",
+    adminSyncAll: "Sincronizar todo", adminSyncAllHint: "Sincroniza los próximos 6 meses. Tarda varios minutos; úsalo solo si falta una reserva lejana.",
+    hospSyncingQuick: "Actualizando próximos 5 días…",
     adminAssignedTo: "Recepción asignada",
     /* stations / estaciones */
     tabRegistros: "Registros", tabEstaciones: "Contactos",
@@ -376,6 +431,59 @@ const T = {
     codeHelp: "You receive your reservation code by email or message when you confirm your booking on the platform (Airbnb, Booking, etc.). It's usually 8–10 letters and numbers. If you can't find it or it doesn't work, message us and we'll gladly help.",
     validate: "Validate reservation", validating: "Validating…",
     notFound: "We couldn't find that reservation. Check the code or message us.",
+    seekTitle: "Your reservation may be very recent",
+    seekBody: "It hasn't reached our system yet. If you booked a short while ago, a live search usually solves it. It's also worth checking the code is complete.",
+    seekCta: "Find my reservation",
+    seekEta: "Estimated time:", seekEtaQuick: "about 30 seconds", seekEtaWide: "1 to 2 minutes",
+    seekCodeLabel: "Code entered",
+    seekRunningTitle: "Looking for your reservation",
+    seekRunningBody: "We're checking the platform you booked on. It usually takes less than estimated.",
+    seekElapsed: "Elapsed:", seekRemaining: "About", seekAlmost: "Almost there…",
+    seekDontClose: "Please keep this window open while we search.",
+    seekWiderTitle: "Still not showing",
+    seekWiderBody: "We searched the coming days and it isn't there. We can widen the search to the next two months.",
+    seekWiderCta: "Widen the search",
+    seekNoneTitle: "We couldn't find it",
+    seekNoneBody: "Check the code exactly as it appears in your confirmation — no spaces, every letter. If it's correct, report the problem here and the team will review it with your reference code.",
+    seekBackToCode: "Check my code", seekClose: "Close",
+    seekSlowTitle: "The search took longer than usual",
+    seekSlowBody: "We didn't finish in time. A second attempt usually works — your reservation isn't lost.",
+    seekOfflineTitle: "We couldn't connect",
+    seekOfflineBody: "Check your connection and try again. If it persists, report the problem and the team will resolve it with your reference code.",
+    seekRetryCta: "Try again",
+    seekContact: "Report a problem to the host",
+    seekReportTitle: "Notice sent",
+    seekReportBody: "We've notified the team with your reference code. We're looking into it and will be in touch shortly. You can try again in a few minutes.",
+    seekReportSending: "Sending notice…",
+    seekReportRef: "Reference",
+    seekTryAgainLater: "Try again",
+    alertsTitle: "Pending",
+    alertInvoices: (n) => n === 1 ? "1 invoice pending" : `${n} invoices pending`,
+    alertIncidents: (n) => n === 1 ? "1 error pending review" : `${n} errors pending review`,
+    alertRequests: (n) => n === 1 ? "1 request unanswered" : `${n} requests unanswered`,
+    alertStale: "Reservations out of date",
+    alertStaleCta: "Refresh now",
+    alertGoTo: "View",
+    alertAllClear: "All up to date",
+    segIncTitle: "Problems to resolve",
+    segIncNote: "Guests who couldn't find their reservation and reported it. If a refresh brings up that same code, the alert closes itself.",
+    segIncEmpty: "No pending problems.",
+    segIncCode: "Code the guest entered",
+    segIncLink: "Link to a reservation",
+    segIncLinkHint: "Pick the real reservation. The alert is archived and the error logged for analysis.",
+    segIncLinkCta: "Link",
+    segIncDismiss: "Dismiss",
+    segIncSearch: "Search by code, name or property",
+    segFreqTitle: "Frequent guest errors",
+    segFreqNote: "Incidents already linked, grouped by error type. Useful for spotting patterns and improving the flow.",
+    segFreqEmpty: "No errors logged yet.",
+    segFreqTyped: "Entered", segFreqReal: "Real reservation",
+    errCodigoIncompleto: "Incomplete code",
+    errCaracterConfundido: "Character confused",
+    errOrdenInvertido: "Reversed order",
+    errCodigoDistinto: "Different code",
+    errReservaNoSincronizada: "Reservation not synced",
+    errOtro: "Other",
     expired: "This reservation has expired. Access to your space is available up to 10 days after checkout. If you need anything, message us.",
     alreadyDone: "Welcome back — your check-in is already complete.",
     pickResTitle: "Your reservations", pickResSub: "Select the stay you'd like to view.",
@@ -501,6 +609,8 @@ const T = {
     adminDoneElsewhere: "This registration was completed from another device. The data and documents are saved in the database (‘Formularios’/‘Huespedes’ sheet and the Drive folder).",
     sumViewDoc: "View document", sumOpenFolder: "Open documents folder",
     adminSyncNote: "Reservations pulled from Hospitable", adminSeeded: "Demo", adminRefreshNow: "Refresh",
+    adminSyncAll: "Sync everything", adminSyncAllHint: "Syncs the next 6 months. Takes several minutes; use only if a distant reservation is missing.",
+    hospSyncingQuick: "Updating next 5 days…",
     adminAssignedTo: "Assigned reception",
     /* stations */
     tabRegistros: "Registrations", tabEstaciones: "Contacts",
@@ -822,25 +932,49 @@ const Backend = {
   },
   isConnected() { return !!this.endpoint(); },
   disconnect() { return this.saveConfig({ endpoint: "" }); },
+  // Cada llamada tiene fecha límite. Sin esto, un backend lento deja la
+  // promesa colgada para siempre y el huésped se queda con el spinner puesto.
+  _timeoutFor(action, payload) {
+    const p = payload || {};
+    if (action === "findReservation") {
+      if (p.sync === "deep") return 210000;   // 60 días
+      if (p.sync === "quick") return 90000;   // 5 días
+      return 12000;                            // solo caché
+    }
+    if (action === "listReservations") return p.days === 0 || p.fast === false ? 600000 : 120000;
+    return 45000;
+  },
   async call(action, payload) {
     const url = this.endpoint();
     if (!url) throw new Error("no-endpoint");
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" }, // avoids CORS preflight
-      body: JSON.stringify({ action, ...(payload || {}) }),
-    });
-    const json = await res.json();
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), this._timeoutFor(action, payload));
+    let json;
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" }, // avoids CORS preflight
+        body: JSON.stringify({ action, ...(payload || {}) }),
+        signal: ctl.signal,
+      });
+      json = await res.json();
+    } catch (e) {
+      throw new Error(e && e.name === "AbortError" ? "timeout" : "network-error");
+    } finally { clearTimeout(timer); }
+    if (action === "findReservation") return { ok: true, raw: true, json: json };
     if (!json.ok) throw new Error(json.error || "backend-error");
     return json;
   },
   async ping() { return this.call("ping"); },
   _lastMeta: null,
-  async listReservations() {
+  // opts.days → sync window (default 5 days counting today = fast path used by
+  // the "Actualizar" button). opts.days = 0 → full 6-month sync (slow).
+  async listReservations(opts) {
+    const o = opts || { days: 5, fast: true };
     if (this.isConnected()) {
       // connected → always show real backend data (even if empty); never demo
       try {
-        const json = await this.call("listReservations");
+        const json = await this.call("listReservations", { days: o.days || 0, fast: o.fast !== false });
         this._lastMeta = json.meta || null;
         return json.reservations || [];
       } catch (e) {
@@ -860,16 +994,77 @@ const Backend = {
     this._lastMeta = null;
     return new Promise((resolve) => setTimeout(() => resolve(HOSPITABLE), 120));
   },
-  async findReservation(code) {
-    // backend first: reads the cached Reservas sheet, and if the code isn't
-    // there it triggers a live re-sync and re-checks before giving up.
+  // sync: "" (solo caché, instantáneo) | "quick" (5 días) | "deep" (60 días).
+  // Devuelve { reservation, canSync } para que el huésped pueda escalar él mismo.
+  // Incidencias — "Notificar problema al host". Si no hay backend, deja la
+  // incidencia en localStorage para que el panel la muestre igual.
+  async reportProblem({ code, stage, note }) {
+    if (this.isConnected()) {
+      try { await this.call("reportProblem", { code, stage: stage || "", note: note || "", device: (typeof navigator !== "undefined" && navigator.userAgent) || "" }); return { ok: true }; }
+      catch (e) { /* guarda local abajo */ }
+    }
+    try {
+      if (typeof loadStore !== "function") return { ok: true, local: true };
+      const s = loadStore();
+      const list = s.incidents || [];
+      if (!list.some((i) => normCode(i.code) === normCode(code) && i.status === "pendiente")) {
+        list.push({ at: Date.now(), code, stage: stage || "", status: "pendiente", note: note || "" });
+      }
+      saveStore({ ...s, incidents: list });
+    } catch (e) {}
+    return { ok: true, local: true };
+  },
+  async listIncidents() {
+    if (this.isConnected()) {
+      try { const j = await this.call("listIncidents"); return { pending: j.pending || [], frequent: j.frequent || [] }; } catch (e) {}
+    }
+    if (typeof loadStore !== "function") return { pending: [], frequent: [] };
+    const list = (loadStore().incidents || []).map((i) => ({ ...i, id: i.at + "|" + i.code }));
+    return { pending: list.filter((i) => i.status === "pendiente"), frequent: list.filter((i) => i.status === "vinculado") };
+  },
+  async resolveIncident(payload) {
+    if (this.isConnected()) {
+      try { await this.call("resolveIncident", payload); return { ok: true }; } catch (e) {}
+    }
+    if (typeof loadStore !== "function") return { ok: true, local: true };
+    const s = loadStore();
+    const list = (s.incidents || []).map((i) =>
+      (i.at + "|" + i.code) === payload.id
+        ? { ...i, status: payload.action === "link" ? "vinculado" : payload.action === "reopen" ? "pendiente" : "descartado", linkedCode: payload.linkedCode || "", errorType: payload.errorType || "" }
+        : i);
+    saveStore({ ...s, incidents: list });
+    return { ok: true, local: true };
+  },
+  async adminAlerts() {
+    if (this.isConnected()) {
+      try { return await this.call("adminAlerts"); } catch (e) {}
+    }
+    const s = typeof loadStore === "function" ? loadStore() : {};
+    return {
+      ok: true,
+      invoices: (s.invoices || []).filter((i) => i.status !== "done").length,
+      incidents: (s.incidents || []).filter((i) => i.status === "pendiente").length,
+      staleSync: false, lastSync: "", requests: 0,
+    };
+  },
+
+  async findReservation(code, sync) {
     if (this.isConnected()) {
       try {
-        const json = await this.call("findReservation", { code });
-        return json.reservation || null;
-      } catch (e) { /* fall through to demo lookup */ }
+        const r = await this.call("findReservation", { code, sync: sync || "" });
+        const json = r.raw ? r.json : r;
+        // not-found no es un error: el backend dice hasta dónde se puede escalar
+        return { reservation: json.reservation || null, canSync: json.canSync || "" };
+      } catch (e) {
+        // timeout / red caída → deja reintentar el MISMO nivel, pero informa
+        // qué pasó para que el pop-up ofrezca también notificar al host.
+        const local = findReservation(code);
+        if (local) return { reservation: local, canSync: "" };
+        return { reservation: null, canSync: sync || "quick", timedOut: true, offline: e && e.message === "network-error" };
+      }
     }
-    return findReservation(code);
+    const local = findReservation(code);
+    return { reservation: local, canSync: local ? "" : (sync === "quick" ? "deep" : sync === "deep" ? "" : "quick") };
   },
   async getRegistration(code) {
     // full registration data (Formularios + Huespedes) for a completed booking,

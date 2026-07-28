@@ -536,6 +536,7 @@ const Icon = ({ name, size = 22, color = C.negro, strokeWidth = 1.4 }) => {
     phone: <path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L20 18v3a1 1 0 0 1-1 1A16 16 0 0 1 3 6a1 1 0 0 1 1-1" />,
     whatsapp: <><path d="M21 11.5a8.5 8.5 0 0 1-12.6 7.4L3 21l2.2-5.3A8.5 8.5 0 1 1 21 11.5z" /><path d="M8.5 9c0 4 2.5 6.5 6.5 6.5" /></>,
     clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
+    search: <><circle cx="11" cy="11" r="7" /><path d="M16.2 16.2L21 21" /></>,
     chevron: <path d="M6 9l6 6 6-6" />,
     chevronDown: <path d="M6 9l6 6 6-6" />,
     chevronUp: <path d="M6 15l6-6 6 6" />,

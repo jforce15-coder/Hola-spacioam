@@ -50,13 +50,115 @@ function LangScreen({ onPick }) {
   );
 }
 
+/* ---------- SEEK RESERVATION — pop-up autogestionable por el huésped ----------
+   Si el código no está en la caché, en vez de un error seco el huésped ve una
+   explicación y puede lanzar la búsqueda en vivo él mismo, con tiempo estimado.
+   Dos niveles: rápida (hoy + 5 días, ~30 s) y ampliada (60 días, ~2 min). */
+function SeekReservationSheet({ t, seek, code, onRun, onClose }) {
+  const { stage, running, elapsed = 0, eta = 30, tried, timedOut, offline, fails = 0 } = seek;
+  // Escalar a "notificar al host" nunca debe quedar bloqueado: se ofrece cuando
+  // ya no hay más niveles de búsqueda, cuando algo falló (timeout / sin red) o
+  // tras dos intentos sin éxito.
+  const canReport = !stage || timedOut || offline || fails >= 2;
+  const [report, setReport] = useStateO(""); // "" | sending | sent
+  const notifyHost = () => {
+    setReport("sending");
+    Backend.reportProblem({ code, stage: tried || stage || "deep" })
+      .then(() => setReport("sent")).catch(() => setReport("sent"));
+  };
+  const pct = running ? Math.min(96, Math.round((elapsed / eta) * 100)) : 0;
+  const left = Math.max(0, eta - elapsed);
+  const heading = report === "sent" ? t.seekReportTitle
+    : running ? t.seekRunningTitle : offline ? t.seekOfflineTitle : timedOut ? t.seekSlowTitle
+    : stage === "deep" ? t.seekWiderTitle : stage === "quick" ? t.seekTitle : t.seekNoneTitle;
+  const bodyCopy = report === "sent" ? t.seekReportBody
+    : running ? t.seekRunningBody : offline ? t.seekOfflineBody : timedOut ? t.seekSlowBody
+    : stage === "deep" ? t.seekWiderBody : stage === "quick" ? t.seekBody : t.seekNoneBody;
+  return (
+    <div onClick={() => !running && onClose()} style={{ position: "fixed", inset: 0, zIndex: 90, background: "rgba(62,63,63,.34)",
+      backdropFilter: "blur(6px)", display: "grid", placeItems: "center", padding: 20 }}>
+      <div onClick={(e) => e.stopPropagation()} className="reveal" style={{ width: "100%", maxWidth: 400, background: C.white,
+        borderRadius: 24, border: `1px solid ${C.grisCalido}`, boxShadow: "0 28px 80px rgba(62,63,63,.14)", padding: "30px 26px 26px" }}>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 18 }}>
+          <span style={{ width: 44, height: 44, borderRadius: 13, background: "rgba(233,130,106,.12)", display: "grid", placeItems: "center" }}>
+            <Icon name={report === "sent" ? "check" : running ? "refresh" : "search"} size={19} color={C.peach} />
+          </span>
+        </div>
+        <h2 style={{ fontFamily: C.serif, fontSize: 24, lineHeight: 1.22, color: C.negro, margin: "0 0 10px", textAlign: "center", textWrap: "balance" }}>{heading}</h2>
+        <p style={{ fontFamily: C.sans, fontSize: 12.5, lineHeight: 1.75, color: C.tierra, margin: 0, textAlign: "center",
+          letterSpacing: "0.02em", textWrap: "pretty" }}>{bodyCopy}</p>
+        <div style={{ margin: "18px 0 0", padding: "12px 14px", background: C.alabaster, borderRadius: 12,
+          border: `1px solid ${C.beige}`, textAlign: "center" }}>
+          <div style={{ fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.24em", textTransform: "uppercase", color: C.taupe, fontWeight: 500 }}>{report === "sent" ? t.seekReportRef : t.seekCodeLabel}</div>
+          <div style={{ fontFamily: C.sans, fontSize: 17, letterSpacing: "0.16em", color: C.negro, fontWeight: 500, marginTop: 4 }}>{code}</div>
+        </div>
+        {report === "sent" ? (
+          <div style={{ marginTop: 20, display: "flex", flexDirection: "column", gap: 10 }}>
+            <Btn full onClick={() => onRun("quick")}>
+              <Icon name="refresh" size={16} color={C.alabaster} /> {t.seekTryAgainLater}
+            </Btn>
+            <button onClick={onClose} className="sp-row" style={{ background: "transparent", border: "none", padding: "10px 4px",
+              fontFamily: C.sans, fontSize: 11.5, letterSpacing: "0.06em", color: C.tierra, cursor: "pointer" }}>
+              {t.seekClose}
+            </button>
+          </div>
+        ) : running ? (
+          <div style={{ marginTop: 20 }}>
+            <div style={{ height: 3, borderRadius: 2, background: C.beige, overflow: "hidden" }}>
+              <div style={{ height: "100%", width: pct + "%", background: C.peach, transition: "width .9s linear" }} />
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 9 }}>
+              <span style={{ fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.06em", color: C.tierra }}>{t.seekElapsed} {elapsed}s</span>
+              <span style={{ fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.06em", color: C.taupe }}>
+                {left > 0 ? `${t.seekRemaining} ~${left}s` : t.seekAlmost}
+              </span>
+            </div>
+            <p style={{ fontFamily: C.sans, fontSize: 10.5, color: C.taupe, textAlign: "center", marginTop: 14, letterSpacing: "0.04em", lineHeight: 1.7 }}>{t.seekDontClose}</p>
+          </div>
+        ) : (
+          <div style={{ marginTop: 20, display: "flex", flexDirection: "column", gap: 10 }}>
+            {stage && (
+              <>
+                <Btn full onClick={() => onRun(stage)}>
+                  <Icon name="refresh" size={16} color={C.alabaster} /> {timedOut ? t.seekRetryCta : stage === "deep" ? t.seekWiderCta : t.seekCta}
+                </Btn>
+                <p style={{ fontFamily: C.sans, fontSize: 10.5, color: C.taupe, textAlign: "center", margin: 0, letterSpacing: "0.06em" }}>
+                  {t.seekEta} {stage === "deep" ? t.seekEtaWide : t.seekEtaQuick}
+                </p>
+              </>
+            )}
+            {canReport && (
+              <button onClick={notifyHost} disabled={report === "sending"} className="sp-btn"
+                style={{ background: "transparent", border: `1px solid ${C.peach}`, borderRadius: 999, padding: "11px 18px",
+                  fontFamily: C.sans, fontSize: 11.5, letterSpacing: "0.06em", color: C.peach, cursor: "pointer",
+                  display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, opacity: report === "sending" ? 0.5 : 1 }}>
+                <Icon name="mail" size={15} color={C.peach} /> {report === "sending" ? t.seekReportSending : t.seekContact}
+              </button>
+            )}
+            <button onClick={onClose} className="sp-row" style={{ background: "transparent", border: "none", padding: "10px 4px",
+              fontFamily: C.sans, fontSize: 11.5, letterSpacing: "0.06em", color: C.tierra, cursor: "pointer" }}>
+              {stage ? t.seekBackToCode : t.seekClose}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ---------- RESERVATION CODE ---------- */
 function CodeScreen({ t, onResolved, onAdmin, onSwitchLang }) {
   const [code, setCode] = useStateO("");
   const [err, setErr] = useStateO("");
   const [loading, setLoading] = useStateO(false);
   const [showLogin, setShowLogin] = useStateO(false);
-  const submit = () => {
+  // Búsqueda escalonada autogestionable por el huésped:
+  //   sync = ""      → solo caché, instantáneo
+  //   sync = "quick" → hoy + 5 días (~30 s)
+  //   sync = "deep"  → 60 días (~2 min)
+  // Si la caché falla se abre el pop-up y el huésped decide buscar en vivo.
+  const [seek, setSeek] = useStateO(null); // { stage, running, elapsed, eta, done }
+  const submit = (sync) => {
     setErr(""); setLoading(true);
     // acceso permitido hasta 10 días después del checkout; luego, vencida.
     const isExpired = (res) => {
@@ -69,12 +171,30 @@ function CodeScreen({ t, onResolved, onAdmin, onSwitchLang }) {
     // re-syncs from Hospitable on a miss before giving up).
     const local = findReservation(code);
     if (local) { setTimeout(() => { setLoading(false); if (isExpired(local)) { setErr(t.expired); return; } onResolved(local); }, 500); return; }
-    Backend.findReservation(code).then((res) => {
+    Backend.findReservation(code, sync).then(({ reservation: res, canSync, timedOut, offline }) => {
       setLoading(false);
-      if (!res) { setErr(t.notFound); return; }
+      if (!res) { setSeek({ stage: canSync || "", running: false, timedOut: timedOut, offline: offline, fails: sync ? 1 : 0 }); return; }
+      setSeek(null);
       if (isExpired(res)) { setErr(t.expired); return; }
       onResolved(res);
-    }).catch(() => { setLoading(false); setErr(t.notFound); });
+    }).catch(() => { setLoading(false); setSeek({ stage: sync || "quick", running: false, timedOut: true, fails: 1 }); });
+  };
+  // dispara el sync en vivo desde el pop-up, con contador visible
+  const runSeek = (stage) => {
+    const eta = stage === "quick" ? 30 : 120;
+    const fails = (seek && seek.fails) || 0;
+    setSeek({ stage, running: true, elapsed: 0, eta, fails });
+    const t0 = Date.now();
+    const tick = setInterval(() => {
+      setSeek((s) => (s && s.running ? { ...s, elapsed: Math.round((Date.now() - t0) / 1000) } : s));
+    }, 1000);
+    Backend.findReservation(code, stage).then(({ reservation: res, canSync, timedOut, offline }) => {
+      clearInterval(tick);
+      if (!res) { setSeek({ stage: canSync || "", running: false, tried: stage, timedOut: timedOut, offline: offline, fails: fails + 1 }); return; }
+      setSeek(null);
+      if (isExpired(res)) { setErr(t.expired); return; }
+      onResolved(res);
+    }).catch(() => { clearInterval(tick); setSeek({ stage: stage, running: false, tried: stage, timedOut: true, fails: fails + 1 }); });
   };
   return (
     <Screen maxW={480}>
@@ -87,19 +207,20 @@ function CodeScreen({ t, onResolved, onAdmin, onSwitchLang }) {
         <Icon name="lock" size={16} color={C.tierra} />
       </button>
       {showLogin && <AdminLogin t={t} onClose={() => setShowLogin(false)} onSuccess={(email) => { setShowLogin(false); onAdmin(email); }} />}
+      {seek && <SeekReservationSheet t={t} seek={seek} code={code} onRun={runSeek} onClose={() => setSeek(null)} />}
       <TopBar t={t} onSwitchLang={onSwitchLang} />
       <div className="reveal"><H sub={t.reservationSub}>{t.reservationTitle}</H></div>
       <div className="reveal" style={{ animationDelay: ".08s", background: C.white, borderRadius: 22, padding: 26,
         border: `1px solid ${C.grisCalido}`, boxShadow: "0 4px 16px rgba(62,63,63,.05)" }}>
         <input value={code} placeholder={t.reservationPh}
           onChange={(e) => { setCode(e.target.value.replace(/\s+/g, "").toUpperCase()); setErr(""); }}
-          onKeyDown={(e) => e.key === "Enter" && submit()}
+          onKeyDown={(e) => e.key === "Enter" && submit("")}
           style={{ width: "100%", boxSizing: "border-box", textAlign: "center", padding: "18px 12px",
             fontFamily: C.sans, fontSize: 24, letterSpacing: "0.18em", color: C.negro, fontWeight: 500,
             border: `1px solid ${C.grisCalido}`, borderRadius: 14, background: C.alabaster, outline: "none" }} />
         {err && <p style={{ color: C.peach, fontFamily: C.sans, fontSize: 12, marginTop: 12, textAlign: "center", letterSpacing: "0.02em" }}>{err}</p>}
         <div style={{ marginTop: 18 }}>
-          <Btn full onClick={submit} disabled={loading || normCode(code).length < 3}>
+          <Btn full onClick={() => submit("")} disabled={loading || normCode(code).length < 3}>
             {loading ? <><Spinner /> {t.validating}</> : t.validate}
           </Btn>
         </div>

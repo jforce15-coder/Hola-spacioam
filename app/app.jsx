@@ -94,7 +94,7 @@ function App() {
     const inviteEmail = em ? decodeURIComponent(em) : "";
     if (!code) return;
     if (!lang) setLang("es");
-    Backend.findReservation(code).then((r) => {
+    Backend.findReservation(code, "quick").then(({ reservation: r }) => {
       if (!r) return;
       window.location.hash = "";
       setRes(r); setSiblings([r]); setInviteEmail(inviteEmail); setStage("bento");

@@ -83,6 +83,32 @@ function App() {
     });
   }, []);
 
+  // enlace firmado (#r=CODIGO&s=FIRMA&t=seccion) — el huésped entra directo a
+  // su estancia, sin escribir el código. La firma se valida en el backend.
+  const [linkErr, setLinkErr] = useStateA("");
+  useEffectA(() => {
+    const h = window.location.hash || "";
+    const m = h.match(/[#&]r=([^&]+)/);
+    const sg = h.match(/[#&]s=([^&]+)/);
+    if (!m || !sg) return;
+    const code = decodeURIComponent(m[1] || "");
+    const tl = (h.match(/[#&]t=([^&]+)/) || [])[1];
+    const want = tl ? decodeURIComponent(tl) : "";
+    if (!lang) setLang("es");
+    Backend.openLink({ code, sig: decodeURIComponent(sg[1] || "") }).then(({ reservation: r, error }) => {
+      if (!r) {
+        // enlace inválido o vencido → pantalla de código normal, con aviso
+        window.location.hash = "";
+        setLinkErr(error === "expired" ? "expired" : "invalid");
+        setStage("code");
+        return;
+      }
+      setRes(r); setSiblings([r]);
+      if (want && T.es.tiles[want]) { setTile(want); setStage("tile"); window.location.hash = want; }
+      else { window.location.hash = ""; setStage("bento"); }
+    }).catch(() => { window.location.hash = ""; setLinkErr("invalid"); setStage("code"); });
+  }, []);
+
   // invite link (#invite=CODE&email=…) — a secondary guest lands here from the
   // email; resolve the reservation by code and open account creation synced to it.
   useEffectA(() => {
@@ -248,7 +274,7 @@ function App() {
   let view;
   switch (stage) {
     case "lang":     view = <LangScreen onPick={pickLang} />; break;
-    case "code":     view = <CodeScreen t={t} onResolved={onResolved} onAdmin={goAdmin} onSwitchLang={switchLang} />; break;
+    case "code":     view = <CodeScreen t={t} linkErr={linkErr} onClearLinkErr={() => setLinkErr("")} onResolved={onResolved} onAdmin={goAdmin} onSwitchLang={switchLang} />; break;
     case "overview": view = <OverviewScreen t={t} res={res} onStart={() => setStage("booker")} onSwitchLang={switchLang} />; break;
     case "booker":   view = <BookerScreen t={t} res={res} form={form} setForm={setForm} onBack={() => setStage("overview")} onNext={() => setStage("docs")} onSwitchLang={switchLang} />; break;
     case "docs":     view = <DocsScreen t={t} res={res} form={form} setForm={setForm} onBack={() => setStage("booker")} onNext={() => setStage("contact")} onSwitchLang={switchLang} />; break;

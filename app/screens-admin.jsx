@@ -256,6 +256,91 @@ function printSummary() {
 }
 
 /* ============================================================
+   ENLACE FIRMADO POR RESERVA
+   Genera hola.spacioam.com/#r=CODIGO&s=FIRMA&t=seccion — el huésped entra
+   directo, sin escribir su código. Se puede apuntar a una sección concreta.
+   ============================================================ */
+const GUEST_LINK_TILES = ["", "checkin", "wifi", "parqueo", "manual", "amenities", "visits", "factura"];
+function GuestLinkButton({ t, h }) {
+  const es = t.code === "es";
+  const [open, setOpen] = useStateAd(false);
+  const [tile, setTile] = useStateAd("");
+  const [url, setUrl] = useStateAd("");
+  const [fail, setFail] = useStateAd("");
+  const [copied, setCopied] = useStateAd(false);
+  const [busy, setBusy] = useStateAd(false);
+  const base = typeof window !== "undefined" ? window.location.origin : "";
+  const gen = (tl) => {
+    setBusy(true); setCopied(false); setFail("");
+    Backend.guestLink({ code: h.code, tile: tl, base })
+      .then((r) => {
+        if (r && r.url) { setUrl(r.url); return; }
+        setUrl("");
+        // distingue "sin backend" de "backend viejo sin esta función": el
+        // segundo es el caso real hasta que se pegue el Code.gs nuevo
+        const err = (r && r.error) || "";
+        setFail(err === "no-endpoint" ? "conn" : "stale");
+      })
+      .catch(() => { setUrl(""); setFail("stale"); })
+      .finally(() => setBusy(false));
+  };
+  useEffectAd(() => { if (open) gen(tile); }, [open, tile]);
+  const copy = () => {
+    if (!url) return;
+    try { navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch (e) {}
+  };
+  const label = (k) => k === "" ? (es ? "Menú completo" : "Full menu") : (t.tiles && t.tiles[k] ? t.tiles[k].t : k);
+  return (
+    <>
+      <Btn variant="ghost" onClick={() => setOpen(true)} style={{ padding: "11px 16px" }}>
+        <Icon name="link" size={15} color={C.negro} /> {es ? "Enlace directo" : "Direct link"}
+      </Btn>
+      {open && (
+        <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 95, background: "rgba(62,63,63,.34)",
+          backdropFilter: "blur(6px)", display: "grid", placeItems: "center", padding: 20 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 460, background: C.white, borderRadius: 22,
+            border: `1px solid ${C.grisCalido}`, boxShadow: "0 28px 80px rgba(62,63,63,.14)", padding: "26px 24px 22px" }}>
+            <h3 style={{ fontFamily: C.serif, fontSize: 22, color: C.negro, margin: "0 0 6px" }}>{es ? "Enlace directo" : "Direct link"}</h3>
+            <p style={{ fontFamily: C.sans, fontSize: 11.5, color: C.tierra, letterSpacing: "0.03em", lineHeight: 1.7, margin: "0 0 18px", textWrap: "pretty" }}>
+              {es ? "El huésped entra a su estancia sin escribir el código. El enlace es único por reserva y deja de funcionar un día después del check-out."
+                  : "The guest enters their stay without typing the code. The link is unique per reservation and stops working a day after check-out."}
+            </p>
+            <div style={{ fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.2em", textTransform: "uppercase", color: C.taupe, fontWeight: 600, marginBottom: 8 }}>
+              {es ? "Abrir en" : "Open at"}
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 16 }}>
+              {GUEST_LINK_TILES.map((k) => (
+                <button key={k || "all"} onClick={() => setTile(k)} className="sp-btn"
+                  style={{ background: tile === k ? C.negro : "transparent", color: tile === k ? C.alabaster : C.tierra,
+                    border: `1px solid ${tile === k ? C.negro : C.grisCalido}`, borderRadius: 999, padding: "7px 13px",
+                    fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.04em", cursor: "pointer", fontWeight: 500 }}>
+                  {label(k)}
+                </button>
+              ))}
+            </div>
+            <div style={{ background: fail ? "rgba(233,130,106,.09)" : C.alabaster, border: `1px solid ${fail ? "rgba(233,130,106,.32)" : C.grisCalido}`,
+              borderRadius: 12, padding: "12px 14px", fontFamily: C.sans, fontSize: fail ? 11.5 : 11, color: C.negro,
+              letterSpacing: "0.02em", lineHeight: fail ? 1.65 : 1.4, wordBreak: fail ? "normal" : "break-all", minHeight: 20, textWrap: "pretty" }}>
+              {busy ? (es ? "Generando…" : "Generating…")
+                : url ? url
+                : fail === "conn" ? (es ? "No hay conexión con el backend. Conéctalo desde Gestionar conexión." : "No backend connection. Connect it from Manage connection.")
+                : (es ? "Falta actualizar el backend. Pega el Code.gs nuevo en Apps Script y crea una versión nueva de la implementación."
+                      : "The backend needs updating. Paste the new Code.gs into Apps Script and create a new deployment version.")}
+            </div>
+            <div style={{ display: "flex", gap: 9, marginTop: 16 }}>
+              <Btn variant="peach" onClick={copy} disabled={!url} style={{ padding: "11px 18px", opacity: url ? 1 : 0.4 }}>
+                <Icon name={copied ? "check" : "copy"} size={15} color={C.white} /> {copied ? (es ? "Copiado" : "Copied") : (es ? "Copiar enlace" : "Copy link")}
+              </Btn>
+              <Btn variant="ghost" onClick={() => setOpen(false)} style={{ padding: "11px 16px" }}>{es ? "Cerrar" : "Close"}</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+/* ============================================================
    RESERVATION SUMMARY — full document (email / PDF to admins)
    ============================================================ */
 function ReservationSummary({ t, h, rec: localRec, onClose, onResend, autoPrint, avail }) {
@@ -305,7 +390,7 @@ function ReservationSummary({ t, h, rec: localRec, onClose, onResend, autoPrint,
             <Btn variant="peach" onClick={printSummary} style={{ padding: "11px 18px" }}><Icon name="download" size={15} color={C.white} /> {t.sumPrint}</Btn>
             <Btn variant="ghost" onClick={av.email ? () => onResend("email") : undefined} disabled={!av.email} style={{ padding: "11px 16px", opacity: av.email ? 1 : 0.4, cursor: av.email ? "pointer" : "not-allowed" }} title={av.email ? "" : (es ? "Sin correo en esta propiedad" : "No email")}><Icon name="mail" size={15} color={C.negro} /> {es ? "Correo" : "Email"}</Btn>
             <Btn variant="ghost" onClick={av.whatsapp ? () => onResend("whatsapp") : undefined} disabled={!av.whatsapp} style={{ padding: "11px 16px", opacity: av.whatsapp ? 1 : 0.4, cursor: av.whatsapp ? "pointer" : "not-allowed" }} title={av.whatsapp ? (es ? "Incluye al administrador" : "") : (es ? "Sin WhatsApp en esta propiedad" : "No WhatsApp")}><Icon name="whatsapp" size={15} color={C.negro} /> WhatsApp</Btn>
-          </div>
+            <GuestLinkButton t={t} h={h} />          </div>
           <button onClick={onClose} className="sp-btn" style={{ width: 40, height: 40, borderRadius: 12, border: `1px solid ${C.grisCalido}`,
             background: C.white, cursor: "pointer", display: "grid", placeItems: "center" }}><Icon name="x" size={18} color={C.negro} /></button>
         </div>

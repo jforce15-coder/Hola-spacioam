@@ -147,7 +147,7 @@ function SeekReservationSheet({ t, seek, code, onRun, onClose }) {
 }
 
 /* ---------- RESERVATION CODE ---------- */
-function CodeScreen({ t, onResolved, onAdmin, onSwitchLang }) {
+function CodeScreen({ t, linkErr, onClearLinkErr, onResolved, onAdmin, onSwitchLang }) {
   const [code, setCode] = useStateO("");
   const [err, setErr] = useStateO("");
   const [loading, setLoading] = useStateO(false);
@@ -159,7 +159,7 @@ function CodeScreen({ t, onResolved, onAdmin, onSwitchLang }) {
   // Si la caché falla se abre el pop-up y el huésped decide buscar en vivo.
   const [seek, setSeek] = useStateO(null); // { stage, running, elapsed, eta, done }
   const submit = (sync) => {
-    setErr(""); setLoading(true);
+    setErr(""); if (onClearLinkErr) onClearLinkErr(); setLoading(true);
     // acceso permitido hasta 10 días después del checkout; luego, vencida.
     const isExpired = (res) => {
       const co = res && res.checkout ? String(res.checkout).slice(0, 10) : "";
@@ -218,6 +218,15 @@ function CodeScreen({ t, onResolved, onAdmin, onSwitchLang }) {
           style={{ width: "100%", boxSizing: "border-box", textAlign: "center", padding: "18px 12px",
             fontFamily: C.sans, fontSize: 24, letterSpacing: "0.18em", color: C.negro, fontWeight: 500,
             border: `1px solid ${C.grisCalido}`, borderRadius: 14, background: C.alabaster, outline: "none" }} />
+        {linkErr && !err && (
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginTop: 14, padding: "12px 14px",
+            background: "rgba(233,130,106,.09)", border: "1px solid rgba(233,130,106,.32)", borderRadius: 12 }}>
+            <span style={{ flexShrink: 0, marginTop: 1 }}><Icon name="lock" size={14} color={C.peach} /></span>
+            <p style={{ fontFamily: C.sans, fontSize: 11.5, color: C.negro, margin: 0, letterSpacing: "0.02em", lineHeight: 1.65, textWrap: "pretty" }}>
+              {linkErr === "expired" ? t.linkExpired : t.linkInvalid}
+            </p>
+          </div>
+        )}
         {err && <p style={{ color: C.peach, fontFamily: C.sans, fontSize: 12, marginTop: 12, textAlign: "center", letterSpacing: "0.02em" }}>{err}</p>}
         <div style={{ marginTop: 18 }}>
           <Btn full onClick={() => submit("")} disabled={loading || normCode(code).length < 3}>

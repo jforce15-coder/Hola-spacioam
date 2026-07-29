@@ -132,6 +132,8 @@ const T = {
     seekReportSending: "Enviando aviso…",
     seekReportRef: "Referencia",
     seekTryAgainLater: "Intentar de nuevo",
+    linkExpired: "Ese enlace ya venció. Escribe tu código de reserva para entrar.",
+    linkInvalid: "Ese enlace no es válido. Escribe tu código de reserva para entrar.",
     segInvoiceDone: "Marcar resuelta",
     alertsTitle: "Pendientes",
     alertInvoices: (n) => n === 1 ? "1 factura pendiente" : `${n} facturas pendientes`,
@@ -466,6 +468,8 @@ const T = {
     seekReportSending: "Sending notice…",
     seekReportRef: "Reference",
     seekTryAgainLater: "Try again",
+    linkExpired: "That link has expired. Enter your reservation code to continue.",
+    linkInvalid: "That link isn't valid. Enter your reservation code to continue.",
     segInvoiceDone: "Mark resolved",
     alertsTitle: "Pending",
     alertInvoices: (n) => n === 1 ? "1 invoice pending" : `${n} invoices pending`,
@@ -1090,6 +1094,20 @@ const Backend = {
     const list = (s.invoices || []).map((i, n) => ((i.at || n) + "|" + (i.code || "")) === payload.id ? { ...i, status: payload.action === "reopen" ? "pendiente" : "done" } : i);
     saveStore({ ...s, invoices: list });
     return { ok: true, local: true };
+  },
+
+  // Enlaces firmados por reserva: entran directo a la estancia (y opcionalmente
+  // a una sección) sin pedir el código.
+  async guestLink({ code, tile, base }) {
+    if (!this.isConnected()) return { ok: false, error: "no-endpoint" };
+    try { return await this.call("guestLink", { code, tile: tile || "", base: base || "" }); }
+    catch (e) { return { ok: false, error: (e && e.message) || "backend-error" }; }
+  },
+  async openLink({ code, sig }) {
+    if (this.isConnected()) {
+      try { const j = await this.call("openLink", { code, sig }); return { reservation: j.reservation || null }; } catch (e) { return { reservation: null, error: (e && e.message) || "bad-link" }; }
+    }
+    return { reservation: findReservation(code) };
   },
 
   async findReservation(code, sync) {

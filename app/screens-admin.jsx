@@ -1024,6 +1024,23 @@ function localStandardize(raw) {
 
 function PropertyInfoScreen({ t, roster, focusProp, onToast }) {
   const [store, setStore] = useStateAd(loadPropInfo());
+  // hydrated: false mientras esperamos al backend → NADA se escribe todavía
+  const [hydrated, setHydrated] = useStateAd(!(Backend.isConnected && Backend.isConnected()));
+  useEffectAd(() => {
+    if (hydrated) return;
+    let alive = true;
+    Backend.listPropertyInfo().then((info) => {
+      if (!alive) return;
+      if (info && Object.keys(info).length) {
+        // el backend manda; lo local solo rellena lo que el backend no tiene
+        const merged = { ...loadPropInfo(), ...info };
+        savePropInfoAll(merged);
+        setStore(merged);
+      }
+      setHydrated(true);
+    }).catch(() => { if (alive) setHydrated(true); });
+    return () => { alive = false; };
+  }, []);
   const [openKey, setOpenKey] = useStateAd(null);
   // el buscador global puede pedir abrir una propiedad concreta
   useEffectAd(() => { if (focusProp) setOpenKey(focusProp); }, [focusProp]);
@@ -1092,6 +1109,7 @@ function PropertyInfoScreen({ t, roster, focusProp, onToast }) {
   }, [roster, stations, store, liveNames]);
   // autosave: guarda store + contactos poco después de cada cambio, sin botón
   useEffectAd(() => {
+    if (!hydrated) return;               // nunca sobrescribas antes de hidratar
     savePropInfoAll(store);
     if (!autosave.current.mounted) { autosave.current.mounted = true; return; }
     clearTimeout(autosave.current.t1);
@@ -1102,7 +1120,7 @@ function PropertyInfoScreen({ t, roster, focusProp, onToast }) {
       sk.forEach((k) => { const c = stations[k] || {}; try { Backend.saveStation && Backend.saveStation({ propertyId: c.propertyId || "", propertyName: k, email1: c.email1 || "", email2: c.email2 || "", phone1: c.phone1 || "", phone2: c.phone2 || "" }); } catch (e) {} });
       if (keys.length || sk.length) onToast(t.code === "es" ? "Guardado automáticamente" : "Saved automatically");
     }, 900);
-  }, [store, stations]);
+  }, [store, stations, hydrated]);
   // building defaults from the check-in data, so instruction fields pre-fill
   const buildingOf = (name) => (typeof matchBuilding === "function" ? matchBuilding({ propertyName: name, apartment: "" }) : null);
   const es = t.code === "es";
@@ -1227,6 +1245,7 @@ function PropertyInfoScreen({ t, roster, focusProp, onToast }) {
   // (info o contacto) coincide en forma normalizada con un nombre del roster pero
   // difiere en espacios/guiones/mayúsculas, se mueve al nombre exacto de Hospitable.
   useEffectAd(() => {
+    if (!hydrated) return;            // no toques nada antes de hidratar
     if (!liveNames.length) return;
     const liveByKey = {}; liveNames.forEach((n) => { liveByKey[nkName(n)] = n; });
     // info store
@@ -1259,7 +1278,7 @@ function PropertyInfoScreen({ t, roster, focusProp, onToast }) {
       });
       return ch ? n : s;
     });
-  }, [liveNames.join("|")]);
+  }, [liveNames.join("|"), hydrated]);
 
   // estampar hospId durable en cada info que tenga estación con id (previene futuros huérfanos)
   useEffectAd(() => {
@@ -1269,6 +1288,7 @@ function PropertyInfoScreen({ t, roster, focusProp, onToast }) {
   }, [stations]);
   // auto-reconciliar coincidencias seguras (por id o nombre normalizado idéntico)
   useEffectAd(() => {
+    if (!hydrated) return;            // no toques nada antes de hidratar
     if (!props.length) return;
     const auto = orphans.map((o) => ({ o, t: bestTargetFor(o) })).filter((x) => x.t && (x.t.conf === "id" || x.t.conf === "exact"));
     if (!auto.length) return;
@@ -1282,10 +1302,11 @@ function PropertyInfoScreen({ t, roster, focusProp, onToast }) {
     });
     setStore(next); savePropInfoAll(next);
     onToast(es ? `Nombres reconciliados automáticamente: ${auto.length}` : `Names auto-reconciled: ${auto.length}`);
-  }, [props.join("|"), Object.keys(store).join("|"), Object.keys(stations).join("|")]);
+  }, [props.join("|"), Object.keys(store).join("|"), Object.keys(stations).join("|"), hydrated]);
   // PRIMER BATCH automático: alinear todo una sola vez (local, sin tokens), tras reconciliar.
   // Se omite si hay un estándar precargado (seed) — ese tiene prioridad.
   useEffectAd(() => {
+    if (!hydrated) return;            // no toques nada antes de hidratar
     if (firstBatchRef.current) return;
     if (window.SPACIO_STD_SEED) { firstBatchRef.current = true; return; }
     try { if (localStorage.getItem(BATCH_FLAG)) { firstBatchRef.current = true; return; } } catch (e) {}
@@ -1297,11 +1318,12 @@ function PropertyInfoScreen({ t, roster, focusProp, onToast }) {
     firstBatchRef.current = true;
     try { localStorage.setItem(BATCH_FLAG, String(Date.now())); } catch (e) {}
     (async () => { await alignAll(); })();
-  }, [props.join("|"), pendingProps.length, orphans.length]);
+  }, [props.join("|"), pendingProps.length, orphans.length, hydrated]);
 
   // SEED estándar precargado (estandarización hecha por Claude, cero tokens del web app).
   // Si existe window.SPACIO_STD_SEED, aplica el std ya hecho a las propiedades que coincidan.
   useEffectAd(() => {
+    if (!hydrated) return;            // no toques nada antes de hidratar
     const seed = window.SPACIO_STD_SEED; if (!seed || !props.length) return;
     const nk = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
     const entries = Array.isArray(seed) ? seed : Object.keys(seed).map((k) => ({ match: [nk(k)], std: seed[k] }));
@@ -1318,12 +1340,13 @@ function PropertyInfoScreen({ t, roster, focusProp, onToast }) {
       try { Backend.call && Backend.call("savePropertyInfo", { property: name, info: next[name] }).catch(() => {}); } catch (e) {}
     });
     if (changed) { setStore(next); savePropInfoAll(next); onToast(es ? "Estándar precargado aplicado" : "Preloaded standard applied"); }
-  }, [props.join("|")]);
+  }, [props.join("|"), hydrated]);
 
   // MERGE dirigido (window.SPACIO_MERGE_MAP): fusiona nombres distintos que NO
   // coinciden por normalización (ej. "…- 11102" → "…- 1102"). Corre una vez por
   // sig y escribe al backend, así aplica en todos los dispositivos.
   useEffectAd(() => {
+    if (!hydrated) return;            // no toques nada antes de hidratar
     const map = window.SPACIO_MERGE_MAP; if (!map || !map.length) return;
     const nkm = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
     const findKey = (obj, name) => { const k = nkm(name); return Object.keys(obj).find((n) => nkm(n) === k); };
@@ -1355,7 +1378,7 @@ function PropertyInfoScreen({ t, roster, focusProp, onToast }) {
       try { localStorage.setItem(flag, String(Date.now())); } catch (e) {}
       onToast(es ? `Fusionado: ${m.from} → ${m.to}` : `Merged: ${m.from} → ${m.to}`);
     });
-  }, [props.join("|"), Object.keys(store).join("|")]);
+  }, [props.join("|"), Object.keys(store).join("|"), hydrated]);
 
   // Exportar la información guardada de todas las propiedades (para estandarizar fuera del web app)
   const exportPropInfo = () => {
@@ -1374,7 +1397,7 @@ function PropertyInfoScreen({ t, roster, focusProp, onToast }) {
   const manualSeed = () => (typeof HOUSE_MANUAL_EXTRAS !== "undefined"
     ? Object.keys(HOUSE_MANUAL_EXTRAS).map((k) => ({ id: k, title: HOUSE_MANUAL_EXTRAS[k].title, icon: HOUSE_MANUAL_EXTRAS[k].icon || "manual", intro: HOUSE_MANUAL_EXTRAS[k].intro || "", steps: (HOUSE_MANUAL_EXTRAS[k].steps || []).slice() }))
     : []);
-  useEffectAd(() => { if (!store.__manual__) setStore((s) => ({ ...s, __manual__: { items: manualSeed(), assign: {} } })); }, []);
+  useEffectAd(() => { if (hydrated && !store.__manual__) setStore((s) => ({ ...s, __manual__: { items: manualSeed(), assign: {} } })); }, [hydrated]);
   const manual = store.__manual__ || { items: [], assign: {} };
   const manualItems = manual.items || [];
   const manualAssign = manual.assign || {};
@@ -2053,9 +2076,18 @@ function AlertToast({ item, index, expanded, onExpand, onDismiss, disabled }) {
   );
 }
 
+const ALERT_HIDE_KEY = "spacioam_alerts_hidden";
+function loadHiddenAlerts() { try { return JSON.parse(localStorage.getItem(ALERT_HIDE_KEY)) || {}; } catch (e) { return {}; } }
+
 function AdminAlertsBar({ t, onGoTab, onRefresh, refreshing }) {
   const [a, setA] = useStateAd(null);
-  const [hidden, setHidden] = useStateAd({});
+  // descartar una alerta la silencia de verdad: se recuerda entre recargas
+  const [hidden, setHidden] = useStateAd(loadHiddenAlerts);
+  const hide = (key) => setHidden((h) => {
+    const n = { ...h, [key]: 1 };
+    try { localStorage.setItem(ALERT_HIDE_KEY, JSON.stringify(n)); } catch (e) {}
+    return n;
+  });
   const [expanded, setExpanded] = useStateAd(false);
   const [muted, setMuted] = useStateAd(false);
   const load = () => { Backend.adminAlerts().then((r) => r && setA(r)).catch(() => {}); };
@@ -2095,7 +2127,7 @@ function AdminAlertsBar({ t, onGoTab, onRefresh, refreshing }) {
             {shown.map((it, i) => (
               <AlertToast key={it.key} item={it} index={i} expanded={expanded}
                 onExpand={() => setExpanded(true)}
-                onDismiss={() => setHidden((h) => ({ ...h, [it.key]: 1 }))}
+                onDismiss={() => hide(it.key)}
                 disabled={it.key === "sync" && refreshing} />
             ))}
           </div>

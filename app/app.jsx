@@ -110,6 +110,10 @@ function App() {
       if (h && T.es.tiles[h]) { setTile(h); setStage("tile"); }
       else { setTile(null); setStage("bento"); }
     };
+    // al ENTRAR a la estancia, respeta el #hash con el que llegó el huésped:
+    // así hola.spacioam.com/#amenities abre esa sección directamente tras validar
+    // el código, en vez de quedarse en el menú.
+    if (stage === "bento") onHash();
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, [stage]);

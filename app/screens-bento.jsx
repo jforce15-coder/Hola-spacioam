@@ -326,7 +326,7 @@ function TileDetail({ t, tileKey, res, onBack }) {
             {renderTileContent(tileKey, t, res)}
           </div>
           <p style={{ fontFamily: C.sans, fontSize: 10, color: C.tierra, textAlign: "center", margin: "18px 0 0", letterSpacing: "0.04em" }}>
-            guest.spacioam.com/#{tileKey}
+            {(typeof window !== "undefined" ? window.location.host : "hola.spacioam.com")}/#{tileKey}
           </p>
         </div>
       </div>

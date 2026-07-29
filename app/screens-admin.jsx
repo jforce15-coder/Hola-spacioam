@@ -1253,7 +1253,10 @@ function PropertyInfoScreen({ t, roster, focusProp, onToast }) {
     if (!std) return false;
     const patch = { std, stdMeta: { hash, at: Date.now(), by: "local" } };
     setStore((s) => ({ ...s, [name]: { ...(s[name] || {}), ...patch } }));
-    const cur = { ...loadPropInfo() }; cur[name] = { ...(cur[name] || {}), ...patch }; savePropInfoAll(cur);
+    // fusiona sobre el registro vivo, no sobre localStorage (que puede estar
+    // vacío en este dispositivo y borraría wifi/parqueo/cerradura al guardar)
+    const base = (store && store[name]) || loadPropInfo()[name] || {};
+    const cur = { ...loadPropInfo() }; cur[name] = { ...base, ...patch }; savePropInfoAll(cur);
     try { Backend.call && Backend.call("savePropertyInfo", { property: name, info: cur[name] }).catch(() => {}); } catch (e) {}
     return true;
   };
@@ -1317,13 +1320,13 @@ function PropertyInfoScreen({ t, roster, focusProp, onToast }) {
     const next = { ...store }; next[newName] = merged; delete next[oldName];
     setStore(next); savePropInfoAll(next);
     try { Backend.call && Backend.call("savePropertyInfo", { property: newName, info: merged }).catch(() => {}); } catch (e) {}
-    try { Backend.call && Backend.call("savePropertyInfo", { property: oldName, info: {} }).catch(() => {}); } catch (e) {}
+    try { Backend.call && Backend.call("savePropertyInfo", { property: oldName, info: {}, replace: true }).catch(() => {}); } catch (e) {}
     onToast(es ? `Fusionado: ${oldName} → ${newName}` : `Merged: ${oldName} → ${newName}`);
   };
   const discardOrphan = (oldName) => {
     const next = { ...store }; delete next[oldName];
     setStore(next); savePropInfoAll(next);
-    try { Backend.call && Backend.call("savePropertyInfo", { property: oldName, info: {} }).catch(() => {}); } catch (e) {}
+    try { Backend.call && Backend.call("savePropertyInfo", { property: oldName, info: {}, replace: true }).catch(() => {}); } catch (e) {}
     onToast(es ? `Descartada: ${oldName}` : `Discarded: ${oldName}`);
   };
   // MIGRAR nombres a la ortografía exacta de Hospitable: si un registro guardado
@@ -1344,7 +1347,7 @@ function PropertyInfoScreen({ t, roster, focusProp, onToast }) {
           Object.keys(s[old] || {}).forEach((k) => { const v = s[old][k]; if (v != null && !(typeof v === "string" && v.trim() === "") && !(Array.isArray(v) && v.length === 0)) merged[k] = v; });
           n[live] = merged; delete n[old]; ch = true;
           try { Backend.call && Backend.call("savePropertyInfo", { property: live, info: merged }).catch(() => {}); } catch (e) {}
-          try { Backend.call && Backend.call("savePropertyInfo", { property: old, info: {} }).catch(() => {}); } catch (e) {}
+          try { Backend.call && Backend.call("savePropertyInfo", { property: old, info: {}, replace: true }).catch(() => {}); } catch (e) {}
         }
       });
       if (ch) savePropInfoAll(n);
@@ -1383,7 +1386,7 @@ function PropertyInfoScreen({ t, roster, focusProp, onToast }) {
       const merged = mergeRecords(next[o], next[t.name], t.name);
       next[t.name] = merged; delete next[o];
       try { Backend.call && Backend.call("savePropertyInfo", { property: t.name, info: merged }).catch(() => {}); } catch (e) {}
-      try { Backend.call && Backend.call("savePropertyInfo", { property: o, info: {} }).catch(() => {}); } catch (e) {}
+      try { Backend.call && Backend.call("savePropertyInfo", { property: o, info: {}, replace: true }).catch(() => {}); } catch (e) {}
     });
     setStore(next); savePropInfoAll(next);
     onToast(es ? `Nombres reconciliados automáticamente: ${auto.length}` : `Names auto-reconciled: ${auto.length}`);
@@ -1447,7 +1450,7 @@ function PropertyInfoScreen({ t, roster, focusProp, onToast }) {
         const n = { ...s }; n[toName] = merged; delete n[fromK];
         savePropInfoAll(n);
         try { Backend.call && Backend.call("savePropertyInfo", { property: toName, info: merged }).catch(() => {}); } catch (e) {}
-        try { Backend.call && Backend.call("savePropertyInfo", { property: fromK, info: {} }).catch(() => {}); } catch (e) {}
+        try { Backend.call && Backend.call("savePropertyInfo", { property: fromK, info: {}, replace: true }).catch(() => {}); } catch (e) {}
         return n;
       });
       // contactos
@@ -1559,7 +1562,7 @@ function PropertyInfoScreen({ t, roster, focusProp, onToast }) {
     setStore((s) => { const n = { ...s }; const k = Object.keys(n).find((x) => nkName(x) === nkName(name)); if (k) delete n[k]; if (n.__hidden__) n.__hidden__ = { names: (n.__hidden__.names || []).filter((h) => nkName(h) !== nkName(name)) }; savePropInfoAll(n); return n; });
     setStations((s) => { const n = { ...s }; const k = Object.keys(n).find((x) => nkName(x) === nkName(name)); if (k) delete n[k]; return n; });
     const k = Object.keys(store).find((x) => nkName(x) === nkName(name)) || name;
-    try { Backend.call && Backend.call("savePropertyInfo", { property: k, info: {} }).catch(() => {}); } catch (e) {}
+    try { Backend.call && Backend.call("savePropertyInfo", { property: k, info: {}, replace: true }).catch(() => {}); } catch (e) {}
     if (openKey === name) setOpenKey(null);
     onToast(es ? `Eliminada: ${name}` : `Deleted: ${name}`);
   };

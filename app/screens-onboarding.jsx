@@ -618,6 +618,7 @@ function RulesScreen({ t, onBack, onAccept, onSwitchLang }) {
 
 /* ---------- DONE ---------- */
 function DoneScreen({ t, onEnter }) {
+  const items = t.doneNextItems || [];
   return (
     <Screen maxW={480}>
       <div style={{ textAlign: "center", paddingTop: 18 }}>
@@ -629,8 +630,33 @@ function DoneScreen({ t, onEnter }) {
           fontSize: 22, lineHeight: 1.35, color: C.negro, margin: "8px auto 30px", maxWidth: 360, letterSpacing: "-0.01em", textWrap: "balance" }}>
           {t.doneQuote}
         </p>
-        <div className="reveal" style={{ animationDelay: ".2s" }}>
+
+        {/* qué hay al otro lado del botón: el paso siguiente, explicado */}
+        <div className="reveal" style={{ animationDelay: ".18s", textAlign: "left", background: C.white,
+          border: `1px solid ${C.grisCalido}`, borderRadius: 20, padding: "20px 20px 22px", marginBottom: 22 }}>
+          <div style={{ fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.24em", textTransform: "uppercase",
+            color: C.peach, fontWeight: 500, marginBottom: 9 }}>{t.doneNextLabel}</div>
+          <div style={{ fontFamily: C.serif, fontWeight: 400, fontSize: 19, lineHeight: 1.25, color: C.negro,
+            letterSpacing: "-0.01em", textWrap: "pretty" }}>{t.doneNextTitle}</div>
+          <p style={{ fontFamily: C.sans, fontSize: 11.5, color: C.tierra, lineHeight: 1.6, letterSpacing: "0.02em", margin: "10px 0 16px" }}>{t.doneNextBody}</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {items.map(([icon, title, sub]) => (
+              <div key={icon} style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                <span style={{ width: 32, height: 32, borderRadius: 10, flexShrink: 0, display: "grid", placeItems: "center", background: C.beige }}>
+                  <Icon name={icon} size={16} color={C.negro} />
+                </span>
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ display: "block", fontFamily: C.sans, fontSize: 12, color: C.negro, fontWeight: 500, letterSpacing: "0.03em" }}>{title}</span>
+                  <span style={{ display: "block", fontFamily: C.sans, fontSize: 10.5, color: C.tierra, letterSpacing: "0.03em", marginTop: 2, lineHeight: 1.45 }}>{sub}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="reveal" style={{ animationDelay: ".24s" }}>
           <Btn variant="peach" onClick={onEnter}>{t.enterSpace} <Icon name="arrow" size={17} color={C.white} /></Btn>
+          <p style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, letterSpacing: "0.04em", margin: "14px 0 0", lineHeight: 1.5 }}>{t.doneNextFoot}</p>
         </div>
       </div>
     </Screen>

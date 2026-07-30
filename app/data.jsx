@@ -254,6 +254,23 @@ const T = {
     doneSub: "Tu registro fue enviado. El corazón ya empezó a sentir que este viaje está por empezar.",
     doneQuote: "Nos llena de emoción la posibilidad de compartir este espacio contigo.",
     enterSpace: "Entrar a tu espacio",
+    doneNextLabel: "Un paso más",
+    doneNextTitle: "Todo lo que necesitas saber ya te está esperando.",
+    doneNextBody: "Al entrar a tu espacio encontrarás, en un solo lugar:",
+    doneNextItems: [
+      ["checkin", "Check-in y check-out", "Cómo entrar paso a paso, códigos y horarios"],
+      ["parqueo", "Parqueo", "Dónde estacionar y cómo ingresar"],
+      ["wifi", "WiFi", "Red y contraseña"],
+      ["amenities", "Amenidades y manual", "Todo lo que puedes disfrutar"],
+    ],
+    doneNextFoot: "Te recomendamos revisarlo antes de tu llegada.",
+    ckPulse: "Empieza aquí",
+    acctNudge: "Guarda tu acceso",
+    acctNudgeSub: "Entra sin escribir tu código la próxima vez",
+    acctNudgeCta: "Crear",
+    alertHide: "Ocultar por ahora",
+    alertKill: "Eliminar permanentemente",
+    alertKillHint: "Se archiva en la hoja y no vuelve a aparecer.",
 
     /* account popup */
     acctTitle: "¿Quieres guardar tu acceso?",
@@ -584,6 +601,23 @@ const T = {
     doneSub: "Your check-in has been sent. The heart already feels this journey is about to begin.",
     doneQuote: "We're filled with joy at the chance to share this space with you.",
     enterSpace: "Enter your space",
+    doneNextLabel: "One more step",
+    doneNextTitle: "Everything you need to know is already waiting for you.",
+    doneNextBody: "Inside your space you'll find, all in one place:",
+    doneNextItems: [
+      ["checkin", "Check-in & check-out", "Step-by-step entry, codes and times"],
+      ["parqueo", "Parking", "Where to park and how to get in"],
+      ["wifi", "WiFi", "Network and password"],
+      ["amenities", "Amenities & manual", "Everything you can enjoy"],
+    ],
+    doneNextFoot: "We recommend having a look before you arrive.",
+    ckPulse: "Start here",
+    acctNudge: "Save your access",
+    acctNudgeSub: "Get in next time without typing your code",
+    acctNudgeCta: "Create",
+    alertHide: "Hide for now",
+    alertKill: "Delete permanently",
+    alertKillHint: "Archived in the sheet — it won't come back.",
 
     acctTitle: "Want to save your access?",
     acctSub: "Create a login to get in easily in the future, without needing to remember your reservation number. You'll also be able to invite your companions to have their own account.",
@@ -1078,8 +1112,21 @@ const Backend = {
     };
   },
 
-  async listInvoices() {
-    if (this.isConnected()) {
+  // el admin elimina una notificación de forma permanente: archiva en la hoja
+  async purgeAlerts({ kind }) {
+    if (!this.isConnected()) {
+      // sin backend: al menos limpia lo local para que el contador cuadre
+      try {
+        const s = loadStore();
+        if (kind === "invoices") saveStore({ ...s, invoices: (s.invoices || []).map((i) => ({ ...i, status: "done" })) });
+        if (kind === "incidents") saveStore({ ...s, incidents: (s.incidents || []).map((i) => ({ ...i, status: "descartado" })) });
+      } catch (e) {}
+      return { ok: true, offline: true };
+    }
+    try { return await this.call("purgeAlerts", { kind }); } catch (e) { return { ok: false }; }
+  },
+
+  async listInvoices() {    if (this.isConnected()) {
       try { const j = await this.call("listInvoices"); return j.invoices || []; } catch (e) { return []; }
     }
     const s = typeof loadStore === "function" ? loadStore() : {};

@@ -61,6 +61,7 @@ function App() {
   const [form, setForm] = useStateA(emptyForm(null));
   const [tile, setTile] = useStateA(null);
   const [acctOpen, setAcctOpen] = useStateA(false);
+  const [acctNudge, setAcctNudge] = useStateA(false);
   const [inviteEmail, setInviteEmail] = useStateA("");
   const acctTimer = useRefA(null);
   const t = lang ? T[lang] : T.es;
@@ -146,18 +147,29 @@ function App() {
 
   useEffectA(() => { window.scrollTo(0, 0); }, [stage, tile]);
 
-  // account prompt — a moment after landing in Mi espacio, once per reservation
+  // aviso de cuenta — NUNCA en la primera visita. Solo a partir de la segunda
+  // vez que el huésped entra a Mi espacio, y como banda discreta arriba.
   useEffectA(() => {
     clearTimeout(acctTimer.current);
     if (stage === "bento" && res) {
       const store = loadStore();
       const prompted = store.acctPrompted?.[res.id];
       const hasAccount = store.account && store.account.reservationIds?.includes(res.id);
-      if (!prompted && !hasAccount) {
-        acctTimer.current = setTimeout(() => setAcctOpen(true), 5000);
+      // cuenta una visita por SESIÓN del navegador, no por recarga
+      let visits = (store.visits || {})[res.id] || 0;
+      const mark = `spacioam_v_${res.id}`;
+      let fresh = false;
+      try { fresh = !sessionStorage.getItem(mark); } catch (e) { fresh = false; }
+      if (fresh) {
+        visits += 1;
+        try { sessionStorage.setItem(mark, "1"); } catch (e) {}
+        saveStore({ ...store, visits: { ...(store.visits || {}), [res.id]: visits } });
+      }
+      if (!prompted && !hasAccount && visits >= 2) {
+        acctTimer.current = setTimeout(() => setAcctNudge(true), 2600);
       }
     } else {
-      setAcctOpen(false);
+      setAcctNudge(false); setAcctOpen(false);
     }
     return () => clearTimeout(acctTimer.current);
   }, [stage, res]);
@@ -227,7 +239,7 @@ function App() {
   // log out of Mi espacio → back to the reservation-code screen
   const onLogout = () => {
     window.location.hash = "";
-    setTile(null); setAcctOpen(false); setRes(null); setSiblings([]);
+    setTile(null); setAcctOpen(false); setAcctNudge(false); setRes(null); setSiblings([]);
     setStage("code");
   };
 
@@ -244,7 +256,7 @@ function App() {
   const dismissAcct = () => {
     const store = loadStore();
     saveStore({ ...store, acctPrompted: { ...(store.acctPrompted || {}), [res.id]: true } });
-    setAcctOpen(false);
+    setAcctOpen(false); setAcctNudge(false);
   };
   const createAccount = ({ email, pass, sharedEmails }) => {
     const store = loadStore();
@@ -290,6 +302,9 @@ function App() {
   return (
     <div className="sp-stage">
       <div key={stage + (tile || "") + (res?.id || "")}>{view}</div>
+      {acctNudge && !acctOpen && res && stage === "bento" && (
+        <AccountNudge t={t} onOpen={() => { setAcctNudge(false); setAcctOpen(true); }} onDismiss={dismissAcct} />
+      )}
       {acctOpen && res && (
         <AccountModal t={t} emails={inviteEmail ? [inviteEmail] : acctEmails()} maxShare={res.maxCapacity} invited={!!inviteEmail}
           onClose={dismissAcct} onCreated={createAccount} />

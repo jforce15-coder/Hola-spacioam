@@ -2119,8 +2119,9 @@ function AdminGlobalSearch({ t, roster, recordFor, onOpenReservation, onOpenProp
    (vuelven al recargar si el pendiente sigue ahí) y se colapsan en una píldora
    cuando hay más de dos.
    ============================================================ */
-function AlertToast({ item, index, expanded, onExpand, onDismiss, disabled }) {
+function AlertToast({ item, index, expanded, onExpand, onDismiss, onKill, disabled, t }) {
   const [inn, setInn] = useStateAd(false);
+  const [menu, setMenu] = useStateAd(false);
   useEffectAd(() => { const id = setTimeout(() => setInn(true), 40 + index * 70); return () => clearTimeout(id); }, []);
   // Colapsadas: la primera va en flujo y las demás quedan DETRÁS, absolutas y
   // empujadas hacia abajo, de modo que solo asoman por el borde inferior. Así
@@ -2154,12 +2155,29 @@ function AlertToast({ item, index, expanded, onExpand, onDismiss, disabled }) {
             fontSize: 10.5, letterSpacing: "0.05em", cursor: "pointer", fontWeight: 500, opacity: disabled ? 0.5 : 1 }}>
           {disabled ? "…" : item.cta}
         </button>
-        <button onClick={(e) => { e.stopPropagation(); onDismiss(); }} className="sp-btn" aria-label="cerrar"
-          style={{ flexShrink: 0, width: 26, height: 26, borderRadius: 999, background: "transparent", border: "none",
+        <button onClick={(e) => { e.stopPropagation(); if (onKill) setMenu((m) => !m); else onDismiss(); }} className="sp-btn" aria-label="cerrar"
+          style={{ flexShrink: 0, width: 26, height: 26, borderRadius: 999, background: menu ? "rgba(62,63,63,.07)" : "transparent", border: "none",
             display: "grid", placeItems: "center", cursor: "pointer" }}>
           <Icon name="x" size={13} color={C.taupe} />
         </button>
       </div>
+      {menu && onKill && (
+        <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 6, background: "rgba(250,250,250,.96)",
+          backdropFilter: "blur(20px) saturate(140%)", WebkitBackdropFilter: "blur(20px) saturate(140%)",
+          border: "1px solid rgba(62,63,63,.08)", borderRadius: 16, padding: 6, boxShadow: "0 14px 42px rgba(62,63,63,.14)" }}>
+          <button onClick={() => { setMenu(false); onDismiss(); }} className="sp-row"
+            style={{ display: "block", width: "100%", textAlign: "left", background: "transparent", border: "none", borderRadius: 11,
+              padding: "9px 11px", cursor: "pointer", fontFamily: C.sans, fontSize: 11.5, letterSpacing: "0.03em", color: C.negro }}>
+            {t.alertHide}
+          </button>
+          <button onClick={() => { setMenu(false); onKill(); }} className="sp-row"
+            style={{ display: "block", width: "100%", textAlign: "left", background: "transparent", border: "none", borderRadius: 11,
+              padding: "9px 11px", cursor: "pointer", fontFamily: C.sans, fontSize: 11.5, letterSpacing: "0.03em", color: C.peach, fontWeight: 500 }}>
+            {t.alertKill}
+            <span style={{ display: "block", fontSize: 10, color: C.tierra, fontWeight: 400, marginTop: 2, letterSpacing: "0.03em" }}>{t.alertKillHint}</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -2169,13 +2187,20 @@ function loadHiddenAlerts() { try { return JSON.parse(localStorage.getItem(ALERT
 
 function AdminAlertsBar({ t, onGoTab, onRefresh, refreshing }) {
   const [a, setA] = useStateAd(null);
-  // descartar una alerta la silencia de verdad: se recuerda entre recargas
-  const [hidden, setHidden] = useStateAd(loadHiddenAlerts);
-  const hide = (key) => setHidden((h) => {
-    const n = { ...h, [key]: 1 };
-    try { localStorage.setItem(ALERT_HIDE_KEY, JSON.stringify(n)); } catch (e) {}
-    return n;
-  });
+  // "ocultar por ahora" → solo esta sesión. "eliminar permanentemente" → se
+  // archiva en la hoja Y se recuerda aquí, para que no reaparezca nunca.
+  const [hidden, setHidden] = useStateAd({});
+  const [killed, setKilled] = useStateAd(loadHiddenAlerts);
+  const hide = (key) => setHidden((h) => ({ ...h, [key]: 1 }));
+  const kill = (key) => {
+    setKilled((k) => {
+      const n = { ...k, [key]: 1 };
+      try { localStorage.setItem(ALERT_HIDE_KEY, JSON.stringify(n)); } catch (e) {}
+      return n;
+    });
+    const kind = { inv: "invoices", req: "requests", inc: "incidents" }[key];
+    if (kind) { try { Backend.purgeAlerts({ kind }).then(() => setTimeout(load, 1200)).catch(() => {}); } catch (e) {} }
+  };
   const [expanded, setExpanded] = useStateAd(false);
   const [muted, setMuted] = useStateAd(false);
   const load = () => { Backend.adminAlerts().then((r) => r && setA(r)).catch(() => {}); };
@@ -2190,7 +2215,7 @@ function AdminAlertsBar({ t, onGoTab, onRefresh, refreshing }) {
   if (a.incidents) all.push({ key: "inc", icon: "review", label: t.alertIncidents(a.incidents), cta: t.alertGoTo, act: () => onGoTab("seguimiento"), urgent: true });
   if (a.invoices) all.push({ key: "inv", icon: "factura", label: t.alertInvoices(a.invoices), cta: t.alertGoTo, act: () => onGoTab("seguimiento") });
   if (a.requests) all.push({ key: "req", icon: "clock", label: t.alertRequests(a.requests), cta: t.alertGoTo, act: () => onGoTab("seguimiento") });
-  const items = all.filter((i) => !hidden[i.key]);
+  const items = all.filter((i) => !hidden[i.key] && !killed[i.key]);
 
   if (!items.length) return (
     <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 16, fontFamily: C.sans, fontSize: 11, letterSpacing: "0.06em", color: C.tierra }}>
@@ -2213,9 +2238,10 @@ function AdminAlertsBar({ t, onGoTab, onRefresh, refreshing }) {
         <div style={{ width: "100%", maxWidth: 470 }}>
           <div style={{ position: "relative", paddingBottom: expanded ? 0 : (shown.length > 1 ? 16 : 0) }}>
             {shown.map((it, i) => (
-              <AlertToast key={it.key} item={it} index={i} expanded={expanded}
+              <AlertToast key={it.key} item={it} index={i} expanded={expanded} t={t}
                 onExpand={() => setExpanded(true)}
                 onDismiss={() => hide(it.key)}
+                onKill={it.key === "sync" ? null : () => kill(it.key)}
                 disabled={it.key === "sync" && refreshing} />
             ))}
           </div>

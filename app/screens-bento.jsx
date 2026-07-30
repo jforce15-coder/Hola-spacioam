@@ -76,6 +76,17 @@ function StaySwitcher({ t, res, siblings, onSwitch }) {
 function BentoScreen({ t, res, siblings, onSwitch, firstName, emails, onSwitchLang, onLogout }) {
   const nights = nightsBetween(res.checkin, res.checkout);
   const hasSwitcher = siblings && siblings.length > 1;
+  // el bloque de check-in respira suavemente hasta que el huésped lo abre una vez
+  const [ckSeen, setCkSeen] = useStateB(() => {
+    try { return !!(loadStore().ckSeen || {})[res.id]; } catch (e) { return true; }
+  });
+  const openTile = (k) => {
+    if (k === "checkin" && !ckSeen) {
+      setCkSeen(true);
+      try { const s = loadStore(); saveStore({ ...s, ckSeen: { ...(s.ckSeen || {}), [res.id]: 1 } }); } catch (e) {}
+    }
+    window.location.hash = k;
+  };
   return (
     <div style={{ minHeight: "100vh", background: C.alabaster, position: "relative", overflow: "hidden" }}>
       <div style={{ position: "absolute", top: -50, left: "50%", transform: "translateX(-50%)", width: "min(900px,150%)", height: 300, opacity: 0.4, pointerEvents: "none" }}>
@@ -107,7 +118,8 @@ function BentoScreen({ t, res, siblings, onSwitch, firstName, emails, onSwitchLa
         {/* grid */}
         <div className="bento">
           {BENTO.map((tile, idx) => (
-            <BentoTile key={tile.key} tile={tile} t={t} res={res} nights={nights} idx={idx} onOpen={(k) => (window.location.hash = k)} />
+            <BentoTile key={tile.key} tile={tile} t={t} res={res} nights={nights} idx={idx} onOpen={openTile}
+              pulse={tile.key === "checkin" && !ckSeen} />
           ))}
         </div>
 
@@ -120,7 +132,7 @@ function BentoScreen({ t, res, siblings, onSwitch, firstName, emails, onSwitchLa
   );
 }
 
-function BentoTile({ tile, t, res, nights, idx, onOpen }) {
+function BentoTile({ tile, t, res, nights, idx, onOpen, pulse }) {
   const info = t.tiles[tile.key];
   const img = tile.img === "PROP" ? resPhoto(res) : tile.img;
   const isPhoto = tile.kind === "photo", isDark = tile.kind === "dark", isPeach = tile.kind === "peach";
@@ -141,6 +153,10 @@ function BentoTile({ tile, t, res, nights, idx, onOpen }) {
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(62,63,63,.66), rgba(62,63,63,.05) 62%)", zIndex: 1 }} />
         </>
       )}
+      {pulse && (
+        <span className="sp-ring" aria-hidden="true" style={{ position: "absolute", inset: 0, borderRadius: 18,
+          border: `1.5px solid ${C.peach}`, pointerEvents: "none", zIndex: 4 }} />
+      )}
       <div style={{ position: "relative", zIndex: 2, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <span style={{ width: 36, height: 36, borderRadius: 11, display: "grid", placeItems: "center",
           background: isPhoto || isDark ? "rgba(255,255,255,.16)" : isPeach ? "rgba(255,255,255,.22)" : C.beige,
@@ -157,6 +173,13 @@ function BentoTile({ tile, t, res, nights, idx, onOpen }) {
             <HeroStat label={t.checkin} value={res.checkin} />
             <HeroStat label={t.checkout} value={res.checkout} />
             <HeroStat label={t.nights} value={`${nights}`} />
+          </div>
+        )}
+        {tile.key === "checkin" && pulse && (
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 7, marginTop: 14, background: "rgba(233,130,106,.9)",
+            borderRadius: 999, padding: "5px 12px", fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.14em",
+            textTransform: "uppercase", color: C.white, fontWeight: 500 }}>
+            <Sparkle size={11} color={C.white} /> {t.ckPulse}
           </div>
         )}
       </div>
@@ -1073,4 +1096,44 @@ function renderTileContent(key, t, res) {
   }
 }
 
-Object.assign(window, { BentoScreen, TileDetail, AccountModal });
+/* ============================================================
+   AVISO DISCRETO DE CUENTA — estilo iOS, baja desde arriba, no bloquea nada.
+   Solo aparece a partir de la SEGUNDA visita del huésped.
+   ============================================================ */
+function AccountNudge({ t, onOpen, onDismiss }) {
+  const [out, setOut] = useStateB(false);
+  const close = (fn) => { setOut(true); setTimeout(fn, 300); };
+  return (
+    <div style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 90, display: "flex", justifyContent: "center",
+      padding: "max(12px, env(safe-area-inset-top)) 14px 0", pointerEvents: "none" }}>
+      <div className={out ? "" : "sp-drop"} style={{ width: "100%", maxWidth: 430, pointerEvents: "auto",
+        opacity: out ? 0 : 1, transform: out ? "translateY(-14px)" : "none",
+        transition: "opacity .3s var(--ease), transform .3s var(--ease)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, background: "rgba(250,250,250,.88)",
+          backdropFilter: "blur(20px) saturate(140%)", WebkitBackdropFilter: "blur(20px) saturate(140%)",
+          border: "1px solid rgba(62,63,63,.08)", borderRadius: 20, padding: "11px 12px 11px 15px",
+          boxShadow: "0 14px 42px rgba(62,63,63,.13)" }}>
+          <span style={{ width: 30, height: 30, borderRadius: 9, flexShrink: 0, display: "grid", placeItems: "center", background: "rgba(233,130,106,.13)" }}>
+            <Sparkle size={14} color={C.peach} />
+          </span>
+          <span style={{ minWidth: 0, flex: 1 }}>
+            <span style={{ display: "block", fontFamily: C.sans, fontSize: 11.5, letterSpacing: "0.03em", color: C.negro, fontWeight: 600, lineHeight: 1.35 }}>{t.acctNudge}</span>
+            <span style={{ display: "block", fontFamily: C.sans, fontSize: 10, letterSpacing: "0.03em", color: C.tierra, marginTop: 2, lineHeight: 1.4 }}>{t.acctNudgeSub}</span>
+          </span>
+          <button onClick={() => close(onOpen)} className="sp-btn"
+            style={{ flexShrink: 0, background: C.negro, color: C.alabaster, border: "none", borderRadius: 999,
+              padding: "7px 14px", fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.05em", cursor: "pointer", fontWeight: 500 }}>
+            {t.acctNudgeCta}
+          </button>
+          <button onClick={() => close(onDismiss)} className="sp-btn" aria-label={t.acctNo}
+            style={{ flexShrink: 0, width: 26, height: 26, borderRadius: 999, background: "transparent", border: "none",
+              display: "grid", placeItems: "center", cursor: "pointer" }}>
+            <Icon name="x" size={13} color={C.taupe} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { BentoScreen, TileDetail, AccountModal, AccountNudge });

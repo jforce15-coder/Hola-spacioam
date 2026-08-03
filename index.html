@@ -122,42 +122,95 @@ button{ font-family:inherit; }
 <script>
 (function(){
   var box=null;
+  function booted(){ var r=document.getElementById('root'); return !!(r && r.childNodes.length); }
   function show(title, detail){
-    if(!box){
-      box=document.createElement('div');
-      box.style.cssText='position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);max-width:min(560px,90vw);background:#FAFAFA;border:1px solid rgba(233,130,106,.35);border-radius:20px;padding:22px 24px;font-family:Montserrat,system-ui,sans-serif;color:#3E3F3F;box-shadow:0 28px 80px rgba(62,63,63,.12);z-index:9999;line-height:1.6;letter-spacing:.02em';
-      document.body.appendChild(box);
-    }
-    box.innerHTML='<div style="font-size:13px;font-weight:600;margin-bottom:8px">'+title+'</div>'+
+    if(box) return;
+    box=document.createElement('div');
+    box.style.cssText='position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);max-width:min(560px,90vw);background:#FAFAFA;border:1px solid rgba(233,130,106,.35);border-radius:20px;padding:22px 24px;font-family:Montserrat,system-ui,sans-serif;color:#3E3F3F;box-shadow:0 28px 80px rgba(62,63,63,.12);z-index:9999;line-height:1.6;letter-spacing:.02em';
+    box.innerHTML='<button id="__cl" aria-label="cerrar" style="position:absolute;top:12px;right:12px;width:26px;height:26px;border:none;border-radius:999px;background:transparent;color:#938B8A;font:inherit;font-size:15px;cursor:pointer;line-height:1">&times;</button>'+
+      '<div style="font-size:13px;font-weight:600;margin-bottom:8px;padding-right:26px">'+title+'</div>'+
       '<div style="font-size:11px;color:#938B8A;white-space:pre-wrap;word-break:break-word">'+detail+'</div>'+
-      '<button id="__rl" style="margin-top:16px;background:#3E3F3F;color:#FAFAFA;border:none;border-radius:999px;padding:9px 18px;font:inherit;font-size:11px;letter-spacing:.05em;cursor:pointer">Recargar sin caché</button>';
-    var b=document.getElementById('__rl');
-    if(b) b.onclick=function(){ location.href=location.pathname+'?r='+Date.now()+location.hash; };
+      '<button id="__rl" style="margin-top:16px;background:#3E3F3F;color:#FAFAFA;border:none;border-radius:999px;padding:9px 18px;font:inherit;font-size:11px;letter-spacing:.05em;cursor:pointer">Recargar sin cach&eacute;</button>';
+    document.body.appendChild(box);
+    document.getElementById('__cl').onclick=function(){ box.remove(); box=null; };
+    document.getElementById('__rl').onclick=function(){ location.href=location.pathname+'?r='+Date.now()+location.hash; };
   }
+  // Solo errores REALES de arranque. Un 404 de foto, un fetch rechazado o un
+  // "Script error." sin archivo (error opaco de un CDN externo) NO deben tapar
+  // la app: solo van a consola. El cargador de abajo se encarga de reintentar.
   window.addEventListener('error', function(e){
-    var d = e.filename ? (e.filename.split('/').pop()+' · línea '+e.lineno) : 'archivo desconocido';
-    show('No se pudo iniciar la app.', (e.message||'Error')+'\n'+d);
+    if(e.target && e.target !== window) return;      // error de recurso, no de JS
+    if(!e.message) return;                            // sin detalle no sirve de nada
+    if(booted()){ console.error('[spacio]', e.message, e.filename, e.lineno); return; }
+    // error cross-origin opaco: sin archivo ni línea no hay nada que informar
+    if(!e.filename || /^script error/i.test(e.message)){ console.error('[spacio] opaco:', e.message); return; }
+    var d = e.filename ? (e.filename.split('/').pop()+' · línea '+e.lineno) : '';
+    show('No se pudo iniciar la app.', e.message+(d?'\n'+d:''));
   }, true);
   window.addEventListener('unhandledrejection', function(e){
-    show('No se pudo iniciar la app.', String((e.reason&&e.reason.message)||e.reason||'')); });
-  // si a los 12 s el árbol sigue vacío, algo no cargó
+    var m = String((e.reason&&e.reason.message)||e.reason||'');
+    console.error('[spacio]', m);
+  });
   setTimeout(function(){
-    var r=document.getElementById('root');
-    if(r && !r.childNodes.length) show('La app tardó demasiado en cargar.','Puede ser la conexión o un archivo en caché. Recarga sin caché.');
-  }, 12000);
+    if(!booted()) show('La app tardó demasiado en cargar.','Puede ser la conexión o un archivo en caché. Recarga sin caché.');
+  }, 22000);
+  window.__spacioShowBootError = show;
 })();
 </script>
-<script src="config.js?v=20260730a"></script>
+<script src="config.js?v=20260803a"></script>
 <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
-<script type="text/babel" src="app/data.jsx?v=20260730a"></script>
-<script type="text/babel" src="app/checkin-data.jsx?v=20260730a"></script>
-<script type="text/babel" src="app/primitives.jsx?v=20260730a"></script>
-<script type="text/babel" src="app/screens-onboarding.jsx?v=20260730a"></script>
-<script type="text/babel" src="app/screens-bento.jsx?v=20260730a"></script>
-<script src="app/std-seed.js?v=20260730a"></script>
-<script type="text/babel" src="app/screens-admin.jsx?v=20260730a"></script>
-<script type="text/babel" src="app/app.jsx?v=20260730a"></script>
+<script type="text/babel" src="app/data.jsx?v=20260803a"></script>
+<script type="text/babel" src="app/checkin-data.jsx?v=20260803a"></script>
+<script type="text/babel" src="app/primitives.jsx?v=20260803a"></script>
+<script type="text/babel" src="app/screens-onboarding.jsx?v=20260803a"></script>
+<script type="text/babel" src="app/screens-bento.jsx?v=20260803a"></script>
+<script src="app/std-seed.js?v=20260803a"></script>
+<script type="text/babel" src="app/screens-admin.jsx?v=20260803a"></script>
+<script type="text/babel" src="app/app.jsx?v=20260803a"></script>
+<script>
+/* Red de seguridad del arranque: si un navegador dentro de una app (Airbnb,
+   Instagram) no logra traer React/ReactDOM/Babel de unpkg, los pedimos a un
+   segundo CDN y volvemos a compilar los archivos de la app. Así el huésped no
+   ve el aviso de "Script error." que lo dejaba sin poder llenar su formulario. */
+(function(){
+  var V='?v=20260803a';
+  var JSX=['app/data.jsx','app/checkin-data.jsx','app/primitives.jsx','app/screens-onboarding.jsx','app/screens-bento.jsx','app/screens-admin.jsx','app/app.jsx'];
+  var FB=[['React','https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.development.js'],
+          ['ReactDOM','https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.development.js'],
+          ['Babel','https://cdn.jsdelivr.net/npm/@babel/standalone@7.29.0/babel.min.js']];
+  function booted(){ var r=document.getElementById('root'); return !!(r && r.childNodes.length); }
+  function load(src, cb){ var s=document.createElement('script'); s.src=src; s.onload=function(){cb(true)}; s.onerror=function(){cb(false)}; document.head.appendChild(s); }
+  function ensure(i, done){
+    if(i>=FB.length) return done();
+    if(window[FB[i][0]]) return ensure(i+1, done);
+    load(FB[i][1], function(){ ensure(i+1, done); });
+  }
+  function recompile(){
+    if(!(window.React && window.ReactDOM && window.Babel)){
+      if(window.__spacioShowBootError) window.__spacioShowBootError('No se pudo iniciar la app.','No pudimos cargar las librerías base. Revisa tu conexión y recarga.');
+      return;
+    }
+    if(!document.querySelector('script[data-spacio-retry]')){
+      JSX.forEach(function(p){
+        var s=document.createElement('script'); s.type='text/babel'; s.setAttribute('data-spacio-retry','1'); s.src=p+V;
+        document.body.appendChild(s);
+      });
+    }
+    try { window.Babel.transformScriptTags(); } catch(e) { console.error('[spacio] babel', e); }
+  }
+  function missingDep(){ return !(window.React && window.ReactDOM && window.Babel); }
+  function check(){
+    // Solo actuamos si faltó una librería base: si ya están todas, los <script>
+    // originales son los que compilan (reinyectar duplicaría declaraciones).
+    if(booted() || !missingDep()) return;
+    ensure(0, recompile);
+  }
+  // margen para que la compilación normal termine antes de intentar el respaldo
+  setTimeout(check, 4500);
+  setTimeout(check, 11000);
+})();
+</script>
 </body>
 </html>

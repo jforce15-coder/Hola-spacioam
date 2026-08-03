@@ -580,7 +580,7 @@ function AdSelect({ label, value, onChange, options }) {
 /* ============================================================
    ADMIN SCREEN — roster with dropdown filters + actions
    ============================================================ */
-function AdminScreen({ t, adminEmail, onBack, onSwitchLang }) {
+function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onResetForm }) {
   const [mode, setMode] = useStateAd("today");        // yesterday · today · tomorrow · next3 · last3 · range
   const [status, setStatus] = useStateAd("both");     // both · pending · done
   const [property, setProperty] = useStateAd("all");
@@ -589,7 +589,12 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang }) {
   const [summary, setSummary] = useStateAd(null);
   const [toast, setToast] = useStateAd("");
   const [hospOpen, setHospOpen] = useStateAd(false);
-  const [roster, setRoster] = useStateAd(null);       // null = loading
+  // arranca con lo último que este dispositivo ya tenía: el panel pinta al
+  // instante y la hoja se relee en segundo plano (nunca spinner en blanco).
+  const [roster, setRoster] = useStateAd(() => {
+    const c = Backend.cachedRoster && Backend.cachedRoster();
+    return c ? c.list : null;
+  });
   const [meta, setMeta] = useStateAd(null);
   const [tab, setTab] = useStateAd("registros");
   const [focusProp, setFocusProp] = useStateAd("");
@@ -611,10 +616,11 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang }) {
         .catch(() => setRefreshing(false));
       return;
     }
-    setRoster(null);
+    setRefreshing(true);
     // cache-only by default: the stored DB (synced 5am/3pm) is the source of
-    // truth, so the panel loads instantly and doesn't flicker.
-    Backend.listCached().then((list) => { setRoster(list); setMeta(Backend._lastMeta); });
+    // truth. Si ya había datos en el dispositivo se siguen viendo mientras llega.
+    Backend.listCached().then((list) => { if (list && list.length) setRoster(list); setMeta(Backend._lastMeta); setRefreshing(false); })
+      .catch(() => setRefreshing(false));
   };
   useEffectAd(() => { loadRoster(); }, []);
   const [avail, setAvail] = useStateAd(() => { try { return JSON.parse(localStorage.getItem("spacioam_avail")) || {}; } catch (e) { return {}; } });
@@ -635,7 +641,25 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang }) {
     return null;
   };
 
-  const isDone = (h, rec) => !!rec || h.statusForm === "completo";
+  const isDone = (h, rec) => (!!rec || h.statusForm === "completo") && !resetCodes.has(normCode(h.code));
+  // formularios reiniciados por el admin en esta sesión (la hoja ya se actualizó)
+  const [resetCodes, setResetCodes] = useStateAd(() => new Set());
+  const [resetting, setResetting] = useStateAd("");
+  const doReset = (h) => {
+    const es = t.code === "es";
+    const msg = es
+      ? `¿Reiniciar el formulario de ${h.code}? El huésped volverá a llenarlo desde cero. El registro anterior queda guardado en la hoja.`
+      : `Reset the form for ${h.code}? The guest will fill it in again from scratch. The previous record stays in the sheet.`;
+    if (typeof window !== "undefined" && window.confirm && !window.confirm(msg)) return;
+    setResetting(h.code);
+    Promise.resolve(onResetForm ? onResetForm(h) : null).then(() => {
+      setResetCodes((prev) => new Set([...prev, normCode(h.code)]));
+      setResetting("");
+      setToast(es ? "Formulario reiniciado" : "Form reset");
+      setTimeout(() => setToast(""), 3200);
+      loadRoster();
+    }).catch(() => { setResetting(""); });
+  };
   const rows = useMemoAd(() => {
     if (!roster) return null;
     // dedupe by normalized code — the sheet can hold repeated rows for a code
@@ -832,6 +856,9 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang }) {
           <div style={{ border: `1px solid ${C.grisCalido}`, borderRadius: 16, overflow: "hidden", background: C.white }}>
             {rows.map(({ h, rec, bucket }, idx) => (
               <AdminRow key={(h.id || h.code) + "-" + idx} t={t} h={h} rec={rec} bucket={bucket} first={idx === 0} avail={availFor(h)}
+                done={isDone(h, rec)} resetting={resetting === h.code}
+                onPreview={onPreviewGuest ? () => onPreviewGuest(h) : null}
+                onReset={onResetForm ? () => doReset(h) : null}
                 onView={() => setSummary({ h, rec, autoPrint: false })}
                 onDownload={() => setSummary({ h, rec, autoPrint: true })}
                 onResend={(ch) => resend(h, ch)} />
@@ -880,8 +907,8 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang }) {
 }
 
 /* compact, image-free row */
-function AdminRow({ t, h, rec, bucket, first, avail, onView, onDownload, onResend }) {
-  const done = !!rec || h.statusForm === "completo";
+function AdminRow({ t, h, rec, bucket, first, avail, onView, onDownload, onResend, done: doneProp, onPreview, onReset, resetting }) {
+  const done = doneProp != null ? doneProp : (!!rec || h.statusForm === "completo");
   const es = t.code === "es";
   const av = avail || { email: false, whatsapp: false };
   const bucketLabel = { yesterday: t.adminYesterday, today: t.adminToday, tomorrow: t.adminTomorrow, dayAfter: t.adminDayAfter }[bucket];
@@ -933,6 +960,15 @@ function AdminRow({ t, h, rec, bucket, first, avail, onView, onDownload, onResen
       <div style={{ display: "flex", gap: 7, flex: "1 1 auto", justifyContent: "flex-end", flexWrap: "wrap", alignItems: "center" }}>
         {actionBtn("review", t.adminView, onView, true)}
         {actionBtn("download", t.adminDownload, onDownload, false)}
+        {done && onPreview && actionBtn("eye", es ? "Mi espacio" : "Guest space", onPreview, false)}
+        {done && onReset && (
+          <button onClick={resetting ? undefined : onReset} className="sp-btn" title={es ? "Reiniciar el formulario para que el huésped lo vuelva a llenar" : "Reset the form so the guest fills it again"}
+            style={{ background: C.white, color: C.peach, border: `1px solid rgba(233,130,106,.5)`, borderRadius: 9, padding: "7px 11px",
+              cursor: resetting ? "wait" : "pointer", display: "inline-flex", alignItems: "center", gap: 6, opacity: resetting ? 0.55 : 1,
+              fontFamily: C.sans, fontSize: 10, letterSpacing: "0.05em", fontWeight: 500, whiteSpace: "nowrap" }}>
+            <Icon name="refresh" size={13} color={C.peach} /> {es ? "Reiniciar" : "Reset"}
+          </button>
+        )}
         <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "nowrap" }}>
           <span style={{ fontFamily: C.sans, fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: C.tierra }}>{es ? "Reenviar" : "Resend"}</span>
           {resendBtn("mail", av.email, "email", es ? "Reenviar por correo" : "Resend by email")}
@@ -2447,8 +2483,13 @@ function SeguimientoScreen({ t, roster }) {
     if (!(Backend.isConnected && Backend.isConnected() && Backend.storageStats)) return;
     Backend.storageStats().then((s) => { if (s && s.ok) setStor(s); }).catch(() => {});
   }, []);
-  // pending registrations checking-in today
-  const pendingToday = (roster || []).filter((r) => checkinBucket(r.checkin) === "today" && r.statusForm !== "completo");
+  // solicitudes de nuevos invitados (pestaña Invitados) y fotos de QR de streaming
+  const [gacc, setGacc] = useStateAd(null);
+  const [strm, setStrm] = useStateAd(null);
+  const [gaBusy, setGaBusy] = useStateAd("");
+  const reloadGacc = () => { if (Backend.listGuestAccess) Backend.listGuestAccess().then((l) => { if (l) setGacc(l); }).catch(() => {}); };
+  const reloadStrm = () => { if (Backend.listStreaming) Backend.listStreaming().then((l) => { if (l) setStrm(l); }).catch(() => {}); };
+  useEffectAd(() => { reloadGacc(); reloadStrm(); }, [connected]);
   // facturas: de la hoja (mismo origen que el contador de alertas), no de localStorage
   const [invoices, setInvoices] = useStateAd(null);
   const reloadInvoices = () => Backend.listInvoices().then((l) => setInvoices(l || [])).catch(() => setInvoices([]));
@@ -2553,21 +2594,6 @@ function SeguimientoScreen({ t, roster }) {
         </section>
       )}
       <section>
-        {sectionHead("checkin", t.segPending, pendingToday.length)}
-        {pendingToday.length ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {pendingToday.map((r, i) => card(
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-                <div><div style={{ fontFamily: C.serif, fontSize: 16, color: C.negro }}>{r.propertyName}</div>
-                  <div style={{ fontFamily: C.sans, fontSize: 11, color: C.tierra, marginTop: 2 }}>{r.code} · {r.guestName || "—"}</div></div>
-                <span style={{ fontFamily: C.sans, fontSize: 10.5, color: C.negro, background: C.beige, borderRadius: 999, padding: "5px 11px", letterSpacing: "0.04em" }}>{r.checkin}</span>
-              </div>, i
-            ))}
-          </div>
-        ) : empty()}
-      </section>
-
-      <section>
         {sectionHead("factura", t.segInvoices, (invoices || []).length)}
         {(invoices || []).length ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -2627,6 +2653,108 @@ function SeguimientoScreen({ t, roster }) {
                   <div style={{ fontFamily: C.sans, fontSize: 11, color: C.tierra, marginTop: 2 }}>{reqLabel[r.type] || r.type} · {r.code}</div></div>
                 {resolveBtns(r)}
               </div>, i
+            ))}
+          </div>
+        ) : empty()}
+      </section>
+
+      <section>
+        {sectionHead("visits", es ? "Nuevos invitados" : "Guest access requests", (gacc || []).length)}
+        {(gacc || []).length ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {(gacc || []).map((g, i) => {
+              const resolved = g.status === "aprobado" || g.status === "rechazado";
+              const ap = g.status === "aprobado";
+              const busy = gaBusy === g.id;
+              const act = (decision) => {
+                setGaBusy(g.id);
+                Promise.resolve(Backend.resolveGuestAccess({ id: g.id, code: g.code, apartment: g.apartment, decision }))
+                  .then(() => { setGaBusy(""); reloadGacc(); }).catch(() => setGaBusy(""));
+              };
+              return card(
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontFamily: C.serif, fontSize: 16, color: C.negro }}>{g.apartment || g.code}</div>
+                      <div style={{ fontFamily: C.sans, fontSize: 11, color: C.tierra, marginTop: 2 }}>
+                        {g.code} · {g.guests.length} {es ? (g.guests.length === 1 ? "invitado" : "invitados") : "guests"}
+                        {g.needsApproval ? (es ? " · requiere aprobación" : " · needs approval") : (es ? " · autorizado automáticamente" : " · auto-approved")}
+                      </div>
+                    </div>
+                    {resolved ? (
+                      <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 7, borderRadius: 999, padding: "6px 13px", fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.05em", fontWeight: 600,
+                        background: ap ? "rgba(31,138,91,.1)" : "rgba(233,130,106,.12)", border: `1px solid ${ap ? "rgba(31,138,91,.4)" : "rgba(233,130,106,.45)"}`, color: ap ? "#177A4F" : C.peach }}>
+                        <Icon name={ap ? "check" : "x"} size={13} color={ap ? "#1F8A5B" : C.peach} /> {ap ? t.segApproved : t.segRejected}
+                      </span>
+                    ) : (
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <button onClick={() => act("approved")} disabled={busy} className="sp-btn"
+                          style={{ display: "inline-flex", alignItems: "center", gap: 7, background: C.negro, color: C.alabaster, border: "none", borderRadius: 999,
+                            padding: "7px 15px", cursor: busy ? "wait" : "pointer", fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.05em", fontWeight: 500, opacity: busy ? 0.6 : 1 }}>
+                          <Icon name="check" size={13} color={C.alabaster} /> {t.segApprove}
+                        </button>
+                        <button onClick={() => act("rejected")} disabled={busy} className="sp-btn"
+                          style={{ display: "inline-flex", alignItems: "center", gap: 7, background: C.white, color: C.peach, border: `1px solid rgba(233,130,106,.5)`, borderRadius: 999,
+                            padding: "7px 15px", cursor: busy ? "wait" : "pointer", fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.05em", fontWeight: 500, opacity: busy ? 0.6 : 1 }}>
+                          <Icon name="x" size={13} color={C.peach} /> {t.segReject}
+                        </button>
+                        <button onClick={() => act("deleted")} disabled={busy} className="sp-btn" title={t.segDelete}
+                          style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 34, height: 34, borderRadius: 10,
+                            background: C.white, border: `1px solid ${C.grisCalido}`, cursor: busy ? "wait" : "pointer" }}>
+                          <Icon name="trash" size={15} color={C.tierra} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 5 }}>
+                    {g.guests.map((p, j) => (
+                      <div key={j} style={{ fontFamily: C.sans, fontSize: 11.5, color: C.negro, letterSpacing: "0.01em" }}>
+                        {p.name || "—"}<span style={{ color: C.tierra }}>{p.id ? " · " + p.id : ""}{p.date ? " · " + p.date : ""}{p.time ? " " + p.time : ""}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>, g.id || i
+              );
+            })}
+          </div>
+        ) : empty()}
+      </section>
+
+      <section>
+        {sectionHead("tv", es ? "Códigos QR de streaming" : "Streaming QR codes", (strm || []).length)}
+        {(strm || []).length ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {(strm || []).map((s, i) => card(
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                  {s.url && /^data:/.test(s.url) && <img src={s.url} alt="" style={{ width: 46, height: 46, objectFit: "cover", borderRadius: 10, border: `1px solid ${C.grisCalido}` }} />}
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontFamily: C.serif, fontSize: 16, color: C.negro }}>{s.apartment || s.code}</div>
+                    <div style={{ fontFamily: C.sans, fontSize: 11, color: C.tierra, marginTop: 2 }}>
+                      {s.code}{s.at ? " · " + new Date(s.at).toLocaleDateString(es ? "es-GT" : "en-US", { day: "numeric", month: "short" }) : ""}
+                      {s.status === "resuelto" ? (es ? " · resuelto" : " · done") : ""}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  {s.url && !/^data:/.test(s.url) && (
+                    <a href={s.url} target="_blank" rel="noreferrer" className="sp-btn" style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 7,
+                      background: C.white, color: C.negro, border: `1px solid ${C.grisCalido}`, borderRadius: 10, padding: "8px 14px", fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.05em" }}>
+                      <Icon name="image" size={14} color={C.negro} /> {es ? "Ver foto" : "View photo"}
+                    </a>
+                  )}
+                  {s.status !== "resuelto" && (
+                    <button onClick={() => Backend.resolveStreaming({ id: s.id, action: "done" }).then(reloadStrm).catch(reloadStrm)} className="sp-btn"
+                      style={{ background: C.negro, color: C.alabaster, border: "none", borderRadius: 10, padding: "8px 14px", fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.05em", cursor: "pointer" }}>
+                      {es ? "Marcar resuelto" : "Mark done"}
+                    </button>
+                  )}
+                  <button onClick={() => Backend.resolveStreaming({ id: s.id, action: "delete" }).then(reloadStrm).catch(reloadStrm)} className="sp-btn" title={t.segDelete}
+                    style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 34, height: 34, borderRadius: 10, background: C.white, border: `1px solid ${C.grisCalido}`, cursor: "pointer" }}>
+                    <Icon name="trash" size={15} color={C.tierra} />
+                  </button>
+                </div>
+              </div>, s.id || i
             ))}
           </div>
         ) : empty()}

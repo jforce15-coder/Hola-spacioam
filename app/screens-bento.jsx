@@ -809,6 +809,60 @@ function GuestAccessContent({ t, res }) {
   );
 }
 
+/* ---- QR de streaming: el huésped envía la foto desde la app ----
+   La foto llega al panel (Seguimiento · Códigos QR de streaming) y al correo
+   del equipo, para conectar la TV en remoto. */
+function StreamingQRBlock({ res, es }) {
+  const [state, setState] = useStateB("");   // "" | sending | sent | fail
+  const inputRef = useRefB(null);
+  const pick = (file) => {
+    if (!file) return;
+    setState("sending");
+    const reader = new FileReader();
+    reader.onload = async () => {
+      let img = String(reader.result || "");
+      try { if (typeof downscaleForAI === "function") img = await downscaleForAI(img, 140000); } catch (e) {}
+      try {
+        const r = await Backend.streamingRequest({ code: res.code, apartment: res.apartment || res.propertyName, image: img });
+        setState(r && r.ok !== false ? "sent" : "fail");
+      } catch (e) { setState("fail"); }
+    };
+    reader.onerror = () => setState("fail");
+    reader.readAsDataURL(file);
+  };
+  return (
+    <div style={{ margin: "0 18px 18px", display: "flex", flexDirection: "column", gap: 9 }}>
+      <input ref={inputRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }}
+        onChange={(e) => pick(e.target.files && e.target.files[0])} />
+      {state === "sent" ? (
+        <div style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 11, padding: "12px 14px",
+          fontFamily: C.sans, fontSize: 11.5, color: C.negro, lineHeight: 1.55, letterSpacing: "0.01em", display: "flex", gap: 9, alignItems: "flex-start" }}>
+          <Icon name="check" size={15} color={C.peach} />
+          <span>{es ? "Recibimos tu foto. Te conectamos en unos minutos." : "We got your photo. We'll connect you in a few minutes."}</span>
+        </div>
+      ) : (
+        <button onClick={() => inputRef.current && inputRef.current.click()} disabled={state === "sending"} className="sp-btn"
+          style={{ width: "100%", background: C.white, color: C.negro, border: `1px solid ${C.grisCalido}`, borderRadius: 11, padding: "11px 14px",
+            fontFamily: C.sans, fontSize: 11.5, letterSpacing: "0.03em", cursor: state === "sending" ? "wait" : "pointer", fontWeight: 500,
+            display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, opacity: state === "sending" ? 0.6 : 1 }}>
+          <Icon name="camera" size={15} color={C.negro} />
+          {state === "sending" ? (es ? "Enviando…" : "Sending…") : (es ? "Enviar foto del código QR" : "Send a photo of the QR code")}
+        </button>
+      )}
+      {state === "fail" && (
+        <p style={{ fontFamily: C.sans, fontSize: 11, color: C.peach, margin: 0, letterSpacing: "0.02em" }}>
+          {es ? "No pudimos enviarla. Probá de nuevo o escribinos por WhatsApp." : "We couldn't send it. Try again or write to us on WhatsApp."}
+        </p>
+      )}
+      <button onClick={() => window.open("https://wa.me/50256909499", "_blank")} className="sp-link"
+        style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer", alignSelf: "center",
+          fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.06em", color: C.tierra, textDecoration: "underline", textUnderlineOffset: 3 }}>
+        {es ? "O escríbenos por WhatsApp" : "Or message us on WhatsApp"}
+      </button>
+    </div>
+  );
+}
+
 /* house-manual extras that apply to this property (induction, cable, smart house) */
 function ManualExtras({ t, res }) {
   const es = t.code === "es";
@@ -865,6 +919,7 @@ function ManualExtras({ t, res }) {
     : buildingCards;
   const cards = universal.concat(assignedCards);
 
+
   const renderCard = (e, k) => (
     <div key={k} style={{ background: C.beige, borderRadius: 18, overflow: "hidden", border: `1px solid ${C.grisCalido}` }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 18px 12px" }}>
@@ -886,14 +941,7 @@ function ManualExtras({ t, res }) {
         </ol>
       )}
       {e.body && <p style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, lineHeight: 1.6, margin: 0, padding: "0 18px 18px", letterSpacing: "0.01em" }}>{e.body}</p>}
-      {e.qr && (
-        <div style={{ margin: "0 18px 18px" }}>
-          <button onClick={() => window.open("https://wa.me/50256909499", "_blank")} className="sp-btn" style={{ width: "100%", background: C.white, color: C.negro, border: `1px solid ${C.grisCalido}`,
-            borderRadius: 11, padding: "11px 14px", fontFamily: C.sans, fontSize: 11.5, letterSpacing: "0.03em", cursor: "pointer", fontWeight: 500, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-            <Icon name="camera" size={15} color={C.negro} /> {es ? "Enviar código QR" : "Send QR code"}
-          </button>
-        </div>
-      )}
+      {e.qr && <StreamingQRBlock res={res} es={es} />}
     </div>
   );
 

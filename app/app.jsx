@@ -53,13 +53,48 @@ function emptyForm(res) {
   };
 }
 
+/* ---- SESIÓN DEL HUÉSPED ----
+   Escribir el código de reserva ES iniciar sesión. Guardamos la reserva en el
+   dispositivo: al volver a abrir hola.spacioam.com el huésped entra directo a
+   Mi espacio y los datos se refrescan en segundo plano. La sesión caduca el día
+   después del checkout. */
+const SESSION_KEY = "spacioam_session";
+function loadSession() { try { return JSON.parse(localStorage.getItem(SESSION_KEY)) || null; } catch (e) { return null; } }
+function saveSession(res) {
+  try { if (res && res.code) localStorage.setItem(SESSION_KEY, JSON.stringify({ at: Date.now(), code: res.code, res })); } catch (e) {}
+}
+function clearSession() { try { localStorage.removeItem(SESSION_KEY); } catch (e) {} }
+function sessionAlive(s) {
+  if (!(s && s.res && s.res.code)) return false;
+  const co = s.res.checkout;
+  if (!co) return Date.now() - (s.at || 0) < 7 * 86400000;
+  return Date.now() < new Date(co + "T12:00:00").getTime() + 2 * 86400000;
+}
+function adminSession() { try { return localStorage.getItem("spacioam_admin_session") || ""; } catch (e) { return ""; } }
+
+/* Punto de partida al abrir la app: enlace firmado > sesión de admin >
+   sesión del huésped > pantalla de código. */
+function bootState() {
+  const hash = (typeof window !== "undefined" && window.location.hash) || "";
+  if (/[#&]r=/.test(hash) || /invite=/.test(hash)) return { stage: loadStore().lang ? "code" : "lang", res: null };
+  if (adminSession()) return { stage: "admin", res: null };
+  const s = loadSession();
+  if (s && sessionAlive(s)) {
+    const done = isCompleted(s.res) || s.res.statusForm === "completo";
+    return { stage: done ? "bento" : "overview", res: s.res };
+  }
+  return { stage: loadStore().lang ? "code" : "lang", res: null };
+}
+
 function App() {
-  const [lang, setLang] = useStateA(loadStore().lang || null);
-  const [stage, setStage] = useStateA(loadStore().lang ? "code" : "lang");
-  const [res, setRes] = useStateA(null);
-  const [siblings, setSiblings] = useStateA([]);
-  const [form, setForm] = useStateA(emptyForm(null));
+  const boot = useRefA(bootState()).current;
+  const [lang, setLang] = useStateA(loadStore().lang || (boot.stage !== "lang" ? "es" : null));
+  const [stage, setStage] = useStateA(boot.stage);
+  const [res, setRes] = useStateA(boot.res);
+  const [siblings, setSiblings] = useStateA(boot.res ? [boot.res] : []);
+  const [form, setForm] = useStateA(emptyForm(boot.res));
   const [tile, setTile] = useStateA(null);
+  const [adminPreview, setAdminPreview] = useStateA(false);
   const [acctOpen, setAcctOpen] = useStateA(false);
   const [acctNudge, setAcctNudge] = useStateA(false);
   const [inviteEmail, setInviteEmail] = useStateA("");
@@ -68,6 +103,17 @@ function App() {
 
   // purge expired documents once, on mount
   useEffectA(() => { purgeExpiredDocuments(); }, []);
+
+  // sesión restaurada: la reserva guardada se muestra al instante y se refresca
+  // en segundo plano (sin spinner, sin bloquear al huésped).
+  useEffectA(() => {
+    if (!boot.res) return;
+    Backend.findReservation(boot.res.code, "").then(({ reservation: r }) => {
+      if (!r) return;
+      saveSession(r);
+      setRes((cur) => (cur && normCode(cur.code) === normCode(r.code) ? { ...cur, ...r } : cur));
+    }).catch(() => {});
+  }, []);
 
   // hydrate property info (incl. house manual) from backend → localStorage, so
   // the bento + admin panel reflect admin edits across devices.
@@ -151,7 +197,7 @@ function App() {
   // vez que el huésped entra a Mi espacio, y como banda discreta arriba.
   useEffectA(() => {
     clearTimeout(acctTimer.current);
-    if (stage === "bento" && res) {
+    if (stage === "bento" && res && !adminPreview) {
       const store = loadStore();
       const prompted = store.acctPrompted?.[res.id];
       const hasAccount = store.account && store.account.reservationIds?.includes(res.id);
@@ -173,13 +219,13 @@ function App() {
     }
     return () => clearTimeout(acctTimer.current);
   }, [stage, res]);
-
   const pickLang = (c) => { setLang(c); saveStore({ ...loadStore(), lang: c }); setStage("code"); };
   const switchLang = () => { const n = lang === "es" ? "en" : "es"; setLang(n); saveStore({ ...loadStore(), lang: n }); };
 
   const goBento = (r, sibs) => { setRes(r); setSiblings(sibs); setStage("bento"); };
 
   const onResolved = (r) => {
+    saveSession(r);
     // demo account (pre-completed) or an already-registered reservation → Mi espacio directly
     if (r.group) { goBento(r, groupReservations(r.group) || [r]); return; }
     // completed = local record (this browser) OR backend says status "completo"
@@ -190,16 +236,49 @@ function App() {
   const switchStay = (r) => { window.location.hash = ""; setTile(null); setRes(r); };
 
   // ADMIN — seed one completed demo form, then open the control panel
-  const [adminEmail, setAdminEmail] = useStateA(() => { try { return localStorage.getItem("spacioam_admin_session") || ""; } catch (e) { return ""; } });
-  const goAdmin = (email) => {
-    const em = email || adminEmail || "";
-    setAdminEmail(em);
-    try { if (em) localStorage.setItem("spacioam_admin_session", em); } catch (e) {}
+  const [adminEmail, setAdminEmail] = useStateA(() => adminSession());
+  const seedAdminRecord = () => {
     const store = loadStore();
     const records = { ...(store.records || {}) };
     const seed = adminSeedRecord();
     if (!records[seed.resId]) { records[seed.resId] = seed.record; saveStore({ ...store, records }); }
+  };
+  const goAdmin = (email) => {
+    const em = email || adminEmail || "";
+    setAdminEmail(em);
+    try { if (em) localStorage.setItem("spacioam_admin_session", em); } catch (e) {}
+    seedAdminRecord();
     setStage("admin");
+  };
+  // sesión de administrador activa → el panel abre solo al cargar la app
+  useEffectA(() => { if (boot.stage === "admin") seedAdminRecord(); }, []);
+  const leaveAdmin = () => {
+    try { localStorage.removeItem("spacioam_admin_session"); } catch (e) {}
+    setAdminEmail(""); setStage("code");
+  };
+
+  /* el administrador entra a “Mi espacio” tal como lo ve el huésped */
+  const previewGuest = (h) => {
+    window.location.hash = "";
+    const r = { ...h };
+    setTile(null); setRes(r); setSiblings([r]); setAdminPreview(true); setStage("bento");
+  };
+  const exitPreview = () => {
+    window.location.hash = "";
+    setTile(null); setAdminPreview(false); setRes(null); setSiblings([]); setStage("admin");
+  };
+
+  /* el administrador reinicia un formulario mal enviado: la reserva vuelve a
+     pedirle el registro al huésped (en la hoja queda la traza del anterior) */
+  const resetGuestForm = (h) => {
+    const store = loadStore();
+    const records = { ...(store.records || {}) };
+    const n = normCode(h.code);
+    Object.keys(records).forEach((k) => {
+      if (k === h.id || normCode(records[k]?.code) === n) delete records[k];
+    });
+    saveStore({ ...store, records });
+    return Backend.resetForm({ code: h.code, by: adminEmail });
   };
 
   const finish = () => {
@@ -233,12 +312,13 @@ function App() {
     } catch (e) { /* offline / no endpoint */ }
     setStage("done");
   };
-
   const onDoneEnter = () => goBento(res, siblings.length ? siblings : [res]);
 
   // log out of Mi espacio → back to the reservation-code screen
   const onLogout = () => {
+    if (adminPreview) { exitPreview(); return; }
     window.location.hash = "";
+    clearSession();
     setTile(null); setAcctOpen(false); setAcctNudge(false); setRes(null); setSiblings([]);
     setStage("code");
   };
@@ -294,14 +374,26 @@ function App() {
     case "rules":    view = <RulesScreen t={t} onBack={() => setStage("contact")} onAccept={finish} onSwitchLang={switchLang} />; break;
     case "done":     view = <DoneScreen t={t} onEnter={onDoneEnter} />; break;
     case "bento":    view = <BentoScreen t={t} res={res} siblings={siblings} onSwitch={switchStay} firstName={firstName} emails={acctEmails()} onSwitchLang={switchLang} onLogout={onLogout} />; break;
-    case "admin":    view = <AdminScreen t={t} adminEmail={adminEmail} onBack={() => setStage("code")} onSwitchLang={switchLang} />; break;
+    case "admin":    view = <AdminScreen t={t} adminEmail={adminEmail} onBack={leaveAdmin} onSwitchLang={switchLang} onPreviewGuest={previewGuest} onResetForm={resetGuestForm} />; break;
     case "tile":     view = <TileDetail t={t} tileKey={tile} res={res} onBack={() => { window.location.hash = ""; }} />; break;
     default:         view = <LangScreen onPick={pickLang} />;
   }
 
   return (
     <div className="sp-stage">
-      <div key={stage + (tile || "") + (res?.id || "")}>{view}</div>
+      {adminPreview && stage !== "admin" && (
+        <div style={{ position: "fixed", left: 0, right: 0, top: 0, zIndex: 70, display: "flex", alignItems: "center", justifyContent: "center", gap: 14,
+          background: "rgba(62,63,63,.94)", backdropFilter: "blur(20px) saturate(120%)", padding: "9px 16px" }}>
+          <span style={{ fontFamily: C.sans, fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: "#FAFAFA", fontWeight: 500 }}>
+            {t.code === "es" ? "Vista del huésped" : "Guest view"}{res?.code ? " · " + res.code : ""}
+          </span>
+          <button onClick={exitPreview} className="sp-btn" style={{ background: "transparent", border: "1px solid rgba(250,250,250,.35)", borderRadius: 999,
+            padding: "5px 13px", fontFamily: C.sans, fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "#FAFAFA", cursor: "pointer" }}>
+            {t.code === "es" ? "Volver al panel" : "Back to panel"}
+          </button>
+        </div>
+      )}
+      <div style={adminPreview && stage !== "admin" ? { paddingTop: 38 } : undefined} key={stage + (tile || "") + (res?.id || "")}>{view}</div>
       {acctNudge && !acctOpen && res && stage === "bento" && (
         <AccountNudge t={t} onOpen={() => { setAcctNudge(false); setAcctOpen(true); }} onDismiss={dismissAcct} />
       )}

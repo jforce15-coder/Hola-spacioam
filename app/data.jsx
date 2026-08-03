@@ -1042,9 +1042,16 @@ const Backend = {
     return new Promise((resolve) => setTimeout(() => resolve(HOSPITABLE), 260));
   },
   // instant cache read (Reservas sheet) — no Hospitable call
+  ROSTER_KEY: "spacioam_roster_cache",
+  cachedRoster() {
+    try { const o = JSON.parse(localStorage.getItem(this.ROSTER_KEY)); return o && Array.isArray(o.list) && o.list.length ? o : null; } catch (e) { return null; }
+  },
+  saveRoster(list) {
+    try { if (list && list.length) localStorage.setItem(this.ROSTER_KEY, JSON.stringify({ at: Date.now(), list })); } catch (e) {}
+  },
   async listCached() {
     if (this.isConnected()) {
-      try { const json = await this.call("listCached"); this._lastMeta = json.meta || null; return json.reservations || []; }
+      try { const json = await this.call("listCached"); this._lastMeta = json.meta || null; const l = json.reservations || []; this.saveRoster(l); return l; }
       catch (e) { this._lastMeta = { error: String(e && e.message || e) }; return []; }
     }
     this._lastMeta = null;
@@ -1163,17 +1170,96 @@ const Backend = {
         const r = await this.call("findReservation", { code, sync: sync || "" });
         const json = r.raw ? r.json : r;
         // not-found no es un error: el backend dice hasta dónde se puede escalar
+        if (json.reservation) this.saveReservation(json.reservation);
         return { reservation: json.reservation || null, canSync: json.canSync || "" };
       } catch (e) {
         // timeout / red caída → deja reintentar el MISMO nivel, pero informa
         // qué pasó para que el pop-up ofrezca también notificar al host.
-        const local = findReservation(code);
+        const local = findReservation(code) || this.cachedReservation(code);
         if (local) return { reservation: local, canSync: "" };
         return { reservation: null, canSync: sync || "quick", timedOut: true, offline: e && e.message === "network-error" };
       }
     }
-    const local = findReservation(code);
+    const local = findReservation(code) || this.cachedReservation(code);
     return { reservation: local, canSync: local ? "" : (sync === "quick" ? "deep" : sync === "deep" ? "" : "quick") };
+  },
+
+  /* ---- reservas ya validadas en este dispositivo: entrada instantánea ----
+     Guardamos la última versión conocida de cada reserva. Al volver a entrar,
+     el huésped pasa sin esperar al backend; la reserva se refresca detrás. */
+  RES_KEY: "spacioam_res_cache",
+  _resCache() { try { return JSON.parse(localStorage.getItem(this.RES_KEY)) || {}; } catch (e) { return {}; } },
+  cachedReservation(code) {
+    const n = normCode(code); if (!n) return null;
+    const c = this._resCache()[n];
+    return c && c.r ? c.r : null;
+  },
+  saveReservation(r) {
+    if (!(r && r.code)) return;
+    try {
+      const all = this._resCache();
+      all[normCode(r.code)] = { at: Date.now(), r };
+      localStorage.setItem(this.RES_KEY, JSON.stringify(all));
+    } catch (e) {}
+  },
+
+  /* ---- solicitudes de nuevos invitados ---- */
+  async listGuestAccess() {
+    if (this.isConnected()) {
+      try { const j = await this.call("listGuestAccess"); return j.groups || []; } catch (e) { return null; }
+    }
+    if (typeof loadStore !== "function") return [];
+    return (loadStore().guestAccess || []).map((g, i) => ({
+      id: (g.at || i) + "|" + (g.code || ""), at: g.at, code: g.code, apartment: g.apartment,
+      guests: g.guests || [], needsApproval: g.status === "needs-approval", status: g.decision || (g.status === "needs-approval" ? "requiere-aprobación" : "auto-autorizado"),
+    })).reverse();
+  },
+  async resolveGuestAccess(payload) {
+    if (this.isConnected()) { try { return await this.call("resolveGuestAccess", payload); } catch (e) { return { ok: false }; } }
+    if (typeof loadStore !== "function") return { ok: true };
+    const s = loadStore();
+    const st = payload.decision === "approved" ? "aprobado" : payload.decision === "rejected" ? "rechazado" : "eliminado";
+    const list = (s.guestAccess || []).map((g, i) => ((g.at || i) + "|" + (g.code || "")) === payload.id ? { ...g, decision: st } : g)
+      .filter((g) => g.decision !== "eliminado");
+    saveStore({ ...s, guestAccess: list });
+    return { ok: true, local: true };
+  },
+
+  /* ---- fotos de QR para acceso a streaming ---- */
+  async streamingRequest({ code, apartment, image, note }) {
+    if (this.isConnected()) {
+      try { return await this.call("streamingRequest", { code, apartment, image, note: note || "" }); } catch (e) { /* guarda local */ }
+    }
+    try {
+      const s = loadStore();
+      const list = s.streaming || [];
+      list.push({ at: Date.now(), code, apartment, image, note: note || "", status: "pendiente" });
+      saveStore({ ...s, streaming: list });
+    } catch (e) {}
+    return { ok: true, local: true };
+  },
+  async listStreaming() {
+    if (this.isConnected()) {
+      try { const j = await this.call("listStreaming"); return j.items || []; } catch (e) { return null; }
+    }
+    if (typeof loadStore !== "function") return [];
+    return (loadStore().streaming || []).map((x, i) => ({ ...x, id: (x.at || i) + "|" + (x.code || ""), url: x.image || "" })).reverse();
+  },
+  async resolveStreaming(payload) {
+    if (this.isConnected()) { try { return await this.call("resolveStreaming", payload); } catch (e) { return { ok: false }; } }
+    if (typeof loadStore !== "function") return { ok: true };
+    const s = loadStore();
+    const list = (s.streaming || []).map((x, i) => ((x.at || i) + "|" + (x.code || "")) === payload.id
+      ? { ...x, status: payload.action === "delete" ? "eliminado" : payload.action === "reopen" ? "pendiente" : "resuelto" } : x)
+      .filter((x) => x.status !== "eliminado");
+    saveStore({ ...s, streaming: list });
+    return { ok: true, local: true };
+  },
+
+  /* ---- reiniciar un formulario mal enviado ---- */
+  async resetForm({ code, by }) {
+    if (this.isConnected()) { try { return await this.call("resetForm", { code, by: by || "" }); } catch (e) { return { ok: false }; } }
+    return { ok: true, offline: true };
   },
   async getRegistration(code) {
     // full registration data (Formularios + Huespedes) for a completed booking,

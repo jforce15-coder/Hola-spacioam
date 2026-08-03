@@ -992,6 +992,8 @@ const Backend = {
   // promesa colgada para siempre y el huésped se queda con el spinner puesto.
   _timeoutFor(action, payload) {
     const p = payload || {};
+    if (action === "getRegistration") return 30000;
+    if (action === "getDocImage") return 40000;
     if (action === "findReservation") {
       if (p.sync === "deep") return 210000;   // 60 días
       if (p.sync === "quick") return 90000;   // 5 días
@@ -1264,9 +1266,16 @@ const Backend = {
   async getRegistration(code) {
     // full registration data (Formularios + Huespedes) for a completed booking,
     // so the admin summary works even if it was filled on another device.
+    // Las imágenes NO vienen aquí: se piden una por una con getDocImage.
     if (!this.isConnected()) return null;
+    this._lastRegError = "";
     try { const json = await this.call("getRegistration", { code }); return json.record || null; }
-    catch (e) { return null; }
+    catch (e) { this._lastRegError = String((e && e.message) || e); return null; }
+  },
+  async getDocImage(fileId) {
+    if (!this.isConnected() || !fileId) return "";
+    try { const json = await this.call("getDocImage", { fileId }); return json.image || ""; }
+    catch (e) { return ""; }
   },
   async sendTestEmail(to) {
     if (!this.isConnected()) return { ok: false, offline: true };

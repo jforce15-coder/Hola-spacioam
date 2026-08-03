@@ -350,6 +350,9 @@ function ReservationSummary({ t, h, rec: localRec, onClose, onResend, autoPrint,
   const generated = new Date().toLocaleString(lang === "en" ? "en-US" : "es-GT", { dateStyle: "long", timeStyle: "short" });
   const [fetchedRec, setFetchedRec] = useStateAd(null);
   const [loadingRec, setLoadingRec] = useStateAd(false);
+  const [recErr, setRecErr] = useStateAd("");
+  const [docImgs, setDocImgs] = useStateAd({});     // fileId → data URL
+  const [docsLoading, setDocsLoading] = useStateAd(false);
   const rec = localRec || fetchedRec;
   const guests = rec?.guests || [];
   const booker = rec?.booker;
@@ -358,16 +361,31 @@ function ReservationSummary({ t, h, rec: localRec, onClose, onResend, autoPrint,
   useEffectAd(() => {
     if (!localRec && h.statusForm === "completo" && Backend.isConnected()) {
       setLoadingRec(true);
-      Backend.getRegistration(h.code).then((r) => { setFetchedRec(r); setLoadingRec(false); });
+      Backend.getRegistration(h.code).then((r) => {
+        setFetchedRec(r);
+        setRecErr(r ? "" : (Backend._lastRegError || "not-found"));
+        setLoadingRec(false);
+        // los documentos llegan después, uno por uno (así nada se cae por tamaño)
+        const ids = ((r && r.guests) || []).map((g) => g.docFileId).filter(Boolean);
+        if (!ids.length) return;
+        setDocsLoading(true);
+        (async () => {
+          for (const id of ids) {
+            const img = await Backend.getDocImage(id);
+            if (img) setDocImgs((prev) => ({ ...prev, [id]: img }));
+          }
+          setDocsLoading(false);
+        })();
+      }).catch(() => { setRecErr("network-error"); setLoadingRec(false); });
     }
   }, []);
   useEffectAd(() => {
     if (!autoPrint) return;
-    if (loadingRec) return;            // espera a que el registro + documentos carguen
+    if (loadingRec || docsLoading) return;            // espera a que el registro + documentos carguen
     // buffer para que las imágenes (data URLs) pinten antes de clonar/imprimir
     const id = setTimeout(() => printSummary(), 650);
     return () => clearTimeout(id);
-  }, [autoPrint, loadingRec]);
+  }, [autoPrint, loadingRec, docsLoading]);
 
   // registro de envíos de ESTA reserva (solo admin) — para ver si hubo problema
   const [logRows, setLogRows] = useStateAd(null);
@@ -483,7 +501,21 @@ function ReservationSummary({ t, h, rec: localRec, onClose, onResend, autoPrint,
         {!rec && (
           <div style={{ marginTop: 22, background: C.beige, border: `1px solid ${C.grisCalido}`, borderRadius: 14, padding: "16px 18px",
             fontFamily: C.sans, fontSize: 12.5, color: C.negro, lineHeight: 1.6, letterSpacing: "0.01em", display: "flex", alignItems: "center", gap: 10 }}>
-            {loadingRec ? <><Spinner color={C.taupe} /> {t.reading}</> : (h.statusForm === "completo" ? t.adminDoneElsewhere : t.adminNoDocs)}
+            {loadingRec ? <><Spinner color={C.taupe} /> {t.reading}</> : (
+              recErr && h.statusForm === "completo"
+                ? <div>
+                    <div>{es ? "No pudimos leer el registro desde la base de datos." : "We couldn't read the registration from the database."}</div>
+                    <div style={{ fontSize: 11, color: C.tierra, marginTop: 4 }}>
+                      {recErr === "timeout" ? (es ? "La consulta tardó demasiado. Vuelve a abrir el resumen." : "The query timed out. Open the summary again.")
+                        : recErr === "not-found" ? (es ? "La reserva aún no tiene filas en ‘Formularios’/‘Huespedes’." : "No rows yet in ‘Formularios’/‘Huespedes’.")
+                        : recErr}
+                    </div>
+                    <button onClick={() => { setRecErr(""); setLoadingRec(true); Backend.getRegistration(h.code).then((r) => { setFetchedRec(r); setRecErr(r ? "" : (Backend._lastRegError || "not-found")); setLoadingRec(false); }); }}
+                      className="sp-btn" style={{ marginTop: 10, background: C.negro, color: C.alabaster, border: "none", borderRadius: 10, padding: "8px 15px",
+                        fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.06em", cursor: "pointer" }}>{es ? "Reintentar" : "Retry"}</button>
+                  </div>
+                : (h.statusForm === "completo" ? t.adminDoneElsewhere : t.adminNoDocs)
+            )}
           </div>
         )}
 
@@ -526,13 +558,21 @@ function ReservationSummary({ t, h, rec: localRec, onClose, onResend, autoPrint,
                   <SumRow label={t.fullName} value={g.name || "—"} />
                   <SumRow label={t.idNumber} value={g.id || "—"} />
                   <div style={{ marginTop: 14, fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.16em", textTransform: "uppercase", color: C.negro, fontWeight: 600, marginBottom: 8 }}>{t.sumDocs}</div>
-                  {g.docImage
-                    ? <WatermarkedDoc src={g.docImage} t={t} />
-                    : g.docUrl
-                      ? <a href={g.docUrl} target="_blank" rel="noopener" className="sum-noprint" style={{ display: "inline-flex", alignItems: "center", gap: 8, textDecoration: "none",
-                          background: C.negro, color: C.alabaster, borderRadius: 10, padding: "10px 16px", fontFamily: C.sans, fontSize: 11, letterSpacing: "0.04em", fontWeight: 500 }}>
-                          <Icon name="review" size={14} color={C.alabaster} /> {t.sumViewDoc}</a>
-                      : <WatermarkedDoc src={null} t={t} />}
+                  {(() => {
+                    const img = g.docImage || (g.docFileId && docImgs[g.docFileId]);
+                    if (img) return <WatermarkedDoc src={img} t={t} />;
+                    if (g.docFileId && docsLoading) return (
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: 9, fontFamily: C.sans, fontSize: 11.5, color: C.tierra, letterSpacing: "0.02em" }}>
+                        <Spinner color={C.taupe} /> {es ? "Cargando documento…" : "Loading document…"}
+                      </div>
+                    );
+                    if (g.docUrl) return (
+                      <a href={g.docUrl} target="_blank" rel="noopener" className="sum-noprint" style={{ display: "inline-flex", alignItems: "center", gap: 8, textDecoration: "none",
+                        background: C.negro, color: C.alabaster, borderRadius: 10, padding: "10px 16px", fontFamily: C.sans, fontSize: 11, letterSpacing: "0.04em", fontWeight: 500 }}>
+                        <Icon name="review" size={14} color={C.alabaster} /> {t.sumViewDoc}</a>
+                    );
+                    return <WatermarkedDoc src={null} t={t} />;
+                  })()}
                 </div>
               ))}
             </div>

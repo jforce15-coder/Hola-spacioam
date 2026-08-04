@@ -343,7 +343,7 @@ function GuestLinkButton({ t, h }) {
 /* ============================================================
    RESERVATION SUMMARY — full document (email / PDF to admins)
    ============================================================ */
-function ReservationSummary({ t, h, rec: localRec, onClose, onResend, autoPrint, avail }) {
+function ReservationSummary({ t, h, rec: localRec, onClose, onResend, autoPrint, avail, onReset, resetting, done }) {
   const lang = t.code;
   const es = lang === "es";
   const av = avail || { email: false, whatsapp: false };
@@ -353,6 +353,15 @@ function ReservationSummary({ t, h, rec: localRec, onClose, onResend, autoPrint,
   const [recErr, setRecErr] = useStateAd("");
   const [docImgs, setDocImgs] = useStateAd({});     // fileId → data URL
   const [docsLoading, setDocsLoading] = useStateAd(false);
+  const retryDoc = (id) => {
+    if (!id) return;
+    setDocsLoading(true);
+    Backend.getDocImage(id).then((img) => {
+      if (img) setDocImgs((prev) => ({ ...prev, [id]: img }));
+      setDocsLoading(false);
+    }).catch(() => setDocsLoading(false));
+  };
+  const [confirmReset, setConfirmReset] = useStateAd(false);
   const rec = localRec || fetchedRec;
   const guests = rec?.guests || [];
   const booker = rec?.booker;
@@ -368,14 +377,16 @@ function ReservationSummary({ t, h, rec: localRec, onClose, onResend, autoPrint,
         // los documentos llegan después, uno por uno (así nada se cae por tamaño)
         const ids = ((r && r.guests) || []).map((g) => g.docFileId).filter(Boolean);
         if (!ids.length) return;
+        // en paralelo: cada documento aparece en cuanto llega (antes iban en fila
+        // y el botón de descargar esperaba minutos por el último)
         setDocsLoading(true);
-        (async () => {
-          for (const id of ids) {
-            const img = await Backend.getDocImage(id);
+        let left = ids.length;
+        ids.forEach((id) => {
+          Backend.getDocImage(id).then((img) => {
             if (img) setDocImgs((prev) => ({ ...prev, [id]: img }));
-          }
-          setDocsLoading(false);
-        })();
+            if (--left === 0) setDocsLoading(false);
+          }).catch(() => { if (--left === 0) setDocsLoading(false); });
+        });
       }).catch(() => { setRecErr("network-error"); setLoadingRec(false); });
     }
   }, []);
@@ -408,8 +419,7 @@ function ReservationSummary({ t, h, rec: localRec, onClose, onResend, autoPrint,
             <Btn variant="peach" onClick={printSummary} style={{ padding: "11px 18px" }}><Icon name="download" size={15} color={C.white} /> {t.sumPrint}</Btn>
             <Btn variant="ghost" onClick={av.email ? () => onResend("email") : undefined} disabled={!av.email} style={{ padding: "11px 16px", opacity: av.email ? 1 : 0.4, cursor: av.email ? "pointer" : "not-allowed" }} title={av.email ? "" : (es ? "Sin correo en esta propiedad" : "No email")}><Icon name="mail" size={15} color={C.negro} /> {es ? "Correo" : "Email"}</Btn>
             <Btn variant="ghost" onClick={av.whatsapp ? () => onResend("whatsapp") : undefined} disabled={!av.whatsapp} style={{ padding: "11px 16px", opacity: av.whatsapp ? 1 : 0.4, cursor: av.whatsapp ? "pointer" : "not-allowed" }} title={av.whatsapp ? (es ? "Incluye al administrador" : "") : (es ? "Sin WhatsApp en esta propiedad" : "No WhatsApp")}><Icon name="whatsapp" size={15} color={C.negro} /> WhatsApp</Btn>
-            <GuestLinkButton t={t} h={h} />          </div>
-          <button onClick={onClose} className="sp-btn" style={{ width: 40, height: 40, borderRadius: 12, border: `1px solid ${C.grisCalido}`,
+            <GuestLinkButton t={t} h={h} />          </div>          <button onClick={onClose} className="sp-btn" style={{ width: 40, height: 40, borderRadius: 12, border: `1px solid ${C.grisCalido}`,
             background: C.white, cursor: "pointer", display: "grid", placeItems: "center" }}><Icon name="x" size={18} color={C.negro} /></button>
         </div>
 
@@ -566,6 +576,25 @@ function ReservationSummary({ t, h, rec: localRec, onClose, onResend, autoPrint,
                         <Spinner color={C.taupe} /> {es ? "Cargando documento…" : "Loading document…"}
                       </div>
                     );
+                    if (g.docFileId) return (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 9, alignItems: "flex-start" }}>
+                        <div style={{ fontFamily: C.sans, fontSize: 11.5, color: C.tierra, letterSpacing: "0.02em" }}>
+                          {es ? "No pudimos traer la imagen del documento." : "We couldn't load the document image."}
+                        </div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }} className="sum-noprint">
+                          <button onClick={() => retryDoc(g.docFileId)} className="sp-btn"
+                            style={{ background: C.negro, color: C.alabaster, border: "none", borderRadius: 10, padding: "9px 15px",
+                              fontFamily: C.sans, fontSize: 11, letterSpacing: "0.04em", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 7 }}>
+                            <Icon name="refresh" size={14} color={C.alabaster} /> {es ? "Reintentar" : "Retry"}
+                          </button>
+                          {g.docUrl && (
+                            <a href={g.docUrl} target="_blank" rel="noopener" style={{ display: "inline-flex", alignItems: "center", gap: 8, textDecoration: "none",
+                              background: C.white, color: C.negro, border: `1px solid ${C.grisCalido}`, borderRadius: 10, padding: "9px 15px", fontFamily: C.sans, fontSize: 11, letterSpacing: "0.04em" }}>
+                              <Icon name="review" size={14} color={C.negro} /> {t.sumViewDoc}</a>
+                          )}
+                        </div>
+                      </div>
+                    );
                     if (g.docUrl) return (
                       <a href={g.docUrl} target="_blank" rel="noopener" className="sum-noprint" style={{ display: "inline-flex", alignItems: "center", gap: 8, textDecoration: "none",
                         background: C.negro, color: C.alabaster, borderRadius: 10, padding: "10px 16px", fontFamily: C.sans, fontSize: 11, letterSpacing: "0.04em", fontWeight: 500 }}>
@@ -591,6 +620,42 @@ function ReservationSummary({ t, h, rec: localRec, onClose, onResend, autoPrint,
             </div>
           </SumSection>
         </>)}
+
+        {done && onReset && (
+          <div className="sum-noprint" style={{ marginTop: 26, paddingTop: 20, borderTop: `1px solid ${C.beige}` }}>
+            {confirmReset ? (
+              <div style={{ background: C.alabaster, border: `1px solid rgba(233,130,106,.45)`, borderRadius: 14, padding: "16px 18px" }}>
+                <div style={{ fontFamily: C.serif, fontSize: 16, color: C.negro, marginBottom: 6 }}>
+                  {es ? "¿Reiniciar este formulario?" : "Reset this form?"}
+                </div>
+                <p style={{ fontFamily: C.sans, fontSize: 11.5, lineHeight: 1.65, color: C.tierra, margin: "0 0 14px", letterSpacing: "0.01em", maxWidth: 460 }}>
+                  {es
+                    ? `El huésped ${h.guestName || h.code} volverá a llenar su registro desde cero. El registro anterior queda guardado en la hoja marcado como reiniciado.`
+                    : `Guest ${h.guestName || h.code} will fill in the registration again from scratch. The previous record stays in the sheet, marked as reset.`}
+                </p>
+                <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+                  <button onClick={resetting ? undefined : onReset} className="sp-btn"
+                    style={{ background: C.peach, color: C.white, border: "none", borderRadius: 11, padding: "10px 17px", fontFamily: C.sans, fontSize: 11,
+                      letterSpacing: "0.05em", fontWeight: 500, cursor: resetting ? "wait" : "pointer", opacity: resetting ? 0.6 : 1, display: "inline-flex", alignItems: "center", gap: 7 }}>
+                    <Icon name="refresh" size={14} color={C.white} />
+                    {resetting ? (es ? "Reiniciando…" : "Resetting…") : (es ? "Sí, reiniciar" : "Yes, reset")}
+                  </button>
+                  <button onClick={() => setConfirmReset(false)} className="sp-btn"
+                    style={{ background: C.white, color: C.negro, border: `1px solid ${C.grisCalido}`, borderRadius: 11, padding: "10px 17px",
+                      fontFamily: C.sans, fontSize: 11, letterSpacing: "0.05em", cursor: "pointer" }}>
+                    {es ? "Cancelar" : "Cancel"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button onClick={() => setConfirmReset(true)} className="sp-btn"
+                style={{ background: "transparent", color: C.peach, border: `1px solid rgba(233,130,106,.5)`, borderRadius: 11, padding: "10px 16px",
+                  fontFamily: C.sans, fontSize: 11, letterSpacing: "0.05em", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 7 }}>
+                <Icon name="refresh" size={14} color={C.peach} /> {es ? "Reiniciar formulario" : "Reset form"}
+              </button>
+            )}
+          </div>
+        )}
 
         <div style={{ textAlign: "center", marginTop: 30, paddingTop: 20, borderTop: `1px solid ${C.beige}` }}>
           <div style={{ fontFamily: C.sans, fontSize: 10, letterSpacing: "0.06em", color: C.negro }}>hola@spacioam.com · spacioam.com</div>
@@ -687,12 +752,8 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
   const [resetting, setResetting] = useStateAd("");
   const doReset = (h) => {
     const es = t.code === "es";
-    const msg = es
-      ? `¿Reiniciar el formulario de ${h.code}? El huésped volverá a llenarlo desde cero. El registro anterior queda guardado en la hoja.`
-      : `Reset the form for ${h.code}? The guest will fill it in again from scratch. The previous record stays in the sheet.`;
-    if (typeof window !== "undefined" && window.confirm && !window.confirm(msg)) return;
     setResetting(h.code);
-    Promise.resolve(onResetForm ? onResetForm(h) : null).then(() => {
+    return Promise.resolve(onResetForm ? onResetForm(h) : null).then(() => {
       setResetCodes((prev) => new Set([...prev, normCode(h.code)]));
       setResetting("");
       setToast(es ? "Formulario reiniciado" : "Form reset");
@@ -896,9 +957,8 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
           <div style={{ border: `1px solid ${C.grisCalido}`, borderRadius: 16, overflow: "hidden", background: C.white }}>
             {rows.map(({ h, rec, bucket }, idx) => (
               <AdminRow key={(h.id || h.code) + "-" + idx} t={t} h={h} rec={rec} bucket={bucket} first={idx === 0} avail={availFor(h)}
-                done={isDone(h, rec)} resetting={resetting === h.code}
+                done={isDone(h, rec)}
                 onPreview={onPreviewGuest ? () => onPreviewGuest(h) : null}
-                onReset={onResetForm ? () => doReset(h) : null}
                 onView={() => setSummary({ h, rec, autoPrint: false })}
                 onDownload={() => setSummary({ h, rec, autoPrint: true })}
                 onResend={(ch) => resend(h, ch)} />
@@ -929,6 +989,8 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
 
       {summary && (
         <ReservationSummary t={t} h={summary.h} rec={summary.rec} autoPrint={summary.autoPrint} avail={availFor(summary.h)}
+          done={isDone(summary.h, summary.rec)} resetting={resetting === summary.h.code}
+          onReset={onResetForm ? () => doReset(summary.h).then(() => setSummary(null)) : null}
           onClose={() => setSummary(null)} onResend={(ch) => resend(summary.h, ch)} />
       )}
       {hospOpen && (
@@ -947,7 +1009,7 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
 }
 
 /* compact, image-free row */
-function AdminRow({ t, h, rec, bucket, first, avail, onView, onDownload, onResend, done: doneProp, onPreview, onReset, resetting }) {
+function AdminRow({ t, h, rec, bucket, first, avail, onView, onDownload, onResend, done: doneProp, onPreview }) {
   const done = doneProp != null ? doneProp : (!!rec || h.statusForm === "completo");
   const es = t.code === "es";
   const av = avail || { email: false, whatsapp: false };
@@ -1001,14 +1063,6 @@ function AdminRow({ t, h, rec, bucket, first, avail, onView, onDownload, onResen
         {actionBtn("review", t.adminView, onView, true)}
         {actionBtn("download", t.adminDownload, onDownload, false)}
         {done && onPreview && actionBtn("eye", es ? "Mi espacio" : "Guest space", onPreview, false)}
-        {done && onReset && (
-          <button onClick={resetting ? undefined : onReset} className="sp-btn" title={es ? "Reiniciar el formulario para que el huésped lo vuelva a llenar" : "Reset the form so the guest fills it again"}
-            style={{ background: C.white, color: C.peach, border: `1px solid rgba(233,130,106,.5)`, borderRadius: 9, padding: "7px 11px",
-              cursor: resetting ? "wait" : "pointer", display: "inline-flex", alignItems: "center", gap: 6, opacity: resetting ? 0.55 : 1,
-              fontFamily: C.sans, fontSize: 10, letterSpacing: "0.05em", fontWeight: 500, whiteSpace: "nowrap" }}>
-            <Icon name="refresh" size={13} color={C.peach} /> {es ? "Reiniciar" : "Reset"}
-          </button>
-        )}
         <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "nowrap" }}>
           <span style={{ fontFamily: C.sans, fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: C.tierra }}>{es ? "Reenviar" : "Resend"}</span>
           {resendBtn("mail", av.email, "email", es ? "Reenviar por correo" : "Resend by email")}

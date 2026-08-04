@@ -993,7 +993,7 @@ const Backend = {
   _timeoutFor(action, payload) {
     const p = payload || {};
     if (action === "getRegistration") return 30000;
-    if (action === "getDocImage") return 40000;
+    if (action === "getDocImage") return 25000;
     if (action === "findReservation") {
       if (p.sync === "deep") return 210000;   // 60 días
       if (p.sync === "quick") return 90000;   // 5 días
@@ -1272,10 +1272,37 @@ const Backend = {
     try { const json = await this.call("getRegistration", { code }); return json.record || null; }
     catch (e) { this._lastRegError = String((e && e.message) || e); return null; }
   },
+  /* Documentos: caché en el dispositivo por fileId. Una vez visto un resumen,
+     volver a abrirlo es instantáneo. Cabe poco en localStorage, así que
+     guardamos las 8 imágenes más recientes y descartamos las viejas. */
+  DOC_KEY: "spacioam_doc_cache",
+  _docCache() { try { return JSON.parse(localStorage.getItem(this.DOC_KEY)) || {}; } catch (e) { return {}; } },
+  cachedDocImage(fileId) { const c = this._docCache()[fileId]; return (c && c.img) || ""; },
+  _saveDocImage(fileId, img) {
+    if (!img || img.length > 900000) return;
+    try {
+      const all = this._docCache();
+      all[fileId] = { at: Date.now(), img };
+      const keys = Object.keys(all).sort((a, b) => all[b].at - all[a].at).slice(0, 8);
+      const trimmed = {};
+      keys.forEach((k) => { trimmed[k] = all[k]; });
+      localStorage.setItem(this.DOC_KEY, JSON.stringify(trimmed));
+    } catch (e) { try { localStorage.removeItem(this.DOC_KEY); } catch (e2) {} }
+  },
   async getDocImage(fileId) {
-    if (!this.isConnected() || !fileId) return "";
-    try { const json = await this.call("getDocImage", { fileId }); return json.image || ""; }
-    catch (e) { return ""; }
+    if (!fileId) return "";
+    const hit = this.cachedDocImage(fileId);
+    if (hit) return hit;
+    if (!this.isConnected()) return "";
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const json = await this.call("getDocImage", { fileId });
+        const img = json.image || "";
+        if (img) { this._saveDocImage(fileId, img); return img; }
+        return "";
+      } catch (e) { if (attempt) return ""; }
+    }
+    return "";
   },
   async sendTestEmail(to) {
     if (!this.isConnected()) return { ok: false, offline: true };

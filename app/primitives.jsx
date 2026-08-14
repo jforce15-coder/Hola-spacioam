@@ -432,7 +432,8 @@ function Screen({ children, maxW = 460, flowTop = true, pad }) {
 function TopBar({ t, onSwitchLang, onHome }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 26 }}>
-      <button onClick={onHome} className="sp-link" style={{ background: "none", border: "none", padding: 0, cursor: onHome ? "pointer" : "default", display: "flex" }}>
+      <button onClick={onHome} className="sp-link" title={onHome ? (t && t.code === "en" ? "Back" : "Un paso atrás") : undefined}
+        style={{ background: "none", border: "none", padding: 0, cursor: onHome ? "pointer" : "default", display: "flex" }}>
         <LogoS size={28} />
       </button>
       <button onClick={onSwitchLang} className="sp-link" style={{ background: "transparent", border: `1px solid ${C.grisCalido}`,

@@ -728,6 +728,14 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
       .catch(() => setRefreshing(false));
   };
   useEffectAd(() => { loadRoster(); }, []);
+  // relee la hoja cada 45 s mientras el panel está abierto: un formulario recién
+  // enviado aparece como completado solo, sin tener que refrescar la página.
+  useEffectAd(() => {
+    const id = setInterval(() => { if (!document.hidden) loadRoster(); }, 45000);
+    const onShow = () => { if (!document.hidden) loadRoster(); };
+    document.addEventListener("visibilitychange", onShow);
+    return () => { clearInterval(id); document.removeEventListener("visibilitychange", onShow); };
+  }, []);
   const [avail, setAvail] = useStateAd(() => { try { return JSON.parse(localStorage.getItem("spacioam_avail")) || {}; } catch (e) { return {}; } });
   useEffectAd(() => {
     if (!roster || !roster.length) return;

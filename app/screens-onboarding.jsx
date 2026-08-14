@@ -243,7 +243,7 @@ function CodeScreen({ t, linkErr, onClearLinkErr, onResolved, onAdmin, onSwitchL
 }
 
 /* ---------- STAY OVERVIEW ---------- */
-function OverviewScreen({ t, res, onStart, onSwitchLang }) {
+function OverviewScreen({ t, res, onStart, onExit, onSwitchLang }) {
   const nights = nightsBetween(res.checkin, res.checkout);
   const row = (label, value) => (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "13px 0",
@@ -254,7 +254,7 @@ function OverviewScreen({ t, res, onStart, onSwitchLang }) {
   );
   return (
     <Screen maxW={500}>
-      <TopBar t={t} onSwitchLang={onSwitchLang} />
+      <TopBar t={t} onSwitchLang={onSwitchLang} onHome={onExit} />
       <div className="reveal"><H>{t.foundTitle}</H></div>
       <div className="reveal" style={{ animationDelay: ".08s", position: "relative", marginBottom: -1 }}>
         <WeaveHero img={resListingPhoto(res)} variant={3} height="clamp(220px,30vh,288px)" width={90}

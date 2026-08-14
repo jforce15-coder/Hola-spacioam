@@ -44,6 +44,20 @@ function isCompleted(res) {
   return !!completedRecordFor(res);
 }
 
+/* El administrador reinició el formulario: el registro local de este dispositivo
+   ya no vale, hay que volver a llenarlo. */
+function dropLocalRecord(res) {
+  if (!res) return;
+  const store = loadStore();
+  const records = { ...(store.records || {}) };
+  const code = normCode(res.code);
+  let changed = false;
+  Object.keys(records).forEach((k) => {
+    if (k === res.id || (code && normCode(records[k]?.code) === code)) { delete records[k]; changed = true; }
+  });
+  if (changed) saveStore({ ...store, records });
+}
+
 function emptyForm(res) {
   return {
     booker: { type: null, doc: {}, phone: { code: "+502", number: "" }, emergency: { code: "+502", number: "" }, email: "" },
@@ -111,6 +125,12 @@ function App() {
     Backend.findReservation(boot.res.code, "").then(({ reservation: r }) => {
       if (!r) return;
       saveSession(r);
+      // el administrador reinició este formulario → el huésped vuelve al registro
+      if (r.statusForm !== "completo" && isCompleted(r)) {
+        dropLocalRecord(r);
+        setTile(null); setRes(r); setSiblings([r]); setForm(emptyForm(r)); setStage("overview");
+        return;
+      }
       setRes((cur) => (cur && normCode(cur.code) === normCode(r.code) ? { ...cur, ...r } : cur));
     }).catch(() => {});
   }, []);
@@ -314,6 +334,15 @@ function App() {
   };
   const onDoneEnter = () => goBento(res, siblings.length ? siblings : [res]);
 
+  /* Un paso atrás desde el resumen de la reserva: cierra la sesión de ese
+     código y vuelve a la pantalla del código (útil para el administrador que
+     entró a revisar o para cancelar un formulario empezado por error). */
+  const exitToCode = () => {
+    if (adminPreview) { exitPreview(); return; }
+    clearSession();
+    setTile(null); setRes(null); setSiblings([]); setForm(emptyForm(null)); setStage("code");
+  };
+
   // log out of Mi espacio → back to the reservation-code screen
   const onLogout = () => {
     if (adminPreview) { exitPreview(); return; }
@@ -367,7 +396,7 @@ function App() {
   switch (stage) {
     case "lang":     view = <LangScreen onPick={pickLang} />; break;
     case "code":     view = <CodeScreen t={t} linkErr={linkErr} onClearLinkErr={() => setLinkErr("")} onResolved={onResolved} onAdmin={goAdmin} onSwitchLang={switchLang} />; break;
-    case "overview": view = <OverviewScreen t={t} res={res} onStart={() => setStage("booker")} onSwitchLang={switchLang} />; break;
+    case "overview": view = <OverviewScreen t={t} res={res} onStart={() => setStage("booker")} onExit={exitToCode} onSwitchLang={switchLang} />; break;
     case "booker":   view = <BookerScreen t={t} res={res} form={form} setForm={setForm} onBack={() => setStage("overview")} onNext={() => setStage("docs")} onSwitchLang={switchLang} />; break;
     case "docs":     view = <DocsScreen t={t} res={res} form={form} setForm={setForm} onBack={() => setStage("booker")} onNext={() => setStage("contact")} onSwitchLang={switchLang} />; break;
     case "contact":  view = <ContactScreen t={t} res={res} form={form} setForm={setForm} onBack={() => setStage("docs")} onNext={() => setStage("rules")} onSwitchLang={switchLang} />; break;

@@ -122,11 +122,15 @@ function App() {
   // en segundo plano (sin spinner, sin bloquear al huésped).
   useEffectA(() => {
     if (!boot.res) return;
-    Backend.findReservation(boot.res.code, "").then(({ reservation: r }) => {
+    Backend.findReservation(boot.res.code, "").then(({ reservation: r, fresh }) => {
       if (!r) return;
       saveSession(r);
-      // el administrador reinició este formulario → el huésped vuelve al registro
-      if (r.statusForm !== "completo" && isCompleted(r)) {
+      // el administrador reinició este formulario → el huésped vuelve al registro.
+      // Solo con evidencia POSITIVA del servidor (marca de reinicio posterior al
+      // registro guardado): nunca por una respuesta local, un timeout o sin red.
+      const rec = completedRecordFor(r);
+      const doneAt = rec ? new Date(rec.completedAt || 0).getTime() : 0;
+      if (fresh && Backend.isConnected() && rec && r.resetAt && r.resetAt > doneAt && r.statusForm !== "completo") {
         dropLocalRecord(r);
         setTile(null); setRes(r); setSiblings([r]); setForm(emptyForm(r)); setStage("overview");
         return;

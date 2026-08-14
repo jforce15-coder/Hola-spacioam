@@ -1173,7 +1173,7 @@ const Backend = {
         const json = r.raw ? r.json : r;
         // not-found no es un error: el backend dice hasta dónde se puede escalar
         if (json.reservation) this.saveReservation(json.reservation);
-        return { reservation: json.reservation || null, canSync: json.canSync || "" };
+        return { reservation: json.reservation || null, canSync: json.canSync || "", fresh: true };
       } catch (e) {
         // timeout / red caída → deja reintentar el MISMO nivel, pero informa
         // qué pasó para que el pop-up ofrezca también notificar al host.

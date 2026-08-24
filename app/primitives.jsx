@@ -10,11 +10,13 @@ function LogoMain({ width = 200, height, light = false, style }) {
     style={height ? { height, width: "auto", display: "block", ...style } : { width, height: "auto", display: "block", ...style }} />;
 }
 function LogoS({ size = 40, light = false, style }) {
-  return <img src={light ? "assets/brand/logo-monogram-white.png" : "assets/brand/logo-monogram.png"} alt="Spacio AM"
+  const onErr = (e) => { const el = e.target; if (el.dataset.fb) return; el.dataset.fb = "1"; el.style.display = "none"; };
+  return <img src={light ? "assets/brand/logo-monogram-white.png" : "assets/brand/logo-monogram.png"} alt="Spacio AM" onError={onErr}
     style={{ width: "auto", height: size, display: "block", ...style }} />;
 }
 function LogoStamp({ size = 72, light = false, style }) {
-  return <img src={light ? "assets/brand/logo-stamp-white.png" : "assets/brand/logo-stamp-transparent.png"} alt="Spacio AM"
+  const onErr = (e) => { const el = e.target; if (el.dataset.fb) return; el.dataset.fb = "1"; el.replaceWith(Object.assign(document.createElement("span"), { textContent: "SPACIO AM", style: "font-family:var(--serif),Georgia,serif;font-size:" + (size * 0.3) + "px;letter-spacing:.14em;color:var(--ink,#3E3F3F)" })); };
+  return <img src={light ? "assets/brand/logo-stamp-white.png" : "assets/brand/logo-stamp-transparent.png"} alt="Spacio AM" onError={onErr}
     style={{ width: size, height: size, objectFit: "contain", display: "block", ...style }} />;
 }
 

@@ -250,6 +250,8 @@ function App() {
 
   const onResolved = (r) => {
     saveSession(r);
+    // el huésped validó su código → marca la reserva "en proceso" en el panel
+    if (!adminPreview) { try { Backend.formStarted && Backend.formStarted(r.code); } catch (e) {} }
     // demo account (pre-completed) or an already-registered reservation → Mi espacio directly
     if (r.group) { goBento(r, groupReservations(r.group) || [r]); return; }
     // completed = local record (this browser) OR backend says status "completo"

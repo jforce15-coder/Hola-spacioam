@@ -26,7 +26,7 @@ function AdminLogin({ t, onClose, onSuccess }) {
         const p = adminProfile();
         saveAdminProfile({ ...p, userId: profile.user_id || p.userId, name: profile.nombre || p.name || "",
           avatar: profile.foto || p.avatar || "", secondary: profile.email_alterno || p.secondary || "",
-          role: (profile.apps && profile.apps.hola) || p.role || "" });
+          role: (window.SAAuth ? window.SAAuth.roleFor(profile) : (profile.apps && profile.apps.hola)) || p.role || "" });
       }
     } catch (_) {}
     setBusy(false); onSuccess(e);
@@ -43,8 +43,8 @@ function AdminLogin({ t, onClose, onSuccess }) {
     const e = (email || "").trim().toLowerCase();
     if (!window.SAAuth) { legacy(e); return; }
     window.SAAuth.login(e, pass).then((r) => {
-      // ok + permiso en esta app (perm_hola) → entra con el perfil unificado
-      if (r && r.ok && r.profile && r.profile.apps && r.profile.apps.hola) { finish(e, r.profile); return; }
+      // ok + permiso en ESTA app (SAAuth.roleFor usa la clave correcta) → entra
+      if (r && r.ok && r.profile && window.SAAuth.roleFor(r.profile)) { finish(e, r.profile); return; }
       // primer ingreso: existe pero aún no tiene contraseña
       if (r && r.error === "needs_password") { setBusy(false); setNeedPass(true); return; }
       // sin permiso en hola, o endpoint caído → login viejo
@@ -57,7 +57,7 @@ function AdminLogin({ t, onClose, onSuccess }) {
     if (np1 !== np2) { setErr(es ? "Las contraseñas no coinciden." : "Passwords don't match."); return; }
     setBusy(true);
     window.SAAuth.setInitialPassword(e, np1).then((r) => {
-      if (r && r.ok && r.profile && r.profile.apps && r.profile.apps.hola) finish(e, r.profile);
+      if (r && r.ok && r.profile && window.SAAuth.roleFor(r.profile)) finish(e, r.profile);
       else { setBusy(false); setErr(t.adminLoginErr); }
     }).catch(() => { setBusy(false); setErr(t.adminLoginErr); });
   };
@@ -3009,6 +3009,12 @@ function SeguimientoScreen({ t, roster, initialReqs, initialGacc, initialStrm })
     if (["early", "luggage", "day"].indexOf(r.type) >= 0) return !!(ci && todayISO > ci);
     return !!(co && todayISO > co);
   };
+  // el resto de seguimiento (invitados, streaming) caduca el día después del checkout
+  const expiredByCheckout = (code, resolved) => {
+    if (resolved) return false;
+    const co = infoOf(code).checkout;
+    return !!(co && todayISO > co);
+  };
   const hostReqs = reqs || [];
   const dayReqs = hostReqs.filter((r) => (r.type === "late" || r.type === "day") && !isExpired(r));
   const earlyReqs = hostReqs.filter((r) => (r.type === "early" || r.type === "luggage") && !isExpired(r));
@@ -3196,10 +3202,10 @@ function SeguimientoScreen({ t, roster, initialReqs, initialGacc, initialStrm })
       </section>
 
       <section>
-        {sectionHead("visits", es ? "Nuevos invitados" : "Guest access requests", (gacc || []).length)}
-        {(gacc || []).length ? (
+        {sectionHead("visits", es ? "Nuevos invitados" : "Guest access requests", (gacc || []).filter((g) => !expiredByCheckout(g.code, g.status === "aprobado" || g.status === "rechazado")).length)}
+        {(gacc || []).filter((g) => !expiredByCheckout(g.code, g.status === "aprobado" || g.status === "rechazado")).length ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {(gacc || []).map((g, i) => {
+            {(gacc || []).filter((g) => !expiredByCheckout(g.code, g.status === "aprobado" || g.status === "rechazado")).map((g, i) => {
               const resolved = g.status === "aprobado" || g.status === "rechazado";
               const ap = g.status === "aprobado";
               const busy = gaBusy === g.id;
@@ -3258,10 +3264,10 @@ function SeguimientoScreen({ t, roster, initialReqs, initialGacc, initialStrm })
       </section>
 
       <section>
-        {sectionHead("tv", es ? "Códigos QR de streaming" : "Streaming QR codes", (strm || []).length)}
-        {(strm || []).length ? (
+        {sectionHead("tv", es ? "Códigos QR de streaming" : "Streaming QR codes", (strm || []).filter((s) => !expiredByCheckout(s.code, s.status === "resuelto")).length)}
+        {(strm || []).filter((s) => !expiredByCheckout(s.code, s.status === "resuelto")).length ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {(strm || []).map((s, i) => card(
+            {(strm || []).filter((s) => !expiredByCheckout(s.code, s.status === "resuelto")).map((s, i) => card(
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
                   {s.url && /^data:/.test(s.url) && <img src={s.url} alt="" style={{ width: 46, height: 46, objectFit: "cover", borderRadius: 10, border: `1px solid ${C.grisCalido}` }} />}

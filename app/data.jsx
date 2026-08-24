@@ -1267,6 +1267,11 @@ const Backend = {
     if (this.isConnected()) { try { return await this.call("resetForm", { code, by: by || "" }); } catch (e) { return { ok: false }; } }
     return { ok: true, offline: true };
   },
+  /* el huésped validó su código → marca la reserva "en proceso" (no pisa completo) */
+  async formStarted(code) {
+    if (!this.isConnected()) return { ok: true, offline: true };
+    try { return await this.call("formStarted", { code }); } catch (e) { return { ok: false }; }
+  },
   async getRegistration(code) {
     // full registration data (Formularios + Huespedes) for a completed booking,
     // so the admin summary works even if it was filled on another device.

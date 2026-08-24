@@ -292,6 +292,15 @@ function App() {
     setTile(null); setAdminPreview(false); setRes(null); setSiblings([]); setStage("admin");
   };
 
+  /* el admin ingresa un formulario manualmente: abre el registro del huésped
+     para esa reserva (formulario si falta, Mi espacio si ya está completo). */
+  const manualForm = (r) => {
+    if (!r) return;
+    window.location.hash = "";
+    setTile(null); setRes(r); setSiblings([r]); setForm(emptyForm(r)); setAdminPreview(true);
+    setStage(isCompleted(r) || r.statusForm === "completo" ? "bento" : "overview");
+  };
+
   /* el administrador reinicia un formulario mal enviado: la reserva vuelve a
      pedirle el registro al huésped (en la hoja queda la traza del anterior) */
   const resetGuestForm = (h) => {
@@ -407,7 +416,7 @@ function App() {
     case "rules":    view = <RulesScreen t={t} onBack={() => setStage("contact")} onAccept={finish} onSwitchLang={switchLang} />; break;
     case "done":     view = <DoneScreen t={t} onEnter={onDoneEnter} />; break;
     case "bento":    view = <BentoScreen t={t} res={res} siblings={siblings} onSwitch={switchStay} firstName={firstName} emails={acctEmails()} onSwitchLang={switchLang} onLogout={onLogout} />; break;
-    case "admin":    view = <AdminScreen t={t} adminEmail={adminEmail} onBack={leaveAdmin} onSwitchLang={switchLang} onPreviewGuest={previewGuest} onResetForm={resetGuestForm} />; break;
+    case "admin":    view = <AdminScreen t={t} adminEmail={adminEmail} onBack={leaveAdmin} onSwitchLang={switchLang} onPreviewGuest={previewGuest} onResetForm={resetGuestForm} onManualForm={manualForm} />; break;
     case "tile":     view = <TileDetail t={t} tileKey={tile} res={res} onBack={() => { window.location.hash = ""; }} />; break;
     default:         view = <LangScreen onPick={pickLang} />;
   }

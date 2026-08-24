@@ -15,20 +15,55 @@ function AdminLogin({ t, onClose, onSuccess }) {
   const [pass, setPass] = useStateAd("");
   const [err, setErr] = useStateAd("");
   const [busy, setBusy] = useStateAd(false);
+  const [needPass, setNeedPass] = useStateAd(false);   // primer ingreso: crear contraseña
+  const [np1, setNp1] = useStateAd("");
+  const [np2, setNp2] = useStateAd("");
+  const es = t.code === "es";
+  // guarda identidad + permisos del control unificado para el header y Mi cuenta
+  const finish = (e, profile) => {
+    try {
+      if (profile) {
+        const p = adminProfile();
+        saveAdminProfile({ ...p, userId: profile.user_id || p.userId, name: profile.nombre || p.name || "",
+          avatar: profile.foto || p.avatar || "", secondary: profile.email_alterno || p.secondary || "",
+          role: (profile.apps && profile.apps.hola) || p.role || "" });
+      }
+    } catch (_) {}
+    setBusy(false); onSuccess(e);
+  };
+  // respaldo: el login viejo (admin principal + admins locales + backend)
+  const legacy = (e) => {
+    if (checkAdminLogin(email, pass)) { finish(e, null); return; }
+    Backend.adminLogin(e, pass).then((r) => {
+      if (r && r.ok) finish(e, null); else { setBusy(false); setErr(t.adminLoginErr); }
+    }).catch(() => { setBusy(false); setErr(t.adminLoginErr); });
+  };
   const submit = () => {
     setErr(""); setBusy(true);
     const e = (email || "").trim().toLowerCase();
-    // primary admin + any local admins resolve instantly
-    if (checkAdminLogin(email, pass)) { setBusy(false); onSuccess(e); return; }
-    // otherwise check the backend (admins created on another device)
-    Backend.adminLogin(e, pass).then((r) => {
-      setBusy(false);
-      if (r && r.ok) onSuccess(e);
-      else setErr(t.adminLoginErr);
+    if (!window.SAAuth) { legacy(e); return; }
+    window.SAAuth.login(e, pass).then((r) => {
+      // ok + permiso en esta app (perm_hola) → entra con el perfil unificado
+      if (r && r.ok && r.profile && r.profile.apps && r.profile.apps.hola) { finish(e, r.profile); return; }
+      // primer ingreso: existe pero aún no tiene contraseña
+      if (r && r.error === "needs_password") { setBusy(false); setNeedPass(true); return; }
+      // sin permiso en hola, o endpoint caído → login viejo
+      legacy(e);
+    }).catch(() => legacy(e));
+  };
+  const createPass = () => {
+    setErr(""); const e = (email || "").trim().toLowerCase();
+    if ((np1 || "").length < 6) { setErr(es ? "Mínimo 6 caracteres." : "At least 6 characters."); return; }
+    if (np1 !== np2) { setErr(es ? "Las contraseñas no coinciden." : "Passwords don't match."); return; }
+    setBusy(true);
+    window.SAAuth.setInitialPassword(e, np1).then((r) => {
+      if (r && r.ok && r.profile && r.profile.apps && r.profile.apps.hola) finish(e, r.profile);
+      else { setBusy(false); setErr(t.adminLoginErr); }
     }).catch(() => { setBusy(false); setErr(t.adminLoginErr); });
   };
   const fieldStyle = { width: "100%", boxSizing: "border-box", padding: "13px 15px", borderRadius: 12,
     border: `1px solid ${C.grisCalido}`, background: C.alabaster, fontFamily: C.sans, fontSize: 15, color: C.negro, outline: "none", letterSpacing: "0.01em" };
+  const lbl = { display: "block", fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.16em", textTransform: "uppercase", color: C.tierra, marginBottom: 7, fontWeight: 500 };
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 400, background: "rgba(62,63,63,.42)", backdropFilter: "blur(4px)",
       display: "grid", placeItems: "center", padding: 20 }}
@@ -40,31 +75,51 @@ function AdminLogin({ t, onClose, onSuccess }) {
             <Icon name="lock" size={22} color={C.negro} />
           </span>
         </div>
-        <div style={{ textAlign: "center", marginBottom: 22 }}>
-          <div style={{ fontFamily: C.serif, fontSize: 26, color: C.negro, lineHeight: 1.1 }}>{t.adminLoginTitle}</div>
-          <p style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, margin: "8px 0 0", letterSpacing: "0.02em" }}>{t.adminLoginSub}</p>
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div>
-            <span style={{ display: "block", fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.16em", textTransform: "uppercase", color: C.tierra, marginBottom: 7, fontWeight: 500 }}>{t.adminLoginEmail}</span>
-            <input type="email" value={email} autoFocus onChange={(e) => { setEmail(e.target.value); setErr(""); }}
-              onKeyDown={(e) => e.key === "Enter" && submit()} style={fieldStyle} placeholder="nombre@spacioam.com" />
-          </div>
-          <div>
-            <span style={{ display: "block", fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.16em", textTransform: "uppercase", color: C.tierra, marginBottom: 7, fontWeight: 500 }}>{t.adminLoginPass}</span>
-            <input type="password" value={pass} onChange={(e) => { setPass(e.target.value); setErr(""); }}
-              onKeyDown={(e) => e.key === "Enter" && submit()} style={fieldStyle} placeholder="••••••••" />
-          </div>
-          {err && <p style={{ color: C.peach, fontFamily: C.sans, fontSize: 12, margin: 0, letterSpacing: "0.02em" }}>{err}</p>}
-          <div style={{ marginTop: 6 }}>
-            <Btn full onClick={submit} disabled={busy || !email || !pass}>{busy ? <><Spinner /> {t.validating}</> : t.adminLoginBtn}</Btn>
-          </div>
-          <p style={{ textAlign: "center", fontFamily: C.sans, fontSize: 10.5, color: C.tierra, margin: "4px 0 0", letterSpacing: "0.03em" }}>{t.adminLoginHint}</p>
-        </div>
+        {needPass ? (
+          <React.Fragment>
+            <div style={{ textAlign: "center", marginBottom: 22 }}>
+              <div style={{ fontFamily: C.serif, fontSize: 24, color: C.negro, lineHeight: 1.1 }}>{es ? "Crea tu contraseña" : "Create your password"}</div>
+              <p style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, margin: "8px 0 0", letterSpacing: "0.02em" }}>{es ? "Es tu primer ingreso con " + e_lower(email) : "First sign-in for " + e_lower(email)}</p>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div><span style={lbl}>{es ? "Nueva contraseña" : "New password"}</span>
+                <input type="password" value={np1} autoFocus onChange={(e) => { setNp1(e.target.value); setErr(""); }} style={fieldStyle} placeholder="••••••••" /></div>
+              <div><span style={lbl}>{es ? "Repítela" : "Repeat it"}</span>
+                <input type="password" value={np2} onChange={(e) => { setNp2(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && createPass()} style={fieldStyle} placeholder="••••••••" /></div>
+              {err && <p style={{ color: C.peach, fontFamily: C.sans, fontSize: 12, margin: 0, letterSpacing: "0.02em" }}>{err}</p>}
+              <div style={{ marginTop: 6 }}><Btn full onClick={createPass} disabled={busy || !np1 || !np2}>{busy ? <><Spinner /> {t.validating}</> : (es ? "Crear y entrar" : "Create & enter")}</Btn></div>
+            </div>
+          </React.Fragment>
+        ) : (
+          <React.Fragment>
+            <div style={{ textAlign: "center", marginBottom: 22 }}>
+              <div style={{ fontFamily: C.serif, fontSize: 26, color: C.negro, lineHeight: 1.1 }}>{t.adminLoginTitle}</div>
+              <p style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, margin: "8px 0 0", letterSpacing: "0.02em" }}>{t.adminLoginSub}</p>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div>
+                <span style={lbl}>{t.adminLoginEmail}</span>
+                <input type="email" value={email} autoFocus onChange={(e) => { setEmail(e.target.value); setErr(""); }}
+                  onKeyDown={(e) => e.key === "Enter" && submit()} style={fieldStyle} placeholder="nombre@spacioam.com" />
+              </div>
+              <div>
+                <span style={lbl}>{t.adminLoginPass}</span>
+                <input type="password" value={pass} onChange={(e) => { setPass(e.target.value); setErr(""); }}
+                  onKeyDown={(e) => e.key === "Enter" && submit()} style={fieldStyle} placeholder="••••••••" />
+              </div>
+              {err && <p style={{ color: C.peach, fontFamily: C.sans, fontSize: 12, margin: 0, letterSpacing: "0.02em" }}>{err}</p>}
+              <div style={{ marginTop: 6 }}>
+                <Btn full onClick={submit} disabled={busy || !email || !pass}>{busy ? <><Spinner /> {t.validating}</> : t.adminLoginBtn}</Btn>
+              </div>
+              <p style={{ textAlign: "center", fontFamily: C.sans, fontSize: 10.5, color: C.tierra, margin: "4px 0 0", letterSpacing: "0.03em" }}>{t.adminLoginHint}</p>
+            </div>
+          </React.Fragment>
+        )}
       </div>
     </div>
   );
 }
+function e_lower(s) { return (s || "").trim().toLowerCase(); }
 
 /* ---------- BACKEND CONNECTION MODAL ---------- */
 function HospitablePanel({ t, onClose, onSaved }) {
@@ -348,6 +403,7 @@ function ReservationSummary({ t, h, rec: localRec, onClose, onResend, autoPrint,
   const es = lang === "es";
   const av = avail || { email: false, whatsapp: false };
   const generated = new Date().toLocaleString(lang === "en" ? "en-US" : "es-GT", { dateStyle: "long", timeStyle: "short" });
+  const fmtDateTime = (v) => { try { return new Date(typeof v === "number" ? v : v).toLocaleString(lang === "en" ? "en-US" : "es-GT", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }); } catch (e) { return "—"; } };
   const [fetchedRec, setFetchedRec] = useStateAd(null);
   const [loadingRec, setLoadingRec] = useStateAd(false);
   const [recErr, setRecErr] = useStateAd("");
@@ -490,6 +546,12 @@ function ReservationSummary({ t, h, rec: localRec, onClose, onResend, autoPrint,
             {sumDone ? t.adminStatusDone : t.adminStatusPending}
           </span>
           <span style={{ fontFamily: C.sans, fontSize: 11, color: C.negro, letterSpacing: "0.02em" }}>{t.sumGenerated}: {generated}</span>
+          {rec && (rec.completedAt || rec.acceptedRulesAt) && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontFamily: C.sans, fontSize: 11, color: C.negro, letterSpacing: "0.02em",
+              background: C.beige, border: `1px solid ${C.grisCalido}`, borderRadius: 999, padding: "6px 13px" }}>
+              <Icon name="clock" size={13} color={C.peach} /> {es ? "Formulario recibido" : "Form received"}: {fmtDateTime(rec.completedAt || rec.acceptedRulesAt)}
+            </span>
+          )}
         </div>
 
         {rec?.docsFolderUrl && (
@@ -682,18 +744,205 @@ function AdSelect({ label, value, onChange, options }) {
   );
 }
 
+/* ---- perfil del administrador (nombre/foto en este dispositivo) ---- */
+function adminProfile() { try { return JSON.parse(localStorage.getItem("spacioam_admin_profile")) || {}; } catch (e) { return {}; } }
+function saveAdminProfile(p) { try { localStorage.setItem("spacioam_admin_profile", JSON.stringify(p)); } catch (e) {} }
+function loadFormsFirst() { try { return JSON.parse(localStorage.getItem("spacioam_admin_formsFirst2")) || {}; } catch (e) { return {}; } }
+function saveFormsFirst(o) { try { localStorage.setItem("spacioam_admin_formsFirst2", JSON.stringify(o)); } catch (e) {} }
+function loadFormsBaseline() { try { return JSON.parse(localStorage.getItem("spacioam_admin_formsBaseline2")); } catch (e) { return null; } }
+function saveFormsBaseline(o) { try { localStorage.setItem("spacioam_admin_formsBaseline2", JSON.stringify(o)); } catch (e) {} }
+
+/* Construye las notificaciones del panel a partir de seguimiento + registros. */
+function buildAdminNotis({ roster, records, gacc, strm, alerts, formsFirst, es, goTab, openReservation }) {
+  const out = [];
+  (roster || []).forEach((h) => {
+    const code = normCode(h.code);
+    const done = h.statusForm === "completo" || (records && records[h.id]);
+    if (!done || !code) return;
+    const ts = formsFirst[code]; if (!ts) return;
+    if (Date.now() - ts > 7 * 86400000) return;   // solo avisos recientes
+    out.push({ id: "form|" + code, tipo: "accion", subcat: es ? "Registro completado" : "Form completed",
+      texto: es ? ((h.guestName || h.propertyName || h.code) + " completó su registro.") : ((h.guestName || h.propertyName || h.code) + " completed their form."),
+      contexto: [h.propertyName, h.checkin].filter(Boolean).join(" · "), ts, peso: 4000,
+      abrir: () => openReservation && openReservation(h) });
+  });
+  (gacc || []).forEach((g) => {
+    if (g.status === "aprobado" || g.status === "rechazado") return;
+    const n = (g.guests || []).length;
+    out.push({ id: "gacc|" + g.id, tipo: "accion", subcat: es ? "Nuevos invitados" : "Guest access",
+      texto: es ? (n + " " + (n === 1 ? "invitado" : "invitados") + " por autorizar.") : (n + " guest(s) to approve."),
+      contexto: (g.apartment || g.code || ""), ts: g.at || Date.now(), peso: 22000, abrir: () => goTab && goTab("seguimiento") });
+  });
+  (strm || []).forEach((s) => {
+    if (s.status === "resuelto") return;
+    out.push({ id: "strm|" + s.id, tipo: "accion", subcat: es ? "Código QR de streaming" : "Streaming QR",
+      texto: es ? "Un huésped envió el QR de su TV." : "A guest sent their TV QR.",
+      contexto: (s.apartment || s.code || ""), ts: s.at || Date.now(), peso: 16000, abrir: () => goTab && goTab("seguimiento") });
+  });
+  const dayAnchor = new Date(); dayAnchor.setHours(0, 0, 0, 0);
+  const dayTs = dayAnchor.getTime();  // estable durante el día → el push no se repite
+  if (alerts && alerts.invoices > 0) out.push({ id: "inv|" + alerts.invoices, tipo: "alerta", subcat: es ? "Facturas" : "Invoices",
+    texto: es ? (alerts.invoices + " factura" + (alerts.invoices === 1 ? "" : "s") + " por revisar.") : (alerts.invoices + " invoice(s) to review."),
+    contexto: "", ts: dayTs, peso: 30000, abrir: () => goTab && goTab("seguimiento") });
+  if (alerts && alerts.incidents > 0) out.push({ id: "inc|" + alerts.incidents, tipo: "alerta", subcat: es ? "Incidencias" : "Incidents",
+    texto: es ? (alerts.incidents + " incidencia" + (alerts.incidents === 1 ? "" : "s") + " de acceso.") : (alerts.incidents + " access incident(s)."),
+    contexto: "", ts: dayTs, peso: 28000, abrir: () => goTab && goTab("seguimiento") });
+  return out.sort((a, b) => (b.peso || 0) - (a.peso || 0) || (b.ts || 0) - (a.ts || 0));
+}
+
+/* Un solo botón de actualizar: el icono gira y una barra estima el avance. */
+function RefreshControl({ t, connected, refreshing, deep, onRefresh, onDeep, onConnect }) {
+  const es = t.code === "es";
+  const [pct, setPct] = useStateAd(0);
+  const [left, setLeft] = useStateAd(0);
+  const raf = useRefAd(null);
+  useEffectAd(() => {
+    if (!refreshing) { setPct(0); setLeft(0); if (raf.current) cancelAnimationFrame(raf.current); return; }
+    const est = (deep ? 60 : 12) * 1000, start = Date.now();
+    const tick = () => { const e = Date.now() - start; setPct(Math.min(0.94, e / est)); setLeft(Math.max(0, Math.ceil((est - e) / 1000))); raf.current = requestAnimationFrame(tick); };
+    raf.current = requestAnimationFrame(tick);
+    return () => { if (raf.current) cancelAnimationFrame(raf.current); };
+  }, [refreshing, deep]);
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 13, flexWrap: "wrap", marginBottom: 14 }}>
+      <button onClick={refreshing ? undefined : onRefresh} disabled={refreshing} title={es ? "Actualizar" : "Refresh"} className="sp-btn"
+        style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 42, height: 42, borderRadius: "50%",
+          background: C.white, border: `1px solid ${C.grisCalido}`, cursor: refreshing ? "wait" : "pointer", flexShrink: 0, boxShadow: "0 4px 16px rgba(62,63,63,.05)" }}>
+        <span className={refreshing ? "sp-spin" : ""} style={{ display: "inline-flex" }}><Icon name="refresh" size={18} color={refreshing ? C.peach : C.negro} /></span>
+      </button>
+      {refreshing ? (
+        <div style={{ flex: 1, minWidth: 160, maxWidth: 320 }}>
+          <div style={{ height: 6, borderRadius: 999, background: C.beige, overflow: "hidden" }}>
+            <div style={{ height: "100%", width: (pct * 100) + "%", background: C.peach, borderRadius: 999, transition: "width .2s linear" }} />
+          </div>
+          <div style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, letterSpacing: "0.04em", marginTop: 5 }}>
+            {es ? "Actualizando" : "Updating"}{left ? " · ~" + left + "s" : "…"}
+          </div>
+        </div>
+      ) : (
+        <React.Fragment>
+          <span style={{ fontFamily: C.sans, fontSize: 11.5, color: C.tierra, letterSpacing: "0.02em" }}>
+            {connected ? (es ? "Datos al día" : "Up to date") : (es ? "Sin conexión con el backend" : "Backend offline")}
+          </span>
+          {connected && onDeep && (
+            <button onClick={onDeep} className="sp-link" style={{ background: "transparent", border: "none", cursor: "pointer", color: C.tierra,
+              fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.06em", textDecoration: "underline", textUnderlineOffset: 3 }}>
+              {es ? "Sincronización completa" : "Full sync"}
+            </button>
+          )}
+          {!connected && onConnect && (
+            <button onClick={onConnect} className="sp-btn" style={{ background: C.negro, color: C.alabaster, border: "none", borderRadius: 10,
+              padding: "8px 14px", fontFamily: C.sans, fontSize: 11, letterSpacing: "0.04em", cursor: "pointer", fontWeight: 500 }}>
+              {es ? "Conectar" : "Connect"}
+            </button>
+          )}
+        </React.Fragment>
+      )}
+    </div>
+  );
+}
+
+/* Mi cuenta (admin) — foto, nombre, correo (+ secundario) y contraseña.
+   Lo que el control unificado soporta se escribe allá (SAAuth); el resto queda
+   en este dispositivo. */
+function AdminAccountModal({ t, profile, email, onSave, onClose }) {
+  const es = t.code === "es";
+  const auth = !!window.SAAuth;
+  const [name, setName] = useStateAd(profile.name || "");
+  const [avatar, setAvatar] = useStateAd(profile.avatar || "");
+  const [mail, setMail] = useStateAd(email || "");
+  const [secondary, setSecondary] = useStateAd(profile.secondary || "");
+  const [curPass, setCurPass] = useStateAd("");
+  const [newPass, setNewPass] = useStateAd("");
+  const [busy, setBusy] = useStateAd(false);
+  const [msg, setMsg] = useStateAd("");
+  const fileRef = useRefAd(null);
+  const pick = (f) => { if (!f) return; const r = new FileReader(); r.onload = () => setAvatar(String(r.result || "")); r.readAsDataURL(f); };
+  const save = async () => {
+    setBusy(true); setMsg("");
+    let newEmail = (email || "").toLowerCase();
+    try {
+      if (auth) {
+        if (avatar && avatar !== (profile.avatar || "")) { try { await window.SAAuth.setPhoto(email, avatar); } catch (e) {} }
+        const wantMail = (mail || "").trim().toLowerCase();
+        if (wantMail && wantMail !== newEmail) {
+          const r = await window.SAAuth.setEmail(email, wantMail);
+          if (r && r.ok) newEmail = wantMail; else { setBusy(false); setMsg(es ? "No se pudo cambiar el correo." : "Couldn't change email."); return; }
+        }
+        if (curPass && newPass) {
+          if (newPass.length < 6) { setBusy(false); setMsg(es ? "La contraseña nueva es muy corta." : "New password too short."); return; }
+          const r = await window.SAAuth.setPassword(newEmail, curPass, newPass);
+          if (!(r && r.ok)) { setBusy(false); setMsg(es ? "Contraseña actual incorrecta." : "Current password incorrect."); return; }
+        }
+      }
+    } catch (e) {}
+    onSave({ name, avatar, secondary, email: newEmail });
+  };
+  const lbl = { display: "block", fontFamily: C.sans, fontSize: 9, letterSpacing: "0.16em", textTransform: "uppercase", color: C.tierra, marginBottom: 6, fontWeight: 600 };
+  const inp = { width: "100%", boxSizing: "border-box", padding: "11px 13px", borderRadius: 11, border: `1px solid ${C.grisCalido}`, background: C.alabaster, fontFamily: C.sans, fontSize: 13.5, color: C.negro, outline: "none", letterSpacing: "0.01em" };
+  return (
+    <div onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      style={{ position: "fixed", inset: 0, zIndex: 300, background: "rgba(62,63,63,.42)", backdropFilter: "blur(4px)", display: "grid", placeItems: "center", padding: 20 }}>
+      <div style={{ width: "min(440px,94vw)", maxHeight: "90vh", overflowY: "auto", background: C.white, borderRadius: 22, padding: "clamp(22px,5vw,28px)", boxShadow: "0 28px 80px rgba(62,63,63,.18)", animation: "rise .3s " + C.ease + " both" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 16 }}>
+          <Sparkle size={13} color={C.peach} />
+          <span style={{ fontFamily: C.serif, fontSize: 22, color: C.negro }}>{es ? "Mi cuenta" : "My account"}</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 18 }}>
+          <div style={{ width: 64, height: 64, borderRadius: "50%", overflow: "hidden", background: C.beige, border: `1px solid ${C.grisCalido}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontFamily: C.sans, fontSize: 20, fontWeight: 600, color: C.tierra }}>
+            {avatar ? <img src={avatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : initialsOf(name || email)}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+            <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => pick(e.target.files && e.target.files[0])} />
+            <button onClick={() => fileRef.current && fileRef.current.click()} className="sp-btn" style={{ background: C.white, color: C.negro, border: `1px solid ${C.grisCalido}`, borderRadius: 10, padding: "8px 14px", fontFamily: C.sans, fontSize: 11, letterSpacing: "0.04em", cursor: "pointer" }}>{es ? "Cambiar foto" : "Change photo"}</button>
+            {avatar && <button onClick={() => setAvatar("")} className="sp-link" style={{ background: "transparent", border: "none", cursor: "pointer", color: C.tierra, fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.06em", textDecoration: "underline", textUnderlineOffset: 3, textAlign: "left" }}>{es ? "Quitar" : "Remove"}</button>}
+          </div>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 13 }}>
+          <div><span style={lbl}>{es ? "Nombre" : "Name"}</span><input value={name} onChange={(e) => setName(e.target.value)} style={inp} placeholder={es ? "Tu nombre" : "Your name"} /></div>
+          <div><span style={lbl}>{es ? "Correo principal" : "Primary email"}</span><input value={mail} onChange={(e) => { setMail(e.target.value); setMsg(""); }} disabled={!auth} style={{ ...inp, opacity: auth ? 1 : 0.6, cursor: auth ? "text" : "not-allowed" }} placeholder="nombre@spacioam.com" /></div>
+          <div><span style={lbl}>{es ? "Correo secundario" : "Secondary email"}</span><input value={secondary} onChange={(e) => setSecondary(e.target.value)} style={inp} placeholder={es ? "opcional" : "optional"} /></div>
+          {auth && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div><span style={lbl}>{es ? "Contraseña actual" : "Current password"}</span><input type="password" value={curPass} onChange={(e) => { setCurPass(e.target.value); setMsg(""); }} style={inp} placeholder="••••••" /></div>
+              <div><span style={lbl}>{es ? "Nueva" : "New"}</span><input type="password" value={newPass} onChange={(e) => { setNewPass(e.target.value); setMsg(""); }} style={inp} placeholder="••••••" /></div>
+            </div>
+          )}
+        </div>
+        {msg && <p style={{ fontFamily: C.sans, fontSize: 11.5, color: C.peach, margin: "12px 0 0", letterSpacing: "0.01em" }}>{msg}</p>}
+        {!auth && <p style={{ fontFamily: C.sans, fontSize: 11, color: C.tierra, lineHeight: 1.55, margin: "12px 0 0", letterSpacing: "0.01em" }}>{es ? "El cambio de correo y contraseña se sincroniza al conectar el acceso unificado de Spacio AM." : "Email and password sync once Spacio AM's unified login is connected."}</p>}
+        <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+          <button onClick={busy ? undefined : save} className="sp-btn" style={{ flex: 1, background: C.negro, color: C.alabaster, border: "none", borderRadius: 12, padding: "12px", fontFamily: C.sans, fontSize: 12, letterSpacing: "0.06em", cursor: busy ? "wait" : "pointer", fontWeight: 500, opacity: busy ? 0.6 : 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}>{busy ? <><Spinner /> {es ? "Guardando…" : "Saving…"}</> : (es ? "Guardar" : "Save")}</button>
+          <button onClick={onClose} className="sp-btn" style={{ background: C.white, color: C.negro, border: `1px solid ${C.grisCalido}`, borderRadius: 12, padding: "12px 18px", fontFamily: C.sans, fontSize: 12, letterSpacing: "0.06em", cursor: "pointer" }}>{es ? "Cerrar" : "Close"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ============================================================
    ADMIN SCREEN — roster with dropdown filters + actions
    ============================================================ */
-function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onResetForm }) {
+function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onResetForm, onManualForm }) {
   const [mode, setMode] = useStateAd("today");        // yesterday · today · tomorrow · next3 · last3 · range
-  const [status, setStatus] = useStateAd("both");     // both · pending · done
-  const [property, setProperty] = useStateAd("all");
+  const [status, setStatus] = useStateAd("both");     // both · pending · progress · done
+  const [order, setOrder] = useStateAd("desc");        // orden por check-in: desc (recientes) · asc
+  const [manualOpen2, setManualOpen2] = useStateAd(false);
+  const [propSel, setPropSel] = useStateAd([]);
   const [from, setFrom] = useStateAd("");
   const [to, setTo] = useStateAd("");
   const [summary, setSummary] = useStateAd(null);
   const [toast, setToast] = useStateAd("");
   const [hospOpen, setHospOpen] = useStateAd(false);
+  const [notiOpen, setNotiOpen] = useStateAd(false);
+  const [accOpen, setAccOpen] = useStateAd(false);
+  const [deepRun, setDeepRun] = useStateAd(false);
+  const [profile, setProfile] = useStateAd(() => adminProfile());
+  const [gaccTop, setGaccTop] = useStateAd(() => (Backend.cachedList && Backend.cachedList("gacc")) || null);
+  const [strmTop, setStrmTop] = useStateAd(() => (Backend.cachedList && Backend.cachedList("strm")) || null);
+  const [reqsTop, setReqsTop] = useStateAd(() => (Backend.cachedList && Backend.cachedList("reqs")) || null);
+  const [alerts, setAlerts] = useStateAd(null);
+  const [notiDismiss, setNotiDismiss] = useStateAd(() => { try { return JSON.parse(localStorage.getItem("spacioam_admin_notiDismiss") || "{}"); } catch (e) { return {}; } });
   // arranca con lo último que este dispositivo ya tenía: el panel pinta al
   // instante y la hoja se relee en segundo plano (nunca spinner en blanco).
   const [roster, setRoster] = useStateAd(() => {
@@ -736,6 +985,17 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
     document.addEventListener("visibilitychange", onShow);
     return () => { clearInterval(id); document.removeEventListener("visibilitychange", onShow); };
   }, []);
+  // seguimiento → notificaciones: invitados / streaming / contadores de alertas
+  useEffectAd(() => {
+    const load = () => {
+      if (Backend.listGuestAccess) Backend.listGuestAccess().then((l) => { if (l) setGaccTop(l); }).catch(() => {});
+      if (Backend.listStreaming) Backend.listStreaming().then((l) => { if (l) setStrmTop(l); }).catch(() => {});
+      if (Backend.listRequests) Backend.listRequests().then((l) => { if (l) setReqsTop(l); }).catch(() => {});
+      if (Backend.isConnected && Backend.isConnected() && Backend.call) Backend.call("adminAlerts").then((a) => { if (a && a.ok) setAlerts(a); }).catch(() => {});
+    };
+    load(); const id = setInterval(() => { if (!document.hidden) load(); }, 60000);
+    return () => clearInterval(id);
+  }, [connected]);
   const [avail, setAvail] = useStateAd(() => { try { return JSON.parse(localStorage.getItem("spacioam_avail")) || {}; } catch (e) { return {}; } });
   useEffectAd(() => {
     if (!roster || !roster.length) return;
@@ -754,6 +1014,13 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
     return null;
   };
 
+  const isCancelled = (h) => /cancel/i.test(String(h.status || h.reservationStatus || h.estado || h.statusForm || ""));
+  const stateOf = (h, rec) => {
+    if (isDone(h, rec)) return "done";
+    const s = String(h.statusForm || "").toLowerCase();
+    if (h.started || h.inProgress || /proceso|progress|parcial|iniciad/.test(s)) return "progress";
+    return "pending";
+  };
   const isDone = (h, rec) => (!!rec || h.statusForm === "completo") && !resetCodes.has(normCode(h.code));
   // formularios reiniciados por el admin en esta sesión (la hoja ya se actualizó)
   const [resetCodes, setResetCodes] = useStateAd(() => new Set());
@@ -802,10 +1069,46 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
     };
     return list
       .filter((row) => inRange(row.h.checkin))
-      .filter((row) => property === "all" || row.h.propertyName === property)
-      .filter((row) => status === "both" || (status === "done" ? isDone(row.h, row.rec) : !isDone(row.h, row.rec)))
-      .sort((a, b) => String(a.h.checkin || "").localeCompare(String(b.h.checkin || "")));
-  }, [roster, mode, from, to, property, status, JSON.stringify(Object.keys(records))]);
+      .filter((row) => !isCancelled(row.h))
+      .filter((row) => propSel.length === 0 || propSel.indexOf(row.h.propertyName) >= 0)
+      .filter((row) => {
+        if (status === "both") return true;
+        const s = stateOf(row.h, row.rec);
+        return status === "done" ? s === "done" : status === "progress" ? s === "progress" : s !== "done";
+      })
+      .sort((a, b) => {
+        // orden por hora de llenado del formulario; sin llenar = "más reciente"
+        const firstMap = loadFormsFirst();
+        const ts = (row) => {
+          if (stateOf(row.h, row.rec) !== "done") return Infinity;
+          const c = row.rec && row.rec.completedAt ? new Date(row.rec.completedAt).getTime() : 0;
+          return c || firstMap[normCode(row.h.code)] || 0;
+        };
+        const cmp = ts(a) - ts(b);          // ascendente: más antiguo primero
+        return order === "asc" ? cmp : -cmp; // desc: más reciente primero
+      });
+  }, [roster, mode, from, to, JSON.stringify(propSel), status, order, JSON.stringify(Object.keys(records))]);
+
+  // ── perfil del admin + notificaciones del panel ──
+  const adminName = profile.name || (adminEmail ? adminEmail.split("@")[0].replace(/[._-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : "Administrador");
+  const user = { name: adminName, email: adminEmail, avatar: profile.avatar || "" };
+  useEffectAd(() => {
+    if (!roster) return;
+    const completedNow = {};
+    roster.forEach((h) => { const code = normCode(h.code); if (code && (h.statusForm === "completo" || records[h.id])) completedNow[code] = 1; });
+    // primera vez en este dispositivo: todo lo ya completado es "base" (no avisa).
+    let base = loadFormsBaseline();
+    if (base == null) { saveFormsBaseline(completedNow); return; }
+    // de aquí en adelante, solo las NUEVAS terminaciones generan notificación.
+    const first = loadFormsFirst(); let changed = false;
+    Object.keys(completedNow).forEach((code) => { if (!base[code] && !first[code]) { first[code] = Date.now(); changed = true; } });
+    if (changed) saveFormsFirst(first);
+  }, [roster]);
+  const notis = useMemoAd(() => buildAdminNotis({
+    roster, records, gacc: gaccTop, strm: strmTop, alerts, formsFirst: loadFormsFirst(), es: t.code === "es",
+    goTab: setTab, openReservation: (h) => { setTab("registros"); setSummary({ h, rec: recordFor(h), autoPrint: false }); },
+  }).filter((n) => !notiDismiss[n.id]), [roster, gaccTop, strmTop, alerts, notiDismiss, t.code]);
+  const dismissNoti = (n) => setNotiDismiss((p) => { const u = { ...p, [n.id]: 1 }; try { localStorage.setItem("spacioam_admin_notiDismiss", JSON.stringify(u)); } catch (e) {} return u; });
 
   const doneCount = rows ? rows.filter((r) => isDone(r.h, r.rec)).length : 0;
   const pendingCount = rows ? rows.length - doneCount : 0;
@@ -836,102 +1139,85 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
   const statusOptions = [
     { value: "both", label: t.adminBoth },
     { value: "pending", label: t.adminOnlyPending },
+    { value: "progress", label: t.code === "es" ? "En proceso" : "In progress" },
     { value: "done", label: t.adminOnlyDone },
+  ];
+  const orderOptions = [
+    { value: "desc", label: t.code === "es" ? "Más reciente primero" : "Newest first" },
+    { value: "asc", label: t.code === "es" ? "Más antiguo primero" : "Oldest first" },
   ];
   const propertyOptions = [{ value: "all", label: t.adminAllProps },
     ...[...new Set((roster || []).map((r) => r.propertyName).filter(Boolean))].sort().map((p) => ({ value: p, label: p }))];
 
   return (
+    <React.Fragment>
+      <AppHeader t={t} lang={t.code} onSwitchLang={onSwitchLang} user={user} isAdmin
+        connected={connected} syncing={refreshing} notiTotal={notis.length} onNotiOpen={() => setNotiOpen(true)}
+        onAccount={() => setAccOpen(true)} onFarol={() => setHospOpen(true)}
+        onSetup={isPrimaryAdmin(adminEmail) ? () => setTab("accesos") : null} setupLabel={t.code === "es" ? "Accesos" : "Access"}
+        onLogout={onBack} showFarol />
     <div style={{ minHeight: "100vh", background: C.alabaster, position: "relative", overflow: "hidden" }}>
-      <div style={{ maxWidth: 1040, margin: "0 auto", padding: "clamp(22px,4vh,36px) clamp(16px,4vw,30px) 64px", position: "relative", zIndex: 2 }}>
+      <div style={{ maxWidth: 1040, margin: "0 auto", padding: "clamp(18px,3vh,28px) clamp(16px,4vw,30px) 64px", position: "relative", zIndex: 2 }}>
 
-        {/* notificaciones: en flujo, arriba de todo — nunca tapan el encabezado */}
-        <AdminAlertsBar t={t} refreshing={refreshing} onGoTab={setTab} onRefresh={() => loadRoster({ full: true })} />
+        {/* tabs · estilo mi-spacioam (subrayado peach + barra inferior en móvil) */}
+        <NavTabs t={t} active={tab} onSelect={setTab}
+          tabs={[
+            { id: "registros", icon: "checkin", label: t.tabRegistros },
+            { id: "seguimiento", icon: "activities", label: t.tabSeguimiento },
+            { id: "propiedades", icon: "amenities", label: t.tabPropiedades },
+          ]} />
 
-        {/* header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 20, flexWrap: "wrap" }}>
-          <div style={{ minWidth: 0 }}>
-            <button onClick={onBack} className="sp-link" style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer",
-              display: "inline-flex", alignItems: "center", gap: 7, fontFamily: C.sans, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: C.tierra, fontWeight: 500, marginBottom: 12 }}>
-              <Icon name="arrowLeft" size={15} color={C.tierra} /> Spacio AM
+        {tab === "propiedades" && <PropertyInfoScreen t={t} roster={roster} focusProp={focusProp} onToast={(m) => { setToast(m); setTimeout(() => setToast(""), 2600); }} />}
+        {tab === "seguimiento" && <SeguimientoScreen t={t} roster={roster} initialReqs={reqsTop} initialGacc={gaccTop} initialStrm={strmTop} />}
+        {tab === "accesos" && isPrimaryAdmin(adminEmail) && (
+          <React.Fragment>
+            <button onClick={() => setTab("registros")} className="sp-link" style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer",
+              display: "inline-flex", alignItems: "center", gap: 7, fontFamily: C.sans, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: C.tierra, fontWeight: 500, marginBottom: 14 }}>
+              <Icon name="arrowLeft" size={15} color={C.tierra} /> {t.code === "es" ? "Volver a registros" : "Back to records"}
             </button>
-            <h1 style={{ fontFamily: C.serif, fontWeight: 400, fontSize: "clamp(28px,4.2vw,40px)", color: C.negro, margin: 0, lineHeight: 1.04, letterSpacing: "-0.01em" }}>{t.adminTitle}</h1>
-            <p style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, margin: "9px 0 0", letterSpacing: "0.02em", lineHeight: 1.55, maxWidth: 460 }}>{t.adminSub}</p>
+            <AdminAccessScreen t={t} onToast={(m) => { setToast(m); setTimeout(() => setToast(""), 2600); }} />
+          </React.Fragment>
+        )}
+
+        {tab === "registros" && (<>
+        {/* encabezado del panel — solo en registros */}
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontFamily: C.sans, fontSize: 11, fontWeight: 600, letterSpacing: "0.28em", textTransform: "uppercase", color: C.tierra, marginBottom: 12, display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <Sparkle size={11} color={C.peach} /> {t.code === "es" ? "Panel de administración" : "Admin panel"}
           </div>
-          <button onClick={onSwitchLang} className="sp-langbtn">{t.code === "es" ? "EN" : "ES"}</button>
+          <h1 style={{ fontFamily: C.serif, fontWeight: 400, fontSize: "clamp(28px,4.4vw,44px)", color: C.negro, margin: 0, lineHeight: 1.04, letterSpacing: "-0.015em" }}>{t.adminTitle}</h1>
+          <p style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, margin: "10px 0 0", letterSpacing: "0.02em", lineHeight: 1.55, maxWidth: 460 }}>{t.adminSub}</p>
         </div>
 
-        {/* Hospitable connection bar */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap",
-          background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 14, padding: "12px 16px", marginBottom: 14 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 9 }}>
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: connected ? "#1F8A5B" : C.taupe }} />
-            <span style={{ fontFamily: C.sans, fontSize: 12.5, color: C.negro, letterSpacing: "0.02em", fontWeight: 500 }}>{connected ? t.hospConnected : t.hospDisconnected}</span>
-            {refreshing && <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontFamily: C.sans, fontSize: 10.5, color: C.tierra, letterSpacing: "0.04em" }}><Spinner /> {t.hospSyncing}</span>}
-          </div>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-            {connected && (
-              <button onClick={() => loadRoster({ full: true })} disabled={refreshing} className="sp-btn" title={t.adminRefreshNow}
-                style={{ background: C.white, color: C.negro, border: `1px solid ${C.grisCalido}`, borderRadius: 10, padding: "8px 14px",
-                  fontFamily: C.sans, fontSize: 11, letterSpacing: "0.04em", cursor: "pointer", fontWeight: 500, display: "inline-flex", alignItems: "center", gap: 7, opacity: refreshing ? 0.5 : 1 }}>
-                <Icon name="refresh" size={14} color={C.negro} /> {t.adminRefreshNow}
-              </button>
-            )}
-            {connected && (
-              <button onClick={() => loadRoster({ full: true, deep: true })} disabled={refreshing} className="sp-btn" title={t.adminSyncAllHint}
-                style={{ background: "transparent", color: C.tierra, border: "none", padding: "8px 4px",
-                  fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.06em", cursor: "pointer", opacity: refreshing ? 0.4 : 1 }}>
-                {t.adminSyncAll}
-              </button>
-            )}
-            <button onClick={() => setHospOpen(true)} className="sp-btn" style={{ background: C.white, color: C.negro, border: `1px solid ${C.grisCalido}`,
-              borderRadius: 10, padding: "8px 14px", fontFamily: C.sans, fontSize: 11, letterSpacing: "0.04em", cursor: "pointer", fontWeight: 500, display: "inline-flex", alignItems: "center", gap: 7 }}>
-              <Icon name="settings" size={14} color={C.negro} /> {connected ? t.hospManage : t.hospConnect}
-            </button>
-          </div>
-        </div>
+        {/* actualizar backend + buscador — solo en registros */}
+        <RefreshControl t={t} connected={connected} refreshing={refreshing} deep={deepRun}
+          onRefresh={() => { setDeepRun(false); loadRoster({ full: true }); }}
+          onDeep={() => { setDeepRun(true); loadRoster({ full: true, deep: true }); }}
+          onConnect={() => setHospOpen(true)} />
 
-        {/* buscador global: reservas + propiedades, sin importar la pestaña */}
         <AdminGlobalSearch t={t} roster={roster} recordFor={recordFor}
           onOpenReservation={(h) => { setTab("registros"); setSummary({ h, rec: recordFor(h), autoPrint: false }); }}
           onOpenProperty={(name) => { setTab("propiedades"); setFocusProp(name); }} />
 
-        {/* tabs: Registros | Estaciones */}
-        <div style={{ display: "inline-flex", gap: 4, background: C.beige, border: `1px solid ${C.grisCalido}`, borderRadius: 12, padding: 4, marginBottom: 16 }}>
-          {[["registros", t.tabRegistros], ["seguimiento", t.tabSeguimiento], ["propiedades", t.tabPropiedades]]
-            .concat(isPrimaryAdmin(adminEmail) ? [["accesos", t.tabAccesos]] : [])
-            .map(([k, label]) => (
-            <button key={k} onClick={() => setTab(k)} className="sp-btn"
-              style={{ background: tab === k ? C.white : "transparent", color: C.negro, border: tab === k ? `1px solid ${C.grisCalido}` : "1px solid transparent",
-                borderRadius: 9, padding: "8px 18px", fontFamily: C.sans, fontSize: 12, letterSpacing: "0.04em", cursor: "pointer",
-                fontWeight: tab === k ? 600 : 500, boxShadow: tab === k ? "0 1px 4px rgba(62,63,63,.06)" : "none" }}>
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {tab === "propiedades" && <PropertyInfoScreen t={t} roster={roster} focusProp={focusProp} onToast={(m) => { setToast(m); setTimeout(() => setToast(""), 2600); }} />}
-        {tab === "seguimiento" && <SeguimientoScreen t={t} roster={roster} />}
-        {tab === "accesos" && isPrimaryAdmin(adminEmail) && <AdminAccessScreen t={t} onToast={(m) => { setToast(m); setTimeout(() => setToast(""), 2600); }} />}
-
-        {tab === "registros" && (<>
-        {/* counts */}
-        <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
-          <div style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 13, padding: "10px 16px", display: "flex", alignItems: "baseline", gap: 8 }}>
-            <span style={{ fontFamily: C.sans, fontSize: 20, color: "#1F8A5B", fontWeight: 600 }}>{doneCount}</span>
-            <span style={{ fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: C.tierra }}>{t.adminComplete}</span>
+        {/* counts — KPI editorial (mi-spacioam) */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 12, marginBottom: 18, maxWidth: 420 }}>
+          <div style={{ background: C.beige, borderRadius: 16, padding: "16px 18px" }}>
+            <div style={{ fontFamily: C.sans, fontSize: 30, color: "#3d6b52", fontWeight: 600, letterSpacing: "-0.02em", lineHeight: 1 }}>{doneCount}</div>
+            <div style={{ fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.16em", textTransform: "uppercase", color: C.tierra, marginTop: 8, fontWeight: 600 }}>{t.adminComplete}</div>
           </div>
-          <div style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 13, padding: "10px 16px", display: "flex", alignItems: "baseline", gap: 8 }}>
-            <span style={{ fontFamily: C.sans, fontSize: 20, color: C.peach, fontWeight: 600 }}>{pendingCount}</span>
-            <span style={{ fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: C.tierra }}>{t.adminPending}</span>
+          <div style={{ background: C.beige, borderRadius: 16, padding: "16px 18px" }}>
+            <div style={{ fontFamily: C.sans, fontSize: 30, color: C.peach, fontWeight: 600, letterSpacing: "-0.02em", lineHeight: 1 }}>{pendingCount}</div>
+            <div style={{ fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.16em", textTransform: "uppercase", color: C.tierra, marginTop: 8, fontWeight: 600 }}>{t.adminPending}</div>
           </div>
         </div>
 
-        {/* filters — dropdowns */}
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: mode === "range" ? 12 : 6 }}>
-          <AdSelect label={t.adminQuick} value={mode} onChange={setMode} options={quickOptions} />
-          <AdSelect label={t.adminStatusFilter} value={status} onChange={setStatus} options={statusOptions} />
-          <AdSelect label={t.adminPropertyFilter} value={property} onChange={setProperty} options={propertyOptions} />
+        {/* filtros — píldoras */}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: mode === "range" ? 12 : 6, alignItems: "center" }}>
+          <PillSelect value={mode} onChange={setMode} options={quickOptions} icon="clock" minWidth={180} />
+          <PillSelect value={status} onChange={setStatus} options={statusOptions} minWidth={170} />
+          <PillSelect multi searchable value={propSel} onChange={setPropSel} options={propertyOptions} icon="pin"
+            placeholder={t.code === "es" ? "propiedades" : "properties"} minWidth={250} />
+          <PillSelect value={order} onChange={setOrder} options={orderOptions} icon="activities" minWidth={200} />
         </div>
 
         {mode === "range" && (
@@ -965,8 +1251,9 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
           <div style={{ border: `1px solid ${C.grisCalido}`, borderRadius: 16, overflow: "hidden", background: C.white }}>
             {rows.map(({ h, rec, bucket }, idx) => (
               <AdminRow key={(h.id || h.code) + "-" + idx} t={t} h={h} rec={rec} bucket={bucket} first={idx === 0} avail={availFor(h)}
-                done={isDone(h, rec)}
+                done={isDone(h, rec)} state={stateOf(h, rec)}
                 onPreview={onPreviewGuest ? () => onPreviewGuest(h) : null}
+                onOpenForm={onManualForm ? () => onManualForm(h) : null}
                 onView={() => setSummary({ h, rec, autoPrint: false })}
                 onDownload={() => setSummary({ h, rec, autoPrint: true })}
                 onResend={(ch) => resend(h, ch)} />
@@ -1012,21 +1299,89 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
           <Icon name="mail" size={16} color={C.peach} /> {toast}
         </div>
       )}
+      {window.NotiCenter && <NotiCenter open={notiOpen} onClose={() => setNotiOpen(false)} notis={notis} onDismiss={dismissNoti} es={t.code === "es"} />}
+      {window.NotiPush && <NotiPush notis={notis} storeKey="spacioam_admin_notiSeen" onOpen={() => setNotiOpen(true)} es={t.code === "es"} />}
+      {accOpen && <AdminAccountModal t={t} profile={profile} email={adminEmail}
+        onSave={(p) => {
+          const np = { ...profile, name: p.name, avatar: p.avatar, secondary: p.secondary };
+          setProfile(np); saveAdminProfile(np); setAccOpen(false);
+          if (p.email && p.email !== (adminEmail || "").toLowerCase()) {
+            try { localStorage.setItem("spacioam_admin_session", p.email); } catch (e) {}
+            location.reload(); return;
+          }
+          setToast(t.code === "es" ? "Cuenta actualizada" : "Account updated"); setTimeout(() => setToast(""), 2600);
+        }}
+        onClose={() => setAccOpen(false)} />}
+      {manualOpen2 && (
+        <div onClick={(e) => { if (e.target === e.currentTarget) setManualOpen2(false); }}
+          style={{ position: "fixed", inset: 0, zIndex: 320, background: "rgba(62,63,63,.42)", backdropFilter: "blur(4px)", display: "grid", placeItems: "center", padding: 20 }}>
+          <ManualFormModal t={t} onClose={() => setManualOpen2(false)} onOpen={(res) => { setManualOpen2(false); onManualForm && onManualForm(res); }} />
+        </div>
+      )}
+    </div>
+    </React.Fragment>
+  );
+}
+
+/* Ingresar un formulario manualmente: el admin escribe el código de reserva,
+   se resuelve contra el backend y se abre el registro del huésped para llenarlo. */
+function ManualFormModal({ t, onClose, onOpen }) {
+  const es = t.code === "es";
+  const [code, setCode] = useStateAd("");
+  const [busy, setBusy] = useStateAd(false);
+  const [err, setErr] = useStateAd("");
+  const go = () => {
+    const c = (code || "").trim();
+    if (!c) return;
+    setBusy(true); setErr("");
+    Backend.findReservation(c, "").then(({ reservation }) => {
+      setBusy(false);
+      if (reservation) onOpen(reservation);
+      else setErr(es ? "No encontramos esa reserva. Revisa el código." : "Reservation not found. Check the code.");
+    }).catch(() => { setBusy(false); setErr(es ? "No se pudo consultar. Intenta de nuevo." : "Lookup failed. Try again."); });
+  };
+  return (
+    <div style={{ width: "min(400px,94vw)", background: C.white, borderRadius: 22, padding: "clamp(24px,5vw,30px)", boxShadow: "0 28px 80px rgba(62,63,63,.18)", animation: "rise .3s " + C.ease + " both" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 14 }}>
+        <Sparkle size={13} color={C.peach} />
+        <span style={{ fontFamily: C.serif, fontSize: 22, color: C.negro }}>{es ? "Ingresar formulario" : "Add form"}</span>
+      </div>
+      <p style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra, margin: "0 0 16px", letterSpacing: "0.01em", lineHeight: 1.55 }}>
+        {es ? "Escribe el código de reserva y abriremos el registro para llenarlo por el huésped." : "Enter the reservation code and we'll open the registration to fill it in."}
+      </p>
+      <input value={code} autoFocus onChange={(e) => { setCode(e.target.value.toUpperCase()); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && go()}
+        placeholder={es ? "Código de reserva" : "Reservation code"}
+        style={{ width: "100%", boxSizing: "border-box", padding: "13px 15px", borderRadius: 12, border: `1px solid ${C.grisCalido}`, background: C.alabaster, fontFamily: C.sans, fontSize: 15, letterSpacing: "0.08em", color: C.negro, outline: "none", textTransform: "uppercase" }} />
+      {err && <p style={{ fontFamily: C.sans, fontSize: 11.5, color: C.peach, margin: "10px 0 0", letterSpacing: "0.01em" }}>{err}</p>}
+      <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+        <button onClick={busy ? undefined : go} className="sp-btn" style={{ flex: 1, background: C.negro, color: C.alabaster, border: "none", borderRadius: 999, padding: "12px", fontFamily: C.sans, fontSize: 12, letterSpacing: "0.06em", cursor: busy ? "wait" : "pointer", fontWeight: 500, opacity: busy ? 0.6 : 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+          {busy ? <><Spinner /> {t.validating || (es ? "Buscando…" : "Looking up…")}</> : (es ? "Abrir registro" : "Open form")}
+        </button>
+        <button onClick={onClose} className="sp-btn" style={{ background: C.white, color: C.negro, border: `1px solid ${C.grisCalido}`, borderRadius: 999, padding: "12px 18px", fontFamily: C.sans, fontSize: 12, letterSpacing: "0.06em", cursor: "pointer" }}>{es ? "Cerrar" : "Close"}</button>
+      </div>
     </div>
   );
 }
 
 /* compact, image-free row */
-function AdminRow({ t, h, rec, bucket, first, avail, onView, onDownload, onResend, done: doneProp, onPreview }) {
+function AdminRow({ t, h, rec, bucket, first, avail, onView, onDownload, onResend, done: doneProp, state, onPreview, onOpenForm }) {
   const done = doneProp != null ? doneProp : (!!rec || h.statusForm === "completo");
   const es = t.code === "es";
+  const st = state || (done ? "done" : "pending");
+  const ST = {
+    done: { label: es ? "Completo" : "Complete", fg: "#177A4F", dot: "#1F8A5B", bg: "rgba(31,138,91,.1)", bd: "rgba(31,138,91,.3)" },
+    progress: { label: es ? "En proceso" : "In progress", fg: "#8a5020", dot: "#E9826A", bg: "rgba(233,130,106,.12)", bd: "rgba(233,130,106,.4)" },
+    pending: { label: es ? "Pendiente" : "Pending", fg: C.tierra, dot: C.taupe, bg: C.beige, bd: C.grisCalido },
+  }[st];
+  const [copied, setCopied] = useStateAd(false);
+  const copyCode = () => { try { navigator.clipboard.writeText(h.code); setCopied(true); setTimeout(() => setCopied(false), 1400); } catch (e) {} };
   const av = avail || { email: false, whatsapp: false };
   const bucketLabel = { yesterday: t.adminYesterday, today: t.adminToday, tomorrow: t.adminTomorrow, dayAfter: t.adminDayAfter }[bucket];
   const guestName = (rec?.guests?.[0]?.name) || h.guestName;
   const actionBtn = (icon, label, onClick, dark) => (
     <button onClick={onClick} className="sp-btn" title={label}
       style={{ background: dark ? C.negro : C.white, color: dark ? C.alabaster : C.negro, border: dark ? "none" : `1px solid ${C.grisCalido}`,
-        borderRadius: 9, padding: "7px 11px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6,
+        borderRadius: 999, padding: "7px 13px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6,
         fontFamily: C.sans, fontSize: 10, letterSpacing: "0.05em", fontWeight: 500, whiteSpace: "nowrap" }}>
       <Icon name={icon} size={13} color={dark ? C.alabaster : C.negro} /> {label}
     </button>
@@ -1036,46 +1391,57 @@ function AdminRow({ t, h, rec, bucket, first, avail, onView, onDownload, onResen
     <button onClick={on ? () => onResend(channel) : undefined} className="sp-btn" disabled={!on}
       title={on ? title : (es ? "Sin " + (channel === "whatsapp" ? "WhatsApp" : "correo") + " en esta propiedad" : "No " + channel + " for this property")}
       style={{ background: C.white, color: on ? C.negro : C.warmGrey || C.grisCalido, border: `1px solid ${C.grisCalido}`,
-        borderRadius: 9, width: 34, height: 32, cursor: on ? "pointer" : "not-allowed", opacity: on ? 1 : 0.4,
+        borderRadius: 999, width: 34, height: 32, cursor: on ? "pointer" : "not-allowed", opacity: on ? 1 : 0.4,
         display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
       <Icon name={icon} size={14} color={on ? C.negro : C.tierra} />
     </button>
   );
   return (
     <div className="sp-adrow" style={{ borderTop: first ? "none" : `1px solid ${C.beige}`, padding: "13px 16px",
-      display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-      {/* identity */}
-      <div style={{ minWidth: 150, flex: "1 1 210px" }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-          <span style={{ fontFamily: C.serif, fontSize: 17, color: C.negro, lineHeight: 1.1 }}>{guestName}</span>
-          <span style={{ fontFamily: C.sans, fontSize: 10, letterSpacing: "0.12em", color: C.tierra }}>{h.code}</span>
-        </div>
-        <div style={{ fontFamily: C.sans, fontSize: 11, color: C.tierra, marginTop: 2, letterSpacing: "0.02em" }}>{h.propertyName}{h.apartment && !String(h.propertyName).includes(h.apartment) ? " · " + h.apartment : ""}</div>
+      display: "grid", gridTemplateColumns: "minmax(180px,1.8fr) 96px 128px minmax(0,2fr)", alignItems: "center", columnGap: 14, rowGap: 10 }}>
+      {/* identity — 3 filas: nombre / código (+ copiar) / propiedad */}
+      <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
+        <span style={{ fontFamily: C.serif, fontSize: 17, color: C.negro, lineHeight: 1.1 }}>{guestName}</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+          <span style={{ fontFamily: C.sans, fontSize: 11, letterSpacing: "0.14em", color: C.tierra, fontWeight: 600 }}>{h.code}</span>
+          <button onClick={copyCode} title={es ? "Copiar código" : "Copy code"} className="sp-btn"
+            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: 7,
+              border: `1px solid ${C.grisCalido}`, background: copied ? "rgba(31,138,91,.12)" : C.white, cursor: "pointer", padding: 0 }}>
+            <Icon name={copied ? "check" : "copy"} size={12} color={copied ? "#1F8A5B" : C.tierra} />
+          </button>
+        </span>
+        <span style={{ fontFamily: C.sans, fontSize: 11, color: C.tierra, letterSpacing: "0.02em" }}>{h.propertyName}{h.apartment && !String(h.propertyName).includes(h.apartment) ? " · " + h.apartment : ""}</span>
       </div>
       {/* checkin */}
-      <div style={{ flex: "0 0 auto", minWidth: 90 }}>
+      <div style={{ minWidth: 0 }}>
         <div style={{ fontFamily: C.sans, fontSize: 14, color: C.negro }}>{fmtDay(h.checkin, t.code)}</div>
         {bucketLabel && <div style={{ fontFamily: C.sans, fontSize: 9, letterSpacing: "0.06em", color: C.peach, marginTop: 1, textTransform: "uppercase", fontWeight: 700 }}>{bucketLabel}</div>}
       </div>
-      {/* status */}
-      <div style={{ flex: "0 0 auto" }}>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: done ? "rgba(31,138,91,.1)" : C.beige,
-          border: `1px solid ${done ? "rgba(31,138,91,.3)" : C.grisCalido}`, borderRadius: 999, padding: "5px 11px",
-          fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.08em", textTransform: "uppercase", color: done ? "#177A4F" : C.tierra, fontWeight: 700 }}>
-          <span style={{ width: 6, height: 6, borderRadius: "50%", background: done ? "#1F8A5B" : C.taupe }} />
-          {done ? t.adminStatusDone : t.adminStatusPending}
+      {/* status — pendiente / en proceso / completo */}
+      <div style={{ minWidth: 0 }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: ST.bg,
+          border: `1px solid ${ST.bd}`, borderRadius: 999, padding: "5px 11px",
+          fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.08em", textTransform: "uppercase", color: ST.fg, fontWeight: 700 }}>
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: ST.dot }} />
+          {ST.label}
         </span>
       </div>
       {/* actions */}
-      <div style={{ display: "flex", gap: 7, flex: "1 1 auto", justifyContent: "flex-end", flexWrap: "wrap", alignItems: "center" }}>
-        {actionBtn("review", t.adminView, onView, true)}
-        {actionBtn("download", t.adminDownload, onDownload, false)}
-        {done && onPreview && actionBtn("eye", es ? "Mi espacio" : "Guest space", onPreview, false)}
-        <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "nowrap" }}>
-          <span style={{ fontFamily: C.sans, fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: C.tierra }}>{es ? "Reenviar" : "Resend"}</span>
-          {resendBtn("mail", av.email, "email", es ? "Reenviar por correo" : "Resend by email")}
-          {resendBtn("whatsapp", av.whatsapp, "whatsapp", es ? "Reenviar por WhatsApp (incluye al administrador)" : "Resend by WhatsApp")}
-        </div>
+      <div style={{ display: "flex", gap: 7, justifyContent: "flex-end", flexWrap: "wrap", alignItems: "center" }}>
+        {done ? (
+          <React.Fragment>
+            {actionBtn("review", t.adminView, onView, true)}
+            {actionBtn("download", t.adminDownload, onDownload, false)}
+            {onPreview && actionBtn("eye", es ? "Mi espacio" : "Guest space", onPreview, false)}
+            <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "nowrap" }}>
+              <span style={{ fontFamily: C.sans, fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: C.tierra }}>{es ? "Reenviar" : "Resend"}</span>
+              {resendBtn("mail", av.email, "email", es ? "Reenviar por correo" : "Resend by email")}
+              {resendBtn("whatsapp", av.whatsapp, "whatsapp", es ? "Reenviar por WhatsApp (incluye al administrador)" : "Resend by WhatsApp")}
+            </div>
+          </React.Fragment>
+        ) : (
+          onOpenForm && actionBtn("checkin", es ? "Llenar formulario" : "Fill form", onOpenForm, true)
+        )}
       </div>
     </div>
   );
@@ -1706,6 +2072,28 @@ function PropertyInfoScreen({ t, roster, focusProp, onToast }) {
   };
   const visibleProps = props.filter((n) => showHidden || !isHidden(n));
   const hiddenCount = props.filter((n) => isHidden(n)).length;
+  // filtros de la pestaña Propiedades: buscador + zona/edificio (sin carpetas)
+  const [propQuery, setPropQuery] = useStateAd("");
+  const [zonaSel, setZonaSel] = useStateAd([]);
+  const [edSel, setEdSel] = useStateAd([]);
+  const zonaOpts = useMemoAd(() => {
+    const s = new Set(); visibleProps.forEach((n) => { const z = splitPropName(n).zone; if (z) s.add(z); });
+    return [{ value: "all", label: es ? "Todas las zonas" : "All zones" }].concat([...s].sort((a, b) => a.localeCompare(b, "es")).map((z) => ({ value: z, label: z })));
+  }, [visibleProps.join("|")]);
+  const edOpts = useMemoAd(() => {
+    const s = new Set(); visibleProps.forEach((n) => { const { zone, building } = splitPropName(n); if (building && (zonaSel.length === 0 || zonaSel.indexOf(zone) >= 0)) s.add(building); });
+    return [{ value: "all", label: es ? "Todos los edificios" : "All buildings" }].concat([...s].sort((a, b) => a.localeCompare(b, "es")).map((b) => ({ value: b, label: b })));
+  }, [visibleProps.join("|"), zonaSel.join("|")]);
+  const filteredProps = useMemoAd(() => {
+    const q = propQuery.trim().toLowerCase();
+    return visibleProps.filter((n) => {
+      const { zone, building } = splitPropName(n);
+      if (zonaSel.length && zonaSel.indexOf(zone) < 0) return false;
+      if (edSel.length && edSel.indexOf(building) < 0) return false;
+      if (q && !n.toLowerCase().includes(q)) return false;
+      return true;
+    }).sort((a, b) => a.localeCompare(b, "es", { numeric: true }));
+  }, [visibleProps.join("|"), zonaSel.join("|"), edSel.join("|"), propQuery]);
 
   const seg = (name, field, options) => (
     <div style={{ display: "inline-flex", gap: 4, background: C.beige, border: `1px solid ${C.grisCalido}`, borderRadius: 10, padding: 3, flexWrap: "wrap" }}>
@@ -1872,7 +2260,22 @@ function PropertyInfoScreen({ t, roster, focusProp, onToast }) {
               <button onClick={() => setShowHidden((v) => !v)} className="sp-btn" style={{ background: "transparent", color: C.negro, border: `1px solid ${C.grisCalido}`, borderRadius: 999, padding: "6px 13px", fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.04em", cursor: "pointer", fontWeight: 500 }}>{showHidden ? (es ? "Ocultar" : "Hide") : (es ? "Mostrar ocultas" : "Show hidden")}</button>
             </div>
           )}
-          {renderPropertyTree(visibleProps, renderProp, es, openKey, (n) => missingFields(n).length)}
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 4, alignItems: "center" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 200px", minWidth: 180, background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 999, padding: "9px 14px" }}>
+              <Icon name="search" size={15} color={C.tierra} />
+              <input value={propQuery} onChange={(e) => setPropQuery(e.target.value)} placeholder={es ? "Buscar propiedad…" : "Search property…"}
+                style={{ border: "none", outline: "none", background: "transparent", width: "100%", fontFamily: C.sans, fontSize: 13, color: C.negro, letterSpacing: "0.01em" }} />
+              {propQuery && <button onClick={() => setPropQuery("")} style={{ border: "none", background: "transparent", cursor: "pointer", display: "inline-flex", color: C.tierra }}><Icon name="x" size={14} color={C.tierra} /></button>}
+            </div>
+            <PillSelect multi searchable value={zonaSel} onChange={(v) => { setZonaSel(v); setEdSel([]); }} options={zonaOpts} icon="pin" placeholder={es ? "zonas" : "zones"} minWidth={180} />
+            <PillSelect multi searchable value={edSel} onChange={setEdSel} options={edOpts} icon="folder" placeholder={es ? "edificios" : "buildings"} minWidth={190} />
+          </div>
+          <div style={{ fontFamily: C.sans, fontSize: 11, color: C.tierra, letterSpacing: "0.04em", margin: "2px 2px 8px" }}>
+            {filteredProps.length} {es ? (filteredProps.length === 1 ? "propiedad" : "propiedades") : (filteredProps.length === 1 ? "property" : "properties")}
+          </div>
+          {filteredProps.length ? filteredProps.map((n) => renderProp(n)) : (
+            <div style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 16, padding: "30px 20px", textAlign: "center", fontFamily: C.sans, fontSize: 12.5, color: C.tierra }}>{es ? "Sin resultados con estos filtros." : "No results with these filters."}</div>
+          )}
         </div>
       )}
     </div>
@@ -2527,7 +2930,7 @@ function IncidentsBlock({ t, roster, sectionTitle, sectionNote, onCount }) {
   );
 }
 
-function SeguimientoScreen({ t, roster }) {
+function SeguimientoScreen({ t, roster, initialReqs, initialGacc, initialStrm }) {
   const store = typeof loadStore === "function" ? loadStore() : {};
   const es = t.code === "es";
   const [, force] = useStateAd(0);
@@ -2545,7 +2948,7 @@ function SeguimientoScreen({ t, roster }) {
     setMarksV((n) => n + 1);
   };
   // solicitudes: del backend (cualquier dispositivo) o de localStorage si no hay conexión
-  const [reqs, setReqs] = useStateAd(null);
+  const [reqs, setReqs] = useStateAd(initialReqs || (Backend.cachedList && Backend.cachedList("reqs")) || null);
   const reload = () => {
     if (connected && Backend.listRequests) {
       Backend.listRequests().then((list) => { if (list) setReqs(list); }).catch(() => {});
@@ -2586,19 +2989,29 @@ function SeguimientoScreen({ t, roster }) {
     Backend.storageStats().then((s) => { if (s && s.ok) setStor(s); }).catch(() => {});
   }, []);
   // solicitudes de nuevos invitados (pestaña Invitados) y fotos de QR de streaming
-  const [gacc, setGacc] = useStateAd(null);
-  const [strm, setStrm] = useStateAd(null);
+  const [gacc, setGacc] = useStateAd(initialGacc || (Backend.cachedList && Backend.cachedList("gacc")) || null);
+  const [strm, setStrm] = useStateAd(initialStrm || (Backend.cachedList && Backend.cachedList("strm")) || null);
   const [gaBusy, setGaBusy] = useStateAd("");
   const reloadGacc = () => { if (Backend.listGuestAccess) Backend.listGuestAccess().then((l) => { if (l) setGacc(l); }).catch(() => {}); };
   const reloadStrm = () => { if (Backend.listStreaming) Backend.listStreaming().then((l) => { if (l) setStrm(l); }).catch(() => {}); };
   useEffectAd(() => { reloadGacc(); reloadStrm(); }, [connected]);
   // facturas: de la hoja (mismo origen que el contador de alertas), no de localStorage
-  const [invoices, setInvoices] = useStateAd(null);
+  const [invoices, setInvoices] = useStateAd(() => (Backend.cachedList && Backend.cachedList("invoices")) || null);
   const reloadInvoices = () => Backend.listInvoices().then((l) => setInvoices(l || [])).catch(() => setInvoices([]));
   useEffectAd(() => { reloadInvoices(); }, []);
+  // fecha de check-in / checkout por código (para mostrar y para caducar solicitudes)
+  const infoOf = (code) => (roster || []).find((x) => normCode(x.code) === normCode(code)) || {};
+  const todayISO = new Date().toISOString().slice(0, 10);
+  // caducidad: early / maletas / noche extra vencen pasado el check-in;
+  // salida tardía vence pasado el checkout. Se ocultan aunque no tengan respuesta.
+  const isExpired = (r) => {
+    const i = infoOf(r.code); const ci = i.checkin, co = i.checkout;
+    if (["early", "luggage", "day"].indexOf(r.type) >= 0) return !!(ci && todayISO > ci);
+    return !!(co && todayISO > co);
+  };
   const hostReqs = reqs || [];
-  const dayReqs = hostReqs.filter((r) => r.type === "late" || r.type === "day");
-  const earlyReqs = hostReqs.filter((r) => r.type === "early" || r.type === "luggage");
+  const dayReqs = hostReqs.filter((r) => (r.type === "late" || r.type === "day") && !isExpired(r));
+  const earlyReqs = hostReqs.filter((r) => (r.type === "early" || r.type === "luggage") && !isExpired(r));
   const suggestions = store.suggestions || [];
 
   const checkbox = (r, label) => {
@@ -2666,6 +3079,27 @@ function SeguimientoScreen({ t, roster }) {
   const reqLabel = { early: t.segReqEarly, late: t.segReqLate, day: t.segReqDay, luggage: t.segReqLuggage };
 
   const fmtDate = (iso) => { try { return new Date(iso).toLocaleDateString(es ? "es-GT" : "en-US", { day: "numeric", month: "short", year: "numeric" }); } catch (e) { return "—"; } };
+  const fmtBytes = (n) => { n = Number(n) || 0; if (n < 1024) return n + " B"; if (n < 1048576) return (n / 1024).toFixed(0) + " KB"; if (n < 1073741824) return (n / 1048576).toFixed(1) + " MB"; return (n / 1073741824).toFixed(2) + " GB"; };
+  // etiquetas claras por tipo de solicitud, con color propio
+  const TYPE_META = {
+    early: { es: "Early check-in", en: "Early check-in", c: "#AF490E" },
+    luggage: { es: "Dejar maletas", en: "Luggage drop-off", c: "#3B6691" },
+    day: { es: "Noche adicional", en: "Extra night", c: "#866537" },
+    late: { es: "Salida tardía", en: "Late check-out", c: "#6D3B91" },
+  };
+  const typeChip = (type) => {
+    const m = TYPE_META[type] || { es: type, en: type, c: C.tierra };
+    return <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontFamily: C.sans, fontSize: 10, letterSpacing: "0.06em", fontWeight: 700, textTransform: "uppercase", color: m.c, background: m.c + "18", border: `1px solid ${m.c}55`, borderRadius: 999, padding: "3px 10px" }}>{es ? m.es : m.en}</span>;
+  };
+  const reqMeta = (r) => {
+    const ci = infoOf(r.code).checkin;
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 5, flexWrap: "wrap" }}>
+        {typeChip(r.type)}
+        <span style={{ fontFamily: C.sans, fontSize: 11, color: C.tierra }}>{r.code}{ci ? ` · Check-in ${fmtDate(ci)}` : ""}</span>
+      </div>
+    );
+  };
   const storStat = (label, value, accent) => (
     <div>
       <div style={{ fontFamily: C.sans, fontSize: 8.5, letterSpacing: "0.16em", textTransform: "uppercase", color: C.tierra, fontWeight: 600, marginBottom: 6 }}>{label}</div>
@@ -2687,6 +3121,7 @@ function SeguimientoScreen({ t, roster }) {
               {storStat(t.storOldest, stor.oldest ? fmtDate(stor.oldest) : "—")}
               {storStat(t.storAge, stor.oldestAgeDays != null ? `${stor.oldestAgeDays} ${t.storDays}` : "—", true)}
               {storStat(t.storStored, String(stor.stored))}
+              {storStat(es ? "Memoria" : "Storage", stor.bytes != null ? fmtBytes(stor.bytes) : "—", true)}
               {storStat(t.storNextPurge, stor.nextPurge ? fmtDate(stor.nextPurge) : "—")}
               {storStat(t.storRetention, `${stor.retentionMonths} ${t.storMonths}`)}
             </div>
@@ -2737,7 +3172,7 @@ function SeguimientoScreen({ t, roster }) {
             {dayReqs.map((r, i) => card(
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                 <div><div style={{ fontFamily: C.serif, fontSize: 16, color: C.negro }}>{r.apartment || r.code}</div>
-                  <div style={{ fontFamily: C.sans, fontSize: 11, color: C.tierra, marginTop: 2 }}>{reqLabel[r.type] || r.type} · {r.code}</div></div>
+                  {reqMeta(r)}</div>
                 {resolveBtns(r)}
               </div>, i
             ))}
@@ -2752,7 +3187,7 @@ function SeguimientoScreen({ t, roster }) {
             {earlyReqs.map((r, i) => card(
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                 <div><div style={{ fontFamily: C.serif, fontSize: 16, color: C.negro }}>{r.apartment || r.code}</div>
-                  <div style={{ fontFamily: C.sans, fontSize: 11, color: C.tierra, marginTop: 2 }}>{reqLabel[r.type] || r.type} · {r.code}</div></div>
+                  {reqMeta(r)}</div>
                 {resolveBtns(r)}
               </div>, i
             ))}
@@ -2918,6 +3353,21 @@ function AdminAccessScreen({ t, onToast }) {
   const [copied, setCopied] = useStateAd(false);
   const [sendLog, setSendLog] = useStateAd(null);
   const [logBusy, setLogBusy] = useStateAd(false);
+  const [hideWhatsapp, setHideWhatsapp] = useStateAd(true);   // WhatsApp aún no implementado → oculto por defecto
+  const [showFullLog, setShowFullLog] = useStateAd(false);
+  const [elevenOpen, setElevenOpen] = useStateAd(false);     // números ElevenLabs minimizados
+  const isWa = (ch) => String(ch || "").toLowerCase().indexOf("whatsapp") >= 0;
+  const faultReport = useMemoAd(() => {
+    const fails = (sendLog || []).filter((r) => r.status !== "OK" && !(hideWhatsapp && isWa(r.channel)));
+    const byCh = {};
+    fails.forEach((r) => { const ch = isWa(r.channel) ? "whatsapp" : "email"; (byCh[ch] = byCh[ch] || []).push(r); });
+    return Object.keys(byCh).map((ch) => {
+      const byProp = {};
+      byCh[ch].forEach((r) => { const p = r.property || r.code || "—"; (byProp[p] = byProp[p] || []).push(r); });
+      const props = Object.keys(byProp).map((p) => ({ name: p, count: byProp[p].length, last: byProp[p][0] })).sort((a, b) => b.count - a.count);
+      return { ch, total: byCh[ch].length, props };
+    }).sort((a, b) => b.total - a.total);
+  }, [sendLog, hideWhatsapp]);
   const loadLog = () => {
     if (!Backend.isConnected() || !Backend.listSendLog) return;
     setLogBusy(true);
@@ -3041,15 +3491,88 @@ function AdminAccessScreen({ t, onToast }) {
       {/* REGISTRO DE ENVÍOS — diagnóstico de correos y WhatsApp */}
       <div style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 16, padding: "18px 18px", marginTop: 18 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 4 }}>
-          <div style={{ fontFamily: C.serif, fontSize: 19, color: C.negro }}>{es ? "Registro de envíos" : "Send log"}</div>
+          <div style={{ fontFamily: C.serif, fontSize: 19, color: C.negro }}>{es ? "Reporte de fallos" : "Fault report"}</div>
           <button onClick={loadLog} disabled={logBusy} className="sp-btn" style={{ background: "transparent", color: C.negro, border: `1px solid ${C.grisCalido}`, borderRadius: 9, padding: "8px 14px",
             fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.04em", cursor: logBusy ? "default" : "pointer", opacity: logBusy ? 0.6 : 1, fontWeight: 500, display: "inline-flex", alignItems: "center", gap: 7 }}>
             <Icon name="review" size={13} color={C.negro} /> {logBusy ? (es ? "Cargando…" : "Loading…") : (es ? "Actualizar" : "Refresh")}
           </button>
         </div>
-        <p style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra, margin: "0 0 14px", letterSpacing: "0.02em", lineHeight: 1.55, maxWidth: 520 }}>
-          {es ? "Cada correo y WhatsApp enviado (automático o manual). Si algo falla, aquí verás el motivo." : "Every email and WhatsApp sent (automatic or manual). Failures show the reason here."}
+        <p style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra, margin: "0 0 12px", letterSpacing: "0.02em", lineHeight: 1.55, maxWidth: 520 }}>
+          {es ? "Qué propiedades están fallando y por qué medio. El registro completo está abajo si lo necesitas." : "Which properties are failing and on which channel. The full log is below if you need it."}
         </p>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", margin: "0 0 14px" }}>
+          <button onClick={() => setHideWhatsapp((v) => !v)} className="sp-btn" style={{ display: "inline-flex", alignItems: "center", gap: 8, background: hideWhatsapp ? C.beige : C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 999, padding: "6px 13px", cursor: "pointer", fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.04em", color: C.negro, fontWeight: 500 }}>
+            <span style={{ width: 15, height: 15, borderRadius: 4, border: `1.5px solid ${hideWhatsapp ? "#1F8A5B" : C.taupe}`, background: hideWhatsapp ? "#1F8A5B" : "transparent", display: "grid", placeItems: "center" }}>{hideWhatsapp && <Icon name="check" size={10} color={C.white} />}</span>
+            {es ? "Ocultar WhatsApp (aún no implementado)" : "Hide WhatsApp (not yet live)"}
+          </button>
+        </div>
+        {sendLog === null ? (
+          <div style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra, padding: "10px 0", letterSpacing: "0.02em" }}>{es ? "Conecta el backend para ver los fallos." : "Connect the backend to view failures."}</div>
+        ) : faultReport.length === 0 ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 9, fontFamily: C.sans, fontSize: 12.5, color: "#177A4F", padding: "10px 0", letterSpacing: "0.02em" }}><Icon name="check" size={15} color="#1F8A5B" /> {es ? "Sin fallos de envío. Todo salió." : "No send failures. All clear."}</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* GRÁFICO — propiedades con más fallos (barras horizontales) */}
+            {(() => {
+              const byProp = {};
+              faultReport.forEach((g) => g.props.forEach((p) => {
+                const k = p.name || "—";
+                if (!byProp[k]) byProp[k] = { name: k, email: 0, whatsapp: 0, total: 0 };
+                byProp[k][g.ch] = (byProp[k][g.ch] || 0) + p.count; byProp[k].total += p.count;
+              }));
+              const rows = Object.values(byProp).sort((a, b) => b.total - a.total).slice(0, 8);
+              const max = Math.max(1, ...rows.map((r) => r.total));
+              return (
+                <div style={{ border: `1px solid ${C.grisCalido}`, borderRadius: 14, padding: "16px 18px" }}>
+                  <div style={{ fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.16em", textTransform: "uppercase", color: C.tierra, fontWeight: 600, marginBottom: 14 }}>{es ? "Propiedades con más fallos" : "Properties with most failures"}</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+                    {rows.map((r) => (
+                      <div key={r.name} style={{ display: "grid", gridTemplateColumns: "minmax(90px,1.3fr) 3fr auto", alignItems: "center", gap: 12 }}>
+                        <span style={{ fontFamily: C.sans, fontSize: 11.5, color: C.negro, letterSpacing: "0.01em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={r.name}>{r.name}</span>
+                        <div style={{ display: "flex", height: 16, borderRadius: 999, overflow: "hidden", background: C.beige, width: (r.total / max * 100) + "%", minWidth: 3 }}>
+                          {r.email > 0 && <div title={"Correo: " + r.email} style={{ width: (r.email / r.total * 100) + "%", background: C.peach }} />}
+                          {r.whatsapp > 0 && <div title={"WhatsApp: " + r.whatsapp} style={{ width: (r.whatsapp / r.total * 100) + "%", background: "#3B6691" }} />}
+                        </div>
+                        <span style={{ fontFamily: C.sans, fontSize: 12, fontWeight: 700, color: C.peach, fontVariantNumeric: "tabular-nums", minWidth: 18, textAlign: "right" }}>{r.total}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ display: "flex", gap: 16, marginTop: 14, flexWrap: "wrap" }}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontFamily: C.sans, fontSize: 10, letterSpacing: "0.06em", color: C.tierra }}><span style={{ width: 9, height: 9, borderRadius: 2, background: C.peach }} /> {es ? "Correo" : "Email"}</span>
+                    {!hideWhatsapp && <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontFamily: C.sans, fontSize: 10, letterSpacing: "0.06em", color: C.tierra }}><span style={{ width: 9, height: 9, borderRadius: 2, background: "#3B6691" }} /> WhatsApp</span>}
+                  </div>
+                </div>
+              );
+            })()}
+            {faultReport.map((g) => (
+              <div key={g.ch} style={{ border: `1px solid ${C.grisCalido}`, borderRadius: 13, overflow: "hidden" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "11px 14px", background: C.beige }}>
+                  <span style={{ fontFamily: C.sans, fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", fontWeight: 700, color: C.negro }}>{g.ch === "whatsapp" ? "WhatsApp" : (es ? "Correo" : "Email")}</span>
+                  <span style={{ fontFamily: C.sans, fontSize: 11, color: C.peach, fontWeight: 600 }}>{g.total} {es ? (g.total === 1 ? "fallo" : "fallos") : (g.total === 1 ? "failure" : "failures")}</span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  {g.props.map((p) => { let when = ""; try { when = new Date(p.last.at).toLocaleDateString(es ? "es-GT" : "en-US", { day: "numeric", month: "short" }); } catch (e) {}
+                    return (
+                    <div key={p.name} style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, padding: "10px 14px", borderTop: `1px solid ${C.beige}` }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontFamily: C.sans, fontSize: 12.5, color: C.negro, letterSpacing: "0.01em" }}>{p.name}</div>
+                        {p.last && p.last.detail && <div style={{ fontFamily: C.sans, fontSize: 10.5, color: C.peach, lineHeight: 1.5, marginTop: 2, wordBreak: "break-word" }}>{p.last.detail}</div>}
+                      </div>
+                      <div style={{ flexShrink: 0, textAlign: "right" }}>
+                        <span style={{ fontFamily: C.sans, fontSize: 12, color: C.peach, fontWeight: 700 }}>{p.count}</span>
+                        {when && <div style={{ fontFamily: C.sans, fontSize: 9.5, color: C.tierra, marginTop: 2 }}>{when}</div>}
+                      </div>
+                    </div>);
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <button onClick={() => { if (!showFullLog) loadLog(); setShowFullLog((v) => !v); }} className="sp-btn" style={{ marginTop: 14, background: "transparent", color: C.negro, border: `1px solid ${C.grisCalido}`, borderRadius: 10, padding: "9px 15px", fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.05em", cursor: "pointer", fontWeight: 500, display: "inline-flex", alignItems: "center", gap: 7 }}>
+          <Icon name={showFullLog ? "chevronUp" : "chevron"} size={14} color={C.negro} /> {showFullLog ? (es ? "Ocultar registro completo" : "Hide full log") : (es ? "Ver registro completo" : "View full log")}
+        </button>
+        {showFullLog && (<React.Fragment>
         {sendLog === null ? (
           <div style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra, padding: "10px 0", letterSpacing: "0.02em" }}>{es ? "Conecta el backend para ver el registro." : "Connect the backend to view the log."}</div>
         ) : sendLog.length === 0 ? (
@@ -3078,16 +3601,19 @@ function AdminAccessScreen({ t, onToast }) {
             })}
           </div>
         )}
+        </React.Fragment>)}
       </div>
 
-      <div style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 16, padding: "18px 18px", marginTop: 18 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-          <div style={{ fontFamily: C.serif, fontSize: 19, color: C.negro, marginBottom: 4 }}>{es ? "Números internos para ElevenLabs" : "Internal numbers for ElevenLabs"}</div>
-          <button onClick={loadContacts} className="sp-btn" title={es ? "Actualizar" : "Refresh"} style={{ background: "transparent", border: "none", cursor: "pointer", padding: 4, flexShrink: 0 }}>
-            <Icon name="refresh" size={16} color={C.tierra} />
-          </button>
-        </div>
-        <p style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra, margin: "0 0 14px", letterSpacing: "0.02em", lineHeight: 1.55, maxWidth: 480 }}>
+      <div style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 16, padding: "16px 18px", marginTop: 18 }}>
+        <button onClick={() => { if (!elevenOpen && !contacts) loadContacts(); setElevenOpen((v) => !v); }} className="sp-btn" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, width: "100%", background: "transparent", border: "none", cursor: "pointer", padding: 0, textAlign: "left" }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 9 }}>
+            <span style={{ fontFamily: C.serif, fontSize: 19, color: C.negro }}>{es ? "Números internos para ElevenLabs" : "Internal numbers for ElevenLabs"}</span>
+            {contacts && (contacts.numbers || []).length > 0 && <span style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra }}>· {(contacts.numbers || []).length}</span>}
+          </span>
+          <Icon name={elevenOpen ? "chevronUp" : "chevron"} size={16} color={C.tierra} />
+        </button>
+        {elevenOpen && (<React.Fragment>
+        <p style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra, margin: "12px 0 14px", letterSpacing: "0.02em", lineHeight: 1.55, maxWidth: 480 }}>
           {es ? "Lista actual de WhatsApp de recepción (de todas las propiedades, sin el administrador). Cópiala y pégala en la regla de números internos del prompt del agente de ElevenLabs cada vez que agregues o cambies un número." : "Current list of reception WhatsApp numbers (all properties, admin excluded). Copy and paste it into the internal-numbers rule of the ElevenLabs agent prompt whenever a number changes."}
         </p>
         {contactsBusy && !contacts ? (
@@ -3116,6 +3642,7 @@ function AdminAccessScreen({ t, onToast }) {
         </>) : (
           <div style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra }}>{es ? "Conéctate al backend para ver la lista." : "Connect the backend to see the list."}</div>
         )}
+        </React.Fragment>)}
       </div>
     </div>
   );

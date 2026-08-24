@@ -4,9 +4,10 @@
 const { useState, useEffect, useRef } = React;
 
 /* ---------- BRAND MARKS (official logo files) ---------- */
-function LogoMain({ width = 200, light = false, style }) {
-  return <img src={light ? "assets/brand/logo-primary-white.png" : "assets/brand/logo-primary-transparent.png"} alt="Spacio AM"
-    style={{ width, height: "auto", display: "block", ...style }} />;
+function LogoMain({ width = 200, height, light = false, style }) {
+  const onErr = (e) => { const el = e.target; if (el.dataset.fb) return; el.dataset.fb = "1"; el.replaceWith(Object.assign(document.createElement("span"), { textContent: "SPACIO AM", style: "font-family:var(--serif),Georgia,serif;font-size:" + (height ? height * 0.6 : 22) + "px;letter-spacing:.14em;color:var(--ink,#3E3F3F);white-space:nowrap" })); };
+  return <img src={light ? "assets/brand/logo-primary-white.png" : "assets/brand/logo-primary-transparent.png"} alt="Spacio AM" onError={onErr}
+    style={height ? { height, width: "auto", display: "block", ...style } : { width, height: "auto", display: "block", ...style }} />;
 }
 function LogoS({ size = 40, light = false, style }) {
   return <img src={light ? "assets/brand/logo-monogram-white.png" : "assets/brand/logo-monogram.png"} alt="Spacio AM"

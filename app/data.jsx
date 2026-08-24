@@ -1136,7 +1136,7 @@ const Backend = {
   },
 
   async listInvoices() {    if (this.isConnected()) {
-      try { const j = await this.call("listInvoices"); return j.invoices || []; } catch (e) { return []; }
+      try { const j = await this.call("listInvoices"); const l = j.invoices || []; this._cacheList("invoices", l); return l; } catch (e) { return []; }
     }
     const s = typeof loadStore === "function" ? loadStore() : {};
     return (s.invoices || []).filter((i) => i.status !== "done").map((i, n) => ({ ...i, id: (i.at || n) + "|" + (i.code || "") }));
@@ -1205,10 +1205,14 @@ const Backend = {
     } catch (e) {}
   },
 
+  /* caché genérica de listas de seguimiento: pinta al instante, refresca detrás */
+  cachedList(key) { try { const o = JSON.parse(localStorage.getItem("spacioam_cache_" + key)); return o && Array.isArray(o.list) ? o.list : null; } catch (e) { return null; } },
+  _cacheList(key, list) { try { if (Array.isArray(list)) localStorage.setItem("spacioam_cache_" + key, JSON.stringify({ at: Date.now(), list })); } catch (e) {} },
+
   /* ---- solicitudes de nuevos invitados ---- */
   async listGuestAccess() {
     if (this.isConnected()) {
-      try { const j = await this.call("listGuestAccess"); return j.groups || []; } catch (e) { return null; }
+      try { const j = await this.call("listGuestAccess"); const l = j.groups || []; this._cacheList("gacc", l); return l; } catch (e) { return null; }
     }
     if (typeof loadStore !== "function") return [];
     return (loadStore().guestAccess || []).map((g, i) => ({
@@ -1242,7 +1246,7 @@ const Backend = {
   },
   async listStreaming() {
     if (this.isConnected()) {
-      try { const j = await this.call("listStreaming"); return j.items || []; } catch (e) { return null; }
+      try { const j = await this.call("listStreaming"); const l = j.items || []; this._cacheList("strm", l); return l; } catch (e) { return null; }
     }
     if (typeof loadStore !== "function") return [];
     return (loadStore().streaming || []).map((x, i) => ({ ...x, id: (x.at || i) + "|" + (x.code || ""), url: x.image || "" })).reverse();
@@ -1326,7 +1330,7 @@ const Backend = {
   },
   async listRequests() {
     if (!this.isConnected()) return null;
-    try { const j = await this.call("listRequests"); return j.requests || []; } catch (e) { return null; }
+    try { const j = await this.call("listRequests"); const l = j.requests || []; this._cacheList("reqs", l); return l; } catch (e) { return null; }
   },
   async listPropertyInfo() {
     if (!this.isConnected()) return null;

@@ -87,7 +87,16 @@ function BentoScreen({ t, res, siblings, onSwitch, firstName, emails, onSwitchLa
     }
     window.location.hash = k;
   };
+  const es = t.code === "es";
+  const [notiOpen, setNotiOpen] = useStateB(false);
+  const [notiDismiss, setNotiDismiss] = useStateB(() => { try { return JSON.parse(localStorage.getItem("spacioam_guest_notiDismiss") || "{}"); } catch (e) { return {}; } });
+  const guestNotis = (typeof buildGuestNotis === "function" ? buildGuestNotis(res, es) : []).filter((n) => !notiDismiss[n.id]);
+  const dismissGuestNoti = (n) => setNotiDismiss((p) => { const u = { ...p, [n.id]: 1 }; try { localStorage.setItem("spacioam_guest_notiDismiss", JSON.stringify(u)); } catch (e) {} return u; });
+  const guestUser = { name: firstName ? titleCaseName(firstName) : resName(res), avatar: "" };
   return (
+    <React.Fragment>
+      <AppHeader t={t} lang={t.code} onSwitchLang={onSwitchLang} user={guestUser} isAdmin={false} guest
+        notiTotal={guestNotis.length} onNotiOpen={() => setNotiOpen(true)} onLogout={onLogout} onBrand={onLogout} />
     <div style={{ minHeight: "100vh", background: C.alabaster, position: "relative", overflow: "hidden" }}>
       <div style={{ position: "absolute", top: -50, left: "50%", transform: "translateX(-50%)", width: "min(900px,150%)", height: 300, opacity: 0.4, pointerEvents: "none" }}>
         <FlowLine variant={2} width={62} />
@@ -104,15 +113,7 @@ function BentoScreen({ t, res, siblings, onSwitch, firstName, emails, onSwitchLa
             </h1>
             <p style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, margin: "10px 0 0", letterSpacing: "0.02em", lineHeight: 1.55, maxWidth: 340 }}>{t.bentoSub}</p>
           </div>
-          <div style={{ flexShrink: 0, paddingTop: 4, display: "flex", alignItems: "center", gap: 8 }}>
-            <button onClick={onSwitchLang} className="sp-langbtn">{t.code === "es" ? "EN" : "ES"}</button>
-            <button onClick={onLogout} className="sp-btn" title={t.logout} aria-label={t.logout}
-              style={{ display: "inline-flex", alignItems: "center", gap: 7, background: C.white, border: `1px solid ${C.grisCalido}`,
-                borderRadius: 999, padding: "8px 14px", cursor: "pointer", fontFamily: C.sans, fontSize: 10, letterSpacing: "0.12em",
-                textTransform: "uppercase", color: C.tierra, fontWeight: 500 }}>
-              <Icon name="logout" size={14} color={C.tierra} /> {t.logout}
-            </button>
-          </div>
+          <div style={{ flexShrink: 0, paddingTop: 4 }} />
         </div>
 
         {/* grid */}
@@ -128,7 +129,10 @@ function BentoScreen({ t, res, siblings, onSwitch, firstName, emails, onSwitchLa
           <p style={{ fontFamily: C.sans, fontSize: 10, letterSpacing: "0.06em", color: C.tierra, marginTop: 14 }}>hola@spacioam.com</p>
         </div>
       </div>
+      {window.NotiCenter && <NotiCenter open={notiOpen} onClose={() => setNotiOpen(false)} notis={guestNotis} onDismiss={dismissGuestNoti} es={es} />}
+      {window.NotiPush && <NotiPush notis={guestNotis} storeKey="spacioam_guest_notiSeen" onOpen={() => setNotiOpen(true)} es={es} />}
     </div>
+    </React.Fragment>
   );
 }
 

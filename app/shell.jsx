@@ -72,13 +72,11 @@ function AppHeader({ t, lang, onSwitchLang, user, isAdmin, guest, connected, syn
             <LogoMain height={34} />
           </button>
           <span aria-hidden="true" style={{ width: 1, height: 26, background: "var(--divider)", display: "inline-block", flexShrink: 0 }} />
-          {/* la campana SIEMPRE está presente; con pendientes usa el bell real (con badge) */}
-          {NBell && notiTotal > 0 ? <NBell total={notiTotal} onOpen={onNotiOpen} /> : (
+          {/* la campana SIEMPRE está presente (el triángulo); el badge peach sólo si hay pendientes */}
+          {NBell ? <NBell total={notiTotal || 0} onOpen={onNotiOpen} /> : (
             <button onClick={onNotiOpen} aria-label="Notificaciones" title={es ? "Notificaciones" : "Notifications"}
-              style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 40, height: 40, borderRadius: 999, border: "none", background: "transparent", cursor: "pointer", flexShrink: 0, padding: 0, color: "var(--fg-muted)" }}>
-              <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-                <path d="M18 8.5a6 6 0 1 0-12 0c0 5-2 6.5-2 6.5h16s-2-1.5-2-6.5z" /><path d="M10.5 20a1.8 1.8 0 0 0 3 0" />
-              </svg>
+              style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 40, height: 40, borderRadius: 999, border: "none", background: "transparent", cursor: "pointer", flexShrink: 0, padding: 0, color: "#0088FF" }}>
+              <svg width={23} height={23} viewBox="0 0 24 24" fill="none" stroke="#0088FF" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round"><path d="M12 3.2L2.4 19.6a1 1 0 00.87 1.5h17.46a1 1 0 00.87-1.5L12 3.2z" /><path d="M12 9v5" /><path d="M12 17.2v.05" /></svg>
             </button>
           )}
         </div>

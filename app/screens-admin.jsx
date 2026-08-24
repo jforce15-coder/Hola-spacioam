@@ -761,6 +761,9 @@ function buildAdminNotis({ roster, records, gacc, strm, alerts, formsFirst, es, 
     if (!done || !code) return;
     const ts = formsFirst[code]; if (!ts) return;
     if (Date.now() - ts > 7 * 86400000) return;   // solo avisos recientes
+    // solo si el check-in es hoy o mañana
+    const b = checkinBucket ? checkinBucket(h.checkin) : null;
+    if (b !== "today" && b !== "tomorrow") return;
     out.push({ id: "form|" + code, tipo: "accion", subcat: es ? "Registro completado" : "Form completed",
       texto: es ? ((h.guestName || h.propertyName || h.code) + " completó su registro.") : ((h.guestName || h.propertyName || h.code) + " completed their form."),
       contexto: [h.propertyName, h.checkin].filter(Boolean).join(" · "), ts, peso: 4000,

@@ -99,7 +99,7 @@ const T = {
   es: {
     code: "es", label: "Español",
     chooseLang: "Elige tu idioma",
-    slogan: "Hay espacios en donde sueñas con volver a despertar.",
+    slogan: "Hay espacios donde despertar se siente como un sueño.",
     reservationTitle: "Tu código de reserva",
     reservationSub: "Lo encuentras en el mensaje que te enviamos a través de la plataforma. Con él preparamos todo para tu llegada.",
     reservationPh: "Ej. HM54HBZMKH",

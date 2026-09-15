@@ -852,7 +852,7 @@ function StreamingQRBlock({ res, es }) {
     const reader = new FileReader();
     reader.onload = async () => {
       let img = String(reader.result || "");
-      try { if (typeof downscaleForAI === "function") img = await downscaleForAI(img, 140000); } catch (e) {}
+      try { if (typeof compressDocPhoto === "function") img = await compressDocPhoto(img, 260000); } catch (e) {}
       try {
         const r = await Backend.streamingRequest({ code: res.code, apartment: res.apartment || res.propertyName, image: img });
         setState(r && r.ok !== false ? "sent" : "fail");

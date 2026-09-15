@@ -1394,7 +1394,18 @@ const Backend = {
   },
   async submitForm(reservation, form) {
     if (!this.isConnected()) return { ok: false, offline: true };
-    return this.call("submitForm", { reservation, form });
+    // Reintenta: si el envío se corta (red del huésped, Drive lento), el
+    // registro se perdía y la reserva quedaba marcada sin datos que leer.
+    let last = null;
+    for (let i = 0; i < 3; i++) {
+      try {
+        const r = await this.call("submitForm", { reservation, form });
+        if (r && r.ok !== false) return r;
+        last = r;
+      } catch (e) { last = { ok: false, error: String((e && e.message) || e) }; }
+      if (i < 2) await new Promise((res) => setTimeout(res, 2500 * (i + 1)));
+    }
+    return last || { ok: false };
   },
   async createAccount(payload) {
     if (!this.isConnected()) return { ok: false, offline: true };

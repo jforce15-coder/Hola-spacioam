@@ -579,7 +579,7 @@ function ReservationSummary({ t, h, rec: localRec, onClose, onResend, autoPrint,
                     <div>{es ? "No pudimos leer el registro desde la base de datos." : "We couldn't read the registration from the database."}</div>
                     <div style={{ fontSize: 11, color: C.tierra, marginTop: 4 }}>
                       {recErr === "timeout" ? (es ? "La consulta tardó demasiado. Vuelve a abrir el resumen." : "The query timed out. Open the summary again.")
-                        : recErr === "not-found" ? (es ? "La reserva aún no tiene filas en ‘Formularios’/‘Huespedes’." : "No rows yet in ‘Formularios’/‘Huespedes’.")
+                        : recErr === "not-found" ? (es ? "El envío del huésped se cortó antes de guardar sus datos, así que no hay nada que mostrar. Reinicia el formulario para que lo llene de nuevo." : "The guest's submission was cut off before their data was saved, so there's nothing to show. Reset the form so they fill it in again.")
                         : recErr}
                     </div>
                     <button onClick={() => { setRecErr(""); setLoadingRec(true); Backend.getRegistration(h.code).then((r) => { setFetchedRec(r); setRecErr(r ? "" : (Backend._lastRegError || "not-found")); setLoadingRec(false); }); }}

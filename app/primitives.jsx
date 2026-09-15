@@ -238,6 +238,32 @@ async function downscaleForAI(dataUrl, budget = 180000) {
   } catch (e) { return dataUrl; }
 }
 
+/* Comprime la foto del documento UNA vez, al subirla, y esa versión es la que
+   se guarda y se envía. Antes se guardaba el original de cámara (3–6 MB): el
+   envío pesaba tanto que se cortaba, y el localStorage del huésped se llenaba.
+   1600px y q0.82 mantienen un documento perfectamente legible en ~300 KB. */
+async function compressDocPhoto(dataUrl, budget = 420000) {
+  try {
+    const img = await loadImg(dataUrl);
+    const draw = (maxDim, q) => {
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+      const w = Math.max(1, Math.round(img.width * scale)), h = Math.max(1, Math.round(img.height * scale));
+      const c = document.createElement("canvas"); c.width = w; c.height = h;
+      const ctx = c.getContext("2d");
+      ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(img, 0, 0, w, h);
+      return c.toDataURL("image/jpeg", q);
+    };
+    let du = dataUrl;
+    for (const [dim, q] of [[1600, 0.82], [1400, 0.78], [1200, 0.74], [1024, 0.7]]) {
+      du = draw(dim, q);
+      if (du.slice(du.indexOf(",") + 1).length < budget) break;
+    }
+    // si el original ya era más liviano que el resultado, se queda el original
+    return du.length < dataUrl.length ? du : dataUrl;
+  } catch (e) { return dataUrl; }
+}
+
 async function readDocumentAI(dataUrl) {
   const src = /^data:(.*?);base64,/.test(dataUrl || "") ? await downscaleForAI(dataUrl) : dataUrl;
   const m = /^data:(.*?);base64,(.*)$/.exec(src || "");
@@ -297,8 +323,12 @@ function DocUploader({ t, roleLabel, badge, badgeColor, doc, update }) {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = async () => {
+      // comprimir ANTES de guardar: esta versión es la que se muestra, se
+      // guarda en el dispositivo y se envía al backend.
       update({ file: file.name, dataUrl: reader.result, reading: true, error: null, manual: false, name: "", id: "" });
-      const res = await readDocumentAI(reader.result);
+      const small = await compressDocPhoto(reader.result);
+      update({ dataUrl: small });
+      const res = await readDocumentAI(small);
       if (res.ok) {
         update({ reading: false, error: null, name: res.name, id: res.id, isDocument: true });
       } else {
@@ -563,5 +593,5 @@ const Icon = ({ name, size = 22, color = C.negro, strokeWidth = 1.4 }) => {
 
 Object.assign(window, {
   LogoMain, LogoS, LogoStamp, Sparkle, FlowLine, Brush3D, WeaveHero, Grain, Btn, Field,
-  PhoneInput, DocUploader, readDocumentAI, Screen, TopBar, Steps, H, Alert, Spinner, Icon,
+  PhoneInput, DocUploader, readDocumentAI, compressDocPhoto, Screen, TopBar, Steps, H, Alert, Spinner, Icon,
 });

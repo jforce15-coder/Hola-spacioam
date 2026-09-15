@@ -1,0 +1,10 @@
+Capturas del tutorial de Airbnb
+================================
+
+Ya estan puestas (editadas con la marca Spacio AM, 760px de ancho):
+  airbnb-mensajes-w760.png    -> pantalla de Mensajes con la conversacion y el codigo
+  airbnb-trips-w760.png       -> "My trips" con la foto del anuncio
+  airbnb-your-stay-w760.png   -> "Your stay" con el boton "Message your host"
+
+Para cambiarlas, reemplaza el archivo con el mismo nombre. Si un archivo falta,
+el tutorial sigue funcionando: solo oculta esa imagen y deja el texto.

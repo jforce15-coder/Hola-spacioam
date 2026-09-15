@@ -93,6 +93,18 @@ function BentoScreen({ t, res, siblings, onSwitch, firstName, emails, onSwitchLa
   const guestNotis = (typeof buildGuestNotis === "function" ? buildGuestNotis(res, es) : []).filter((n) => !notiDismiss[n.id]);
   const dismissGuestNoti = (n) => setNotiDismiss((p) => { const u = { ...p, [n.id]: 1 }; try { localStorage.setItem("spacioam_guest_notiDismiss", JSON.stringify(u)); } catch (e) {} return u; });
   const guestUser = { name: firstName ? titleCaseName(firstName) : resName(res), avatar: "" };
+  /* Tutorial: obligatorio las 2 primeras sesiones de este dispositivo
+     (la 2a ya permite saltarlo). Después queda en el botón flotante. */
+  const [tourOpen, setTourOpen] = useStateB(false);
+  const [tourSess, setTourSess] = useStateB(0);
+  useEffectB(() => {
+    if (typeof tourState !== "function") return;
+    const s = tourState();
+    const n = (s.sessions || 0) + 1;
+    saveTourState({ ...s, sessions: n });
+    setTourSess(n);
+    if (n <= 2) { const tm = setTimeout(() => setTourOpen(true), 900); return () => clearTimeout(tm); }
+  }, []);
   return (
     <React.Fragment>
       <AppHeader t={t} lang={t.code} onSwitchLang={onSwitchLang} user={guestUser} isAdmin={false} guest
@@ -131,6 +143,12 @@ function BentoScreen({ t, res, siblings, onSwitch, firstName, emails, onSwitchLa
       </div>
       {window.NotiCenter && <NotiCenter open={notiOpen} onClose={() => setNotiOpen(false)} notis={guestNotis} onDismiss={dismissGuestNoti} es={es} />}
       {window.NotiPush && <NotiPush notis={guestNotis} storeKey="spacioam_guest_notiSeen" onOpen={() => setNotiOpen(true)} es={es} />}
+      {window.TutorialFab && !tourOpen && <TutorialFab t={t} onOpen={() => setTourOpen(true)} />}
+      {tourOpen && window.GuestTour && (
+        <GuestTour t={t} mandatory={tourSess <= 2} canSkip={tourSess !== 1}
+          onGoTile={(k) => openTile(k)}
+          onClose={() => { setTourOpen(false); if (typeof tourState === "function") saveTourState({ ...tourState(), done: true }); }} />
+      )}
     </div>
     </React.Fragment>
   );
@@ -579,12 +597,21 @@ function CheckinContent({ t, res }) {
               <p style={{ fontFamily: C.sans, fontSize: 11.5, color: C.negro, lineHeight: 1.6, margin: 0, letterSpacing: "0.01em" }}>{t.ckCodeNote}</p>
             </div>
           )}
+          <AirbnbCodeHelp t={t} />
         </div>
       ) : (
+        <React.Fragment>
         <p style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, lineHeight: 1.65, margin: "16px 0 0", letterSpacing: "0.02em" }}>
           {es ? "El acceso es con código digital. Encontrarás tu código en la misma plataforma donde hiciste la reserva (Airbnb, Booking, etc.)." : "Access is via a digital code. You'll find it on the same platform where you booked (Airbnb, Booking, etc.)."}
         </p>
+        <AirbnbCodeHelp t={t} />
+        </React.Fragment>
       )}
+
+      {/* ---------- PARQUEO (también vive aquí: es parte de la llegada) ---------- */}
+      <div style={{ marginTop: 26, borderTop: `1px solid ${C.grisCalido}`, paddingTop: 22 }}>
+        <ParqueoContent t={t} res={res} />
+      </div>
 
       {/* ---------- CHECK-OUT (pasos estándar + nota específica por propiedad) ---------- */}
       <div style={{ marginTop: 26, borderTop: `1px solid ${C.grisCalido}`, paddingTop: 22 }}>

@@ -9,7 +9,8 @@ const C = {
   beige:     "#F5F3F0",
   beigeDeep: "#ECD1BD",
   taupe:     "#B2A193",
-  tierra:    "#938B8A",
+  tierra:    "#6F6867",
+  earth:     "#938B8A",
   grisCalido:"#D8D4CE",
   negro:     "#3E3F3F",
   peach:     "#E9826A",
@@ -993,6 +994,7 @@ const Backend = {
   _timeoutFor(action, payload) {
     const p = payload || {};
     if (action === "getRegistration") return 30000;
+    if (action === "formCompleted") return 20000;
     if (action === "getDocImage") return 25000;
     if (action === "findReservation") {
       if (p.sync === "deep") return 210000;   // 60 días
@@ -1272,14 +1274,33 @@ const Backend = {
     if (!this.isConnected()) return { ok: true, offline: true };
     try { return await this.call("formStarted", { code }); } catch (e) { return { ok: false }; }
   },
+  /* el huésped terminó: marca 'completo' de inmediato (llamada mínima), antes
+     del envío grande. Reintenta: es lo que hace que el panel lo detecte ya. */
+  async formCompleted(code) {
+    if (!this.isConnected()) return { ok: true, offline: true };
+    for (let i = 0; i < 3; i++) {
+      try { const r = await this.call("formCompleted", { code }); if (r && r.ok) return r; } catch (e) {}
+      await new Promise((r) => setTimeout(r, 1200 * (i + 1)));
+    }
+    return { ok: false };
+  },
   async getRegistration(code) {
     // full registration data (Formularios + Huespedes) for a completed booking,
     // so the admin summary works even if it was filled on another device.
     // Las imágenes NO vienen aquí: se piden una por una con getDocImage.
+    // Reintenta solo: el admin no debería tener que presionar "reintentar".
     if (!this.isConnected()) return null;
     this._lastRegError = "";
-    try { const json = await this.call("getRegistration", { code }); return json.record || null; }
-    catch (e) { this._lastRegError = String((e && e.message) || e); return null; }
+    for (let i = 0; i < 3; i++) {
+      try {
+        const json = await this.call("getRegistration", { code });
+        if (json && json.record) return json.record;
+        this._lastRegError = (json && json.error) || "not-found";
+        if (this._lastRegError === "not-found") return null;
+      } catch (e) { this._lastRegError = String((e && e.message) || e); }
+      if (i < 2) await new Promise((r) => setTimeout(r, 900 * (i + 1)));
+    }
+    return null;
   },
   /* Documentos: caché en el dispositivo por fileId. Una vez visto un resumen,
      volver a abrirlo es instantáneo. Cabe poco en localStorage, así que

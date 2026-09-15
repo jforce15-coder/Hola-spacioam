@@ -524,6 +524,7 @@ const Icon = ({ name, size = 22, color = C.negro, strokeWidth = 1.4 }) => {
     upsells: <><path d="M12 2l2.4 5.6L20 9l-4 4.3.9 6.1L12 16.7 7.1 19.4 8 13.3 4 9l5.6-1.4z" /></>,
     selflove: <><path d="M12 21s-7-4.5-7-9.5A4 4 0 0 1 12 8a4 4 0 0 1 7 3.5C19 16.5 12 21 12 21z" /></>,
     check: <path d="M5 12l4 4 10-11" />,
+    help: <><circle cx="12" cy="12" r="9.2" /><path d="M9.2 9a2.9 2.9 0 1 1 4.2 2.6c-.9.5-1.4 1-1.4 1.9v.4" /><path d="M12 17.6v.05" /></>,
     arrow: <path d="M5 12h14M13 6l6 6-6 6" />,
     arrowLeft: <path d="M19 12H5M11 6l-6 6 6 6" />,
     copy: <><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h8" /></>,

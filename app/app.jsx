@@ -100,6 +100,46 @@ function bootState() {
   return { stage: loadStore().lang ? "code" : "lang", res: null };
 }
 
+/* ---------- AVISO DE REGISTRO COMPLETO (lightbox que se cierra solo) ----------
+   Reemplaza la pantalla intermedia: el huésped ya está en Mi espacio y este
+   aviso se retira a los 6 s o cuando él lo cierre. */
+function DoneLightbox({ t, onClose }) {
+  const [show, setShow] = useStateA(false);
+  const es = t.code === "es";
+  useEffectA(() => {
+    const a = requestAnimationFrame(() => setShow(true));
+    const tm = setTimeout(() => { setShow(false); setTimeout(onClose, 380); }, 6000);
+    return () => { cancelAnimationFrame(a); clearTimeout(tm); };
+  }, []);
+  const close = () => { setShow(false); setTimeout(onClose, 380); };
+  return (
+    <div onClick={close} style={{ position: "fixed", inset: 0, zIndex: 420, display: "grid", placeItems: "center", padding: 22,
+      background: "rgba(62,63,63,.55)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)",
+      opacity: show ? 1 : 0, transition: "opacity .36s var(--ease)" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(400px,94vw)", background: "var(--surface,#fff)", borderRadius: 28,
+        padding: "clamp(26px,6vw,34px)", textAlign: "center", boxShadow: "0 28px 80px rgba(62,63,63,.10)",
+        transform: show ? "none" : "translateY(12px)", transition: "transform .36s var(--ease)" }}>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
+          <span style={{ width: 54, height: 54, borderRadius: 999, background: "var(--accent-tint,rgba(233,130,106,.12))", display: "grid", placeItems: "center" }}>
+            <Icon name="check" size={26} color="var(--accent,#E9826A)" />
+          </span>
+        </div>
+        <div style={{ fontFamily: "var(--serif)", fontSize: 26, color: "var(--fg,#3E3F3F)", lineHeight: 1.12, letterSpacing: "-0.01em" }}>
+          {t.doneTitle || (es ? "Tu registro quedó listo" : "Your registration is complete")}
+        </div>
+        <p style={{ fontFamily: "var(--sans)", fontSize: 13, color: "var(--fg-muted,#6F6867)", lineHeight: 1.7, letterSpacing: "0.02em", margin: "10px 0 0" }}>
+          {es ? "Ya tienes todo en Mi espacio: llegada, Wi-Fi, parqueo y la guía de la casa."
+              : "Everything is in Mi espacio now: arrival, Wi-Fi, parking and the house guide."}
+        </p>
+        <button onClick={close} className="sp-btn" style={{ marginTop: 22, background: "var(--fg,#3E3F3F)", color: "var(--bg,#FAFAFA)", border: "none",
+          borderRadius: 999, padding: "13px 26px", fontFamily: "var(--sans)", fontSize: 11.5, letterSpacing: "0.14em", textTransform: "uppercase", cursor: "pointer", fontWeight: 500 }}>
+          {es ? "Ver mi espacio" : "See my space"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const boot = useRefA(bootState()).current;
   const [lang, setLang] = useStateA(loadStore().lang || (boot.stage !== "lang" ? "es" : null));
@@ -109,6 +149,7 @@ function App() {
   const [form, setForm] = useStateA(emptyForm(boot.res));
   const [tile, setTile] = useStateA(null);
   const [adminPreview, setAdminPreview] = useStateA(false);
+  const [doneToast, setDoneToast] = useStateA(false);
   const [acctOpen, setAcctOpen] = useStateA(false);
   const [acctNudge, setAcctNudge] = useStateA(false);
   const [inviteEmail, setInviteEmail] = useStateA("");
@@ -338,14 +379,21 @@ function App() {
       docsPurgeAt: purgeAt, docsPurged: false, docs: true,
     };
     saveStore({ ...store, records });
-    // send to backend (Sheets + Drive) — non-blocking; demo works offline
+    // 1) marca 'completo' YA (llamada mínima, con reintentos): el panel lo detecta
+    //    al instante aunque el envío grande (fotos + PDF + correos) tarde o falle.
+    try { Backend.formCompleted && Backend.formCompleted(res.code); } catch (e) {}
+    // 2) send to backend (Sheets + Drive) — non-blocking; demo works offline
     try {
       Backend.submitForm(
         { code: res.code, propertyName: res.propertyName, apartment: res.apartment, checkin: res.checkin, checkout: res.checkout, maxCapacity: res.maxCapacity },
         { booker: records[res.id].booker, guests, contact: form.contact, count: form.count, acceptedRulesAt: completedAt }
       ).catch(() => {});
     } catch (e) { /* offline / no endpoint */ }
-    setStage("done");
+    // 3) el huésped entra directo a Mi espacio; el aviso es un lightbox que se
+    //    cierra solo (antes había una pantalla intermedia con un botón).
+    saveSession(res);
+    setDoneToast(true);
+    goBento(res, siblings.length ? siblings : [res]);
   };
   const onDoneEnter = () => goBento(res, siblings.length ? siblings : [res]);
 
@@ -438,6 +486,7 @@ function App() {
         </div>
       )}
       <div style={adminPreview && stage !== "admin" ? { paddingTop: 38 } : undefined} key={stage + (tile || "") + (res?.id || "")}>{view}</div>
+      {doneToast && <DoneLightbox t={t} onClose={() => setDoneToast(false)} />}
       {acctNudge && !acctOpen && res && stage === "bento" && (
         <AccountNudge t={t} onOpen={() => { setAcctNudge(false); setAcctOpen(true); }} onDismiss={dismissAcct} />
       )}

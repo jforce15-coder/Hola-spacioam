@@ -2933,6 +2933,27 @@ function IncidentsBlock({ t, roster, sectionTitle, sectionNote, onCount }) {
   );
 }
 
+/* Valor copiable de un toque (mismo gesto que el código en Registros).
+   Al copiar va SOLO el valor — sin etiqueta y sin símbolo de moneda. */
+function CopyVal({ t, label, value, copyValue, wide }) {
+  const es = t.code === "es";
+  const [copied, setCopied] = useStateAd(false);
+  if (value === null || value === undefined || value === "") return null;
+  const raw = String(copyValue != null ? copyValue : value);
+  const copy = () => { try { navigator.clipboard.writeText(raw); setCopied(true); setTimeout(() => setCopied(false), 1400); } catch (e) {} };
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0, flex: wide ? "1 1 100%" : "0 1 auto" }}>
+      {label && <span style={{ flexShrink: 0, fontFamily: C.sans, fontSize: 8.5, letterSpacing: "0.16em", textTransform: "uppercase", color: C.tierra, fontWeight: 700 }}>{label}</span>}
+      <span style={{ fontFamily: C.sans, fontSize: 12.5, color: C.negro, letterSpacing: "0.03em", fontWeight: 500, minWidth: 0, overflowWrap: "anywhere" }}>{String(value)}</span>
+      <button onClick={copy} title={es ? "Copiar" : "Copy"} className="sp-btn"
+        style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: 7,
+          border: `1px solid ${C.grisCalido}`, background: copied ? "rgba(31,138,91,.12)" : C.white, cursor: "pointer", padding: 0 }}>
+        <Icon name={copied ? "check" : "copy"} size={12} color={copied ? "#1F8A5B" : C.tierra} />
+      </button>
+    </span>
+  );
+}
+
 function SeguimientoScreen({ t, roster, initialReqs, initialGacc, initialStrm }) {
   const store = typeof loadStore === "function" ? loadStore() : {};
   const es = t.code === "es";
@@ -3145,17 +3166,37 @@ function SeguimientoScreen({ t, roster, initialReqs, initialGacc, initialStrm })
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {(invoices || []).map((iv, i) => {
               const deadline = iv.deadline ? new Date(iv.deadline) : new Date((iv.at || Date.now()) + 5 * 86400000);
+              const n2 = (v) => Number(v).toFixed(2);
+              const money = (v) => Number(v).toLocaleString(es ? "es-GT" : "en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
               return card(
                 <div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontFamily: C.serif, fontSize: 16, color: C.negro }}>{iv.name || "—"}</div>
-                      <div style={{ fontFamily: C.sans, fontSize: 11, color: C.tierra, marginTop: 2 }}>NIT {iv.nit} · {iv.code}{iv.apartment ? " · " + iv.apartment : ""}</div>
-                      {iv.comment && <div style={{ fontFamily: C.sans, fontSize: 11, color: C.tierra, marginTop: 4, fontStyle: "italic" }}>{iv.comment}</div>}
+                      {iv.apartment && <div style={{ fontFamily: C.sans, fontSize: 11, color: C.tierra, marginTop: 2, letterSpacing: "0.02em" }}>{iv.apartment}</div>}
                     </div>
                     <span style={{ flexShrink: 0, fontFamily: C.sans, fontSize: 10, color: C.peach, background: "rgba(233,130,106,.12)", borderRadius: 999, padding: "5px 11px", letterSpacing: "0.03em", fontWeight: 600 }}>
                       {t.segDeadline}: {deadline.toISOString().slice(0, 10)}
                     </span>
+                  </div>
+
+                  {/* datos copiables de un toque */}
+                  <div style={{ marginTop: 12, background: C.beige, borderRadius: 12, padding: "12px 14px", display: "flex", flexWrap: "wrap", gap: "10px 22px" }}>
+                    <CopyVal t={t} label={es ? "Reserva" : "Code"} value={iv.code} />
+                    <CopyVal t={t} label="NIT" value={iv.nit} />
+                    {iv.amountGtq != null && <CopyVal t={t} label={es ? "Monto" : "Amount"} value={`Q ${money(iv.amountGtq)}`} copyValue={n2(iv.amountGtq)} />}
+                    {iv.amountUsd != null && <CopyVal t={t} label="USD" value={`$ ${money(iv.amountUsd)}`} copyValue={n2(iv.amountUsd)} />}
+                    {iv.comment && <CopyVal t={t} wide label={es ? "Descripción" : "Description"} value={iv.comment} />}
+                    {iv.amountGtq != null && iv.fxRate && (
+                      <span style={{ flex: "1 1 100%", fontFamily: C.sans, fontSize: 10, color: C.tierra, letterSpacing: "0.04em" }}>
+                        {(es ? "Tipo de cambio " : "Exchange rate ")}{Number(iv.fxRate).toFixed(5)}{iv.fxSource ? ` · ${iv.fxSource}` : ""}{iv.fxDate ? ` · ${iv.fxDate}` : ""}
+                      </span>
+                    )}
+                    {iv.amountGtq == null && (
+                      <span style={{ flex: "1 1 100%", fontFamily: C.sans, fontSize: 10.5, color: C.tierra, letterSpacing: "0.02em" }}>
+                        {es ? "Monto no disponible para esta reserva — se toma del pago registrado en Hospitable." : "No amount available for this reservation."}
+                      </span>
+                    )}
                   </div>
                   <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                     <InvoiceNotifyButton t={t} iv={iv} onDone={reloadInvoices} />

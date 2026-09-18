@@ -701,9 +701,13 @@ function ParqueoContent({ t, res }) {
   const kindLabel = { own: t.parkOwn, "pay-us": t.parkPayUs, "pay-building": t.parkPayBuilding, external: t.parkExternal, street: t.parkExternal };
   if (piPark) {
     const yes = pi.hasParking === "yes";
-    const note = (stdc && stdc.parking) || pi.parkNote
-      || (yes ? ((es ? "Parqueo asignado" : "Assigned parking") + (pi.parkNumber ? ` · ${pi.parkNumber}` : ""))
-             : (pi.parkExtInfo || (es ? "Este alojamiento no cuenta con parqueo propio." : "This property has no private parking.")));
+    // PRIORIDAD: lo registrado para ESTA propiedad manda sobre el texto estándar.
+    // Antes el estándar iba primero y un apartamento con parqueo asignado veía
+    // el texto genérico de renta por noche, que no le corresponde.
+    const note = yes
+      ? [(es ? "Parqueo asignado" : "Assigned parking") + (pi.parkNumber ? ` · ${pi.parkNumber}` : ""), pi.parkNote].filter(Boolean).join("\n")
+      : (pi.parkNote || pi.parkExtInfo || (stdc && stdc.parking)
+         || (es ? "Este alojamiento no cuenta con parqueo propio." : "This property has no private parking."));
     return (
       <div style={{ paddingTop: 14 }}>
         <div style={{ background: C.beige, borderRadius: 14, padding: "16px 18px" }}>

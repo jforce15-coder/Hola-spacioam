@@ -2548,22 +2548,61 @@ function renderPropertyTree(names, renderProp, es, openKey, missingCount) {
 /* ============================================================
    SEGUIMIENTO — pendientes hoy, facturas, día adicional, early
    ============================================================ */
-/* botón admin: avisar al huésped que la factura está lista */
+/* botón admin: adjuntar la factura y avisar al huésped.
+   El archivo (PDF o imagen) viaja adjunto en el correo y queda guardado en la
+   carpeta "Facturas" de Drive. Sin archivo, el aviso se envía igual. */
 function InvoiceNotifyButton({ t, iv, onDone }) {
-  const [state, setState] = useStateAd(""); // "" | sending | done | fail
+  const es = t.code === "es";
+  const [state, setState] = useStateAd("");   // "" | sending | done | fail
+  const [file, setFile] = useStateAd(null);   // { name, mime, data }
+  const [err, setErr] = useStateAd("");
+  const inputRef = React.useRef(null);
+  const pick = (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!f) return;
+    if (f.size > 8 * 1024 * 1024) { setErr(es ? "El archivo pesa más de 8 MB." : "File is larger than 8 MB."); return; }
+    setErr("");
+    const fr = new FileReader();
+    fr.onload = () => setFile({ name: f.name, mime: f.type || "application/pdf", data: String(fr.result) });
+    fr.onerror = () => setErr(es ? "No pudimos leer el archivo." : "Couldn't read the file.");
+    fr.readAsDataURL(f);
+  };
   const notify = () => {
-    setState("sending");
-    Backend.call("notifyInvoiceReady", { code: iv.code, apartment: iv.apartment })
-      .then((r) => { setState(r && r.ok ? "done" : "fail"); if (r && r.ok && onDone) setTimeout(onDone, 900); })
+    setState("sending"); setErr("");
+    Backend.call("notifyInvoiceReady", { code: iv.code, apartment: iv.apartment, file: file || null })
+      .then((r) => {
+        if (r && r.ok) { setState("done"); if (onDone) setTimeout(onDone, 900); }
+        else { setState("fail"); setErr(r && r.error === "sin-correo-huesped" ? (es ? "Esta reserva no tiene correo del huésped." : "No guest email on file.") : ""); }
+      })
       .catch(() => setState("fail"));
   };
   if (state === "done") return <span style={{ fontFamily: C.sans, fontSize: 11, color: "#1F8A5B", letterSpacing: "0.02em", display: "inline-flex", alignItems: "center", gap: 6 }}><Icon name="check" size={14} color="#1F8A5B" /> {t.segInvoiceSent}</span>;
   return (
-    <button onClick={notify} disabled={state === "sending"} className="sp-btn"
-      style={{ background: C.negro, color: C.alabaster, border: "none", borderRadius: 10, padding: "8px 14px",
-        fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.05em", cursor: "pointer", fontWeight: 500, display: "inline-flex", alignItems: "center", gap: 7 }}>
-      <Icon name="mail" size={13} color={C.alabaster} /> {state === "sending" ? t.segInvoiceSending : (state === "fail" ? t.hospFail : t.segInvoiceReady)}
-    </button>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+      <input ref={inputRef} type="file" accept="application/pdf,image/*" onChange={pick} style={{ display: "none" }} />
+      {file ? (
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 7, background: C.beige, border: `1px solid ${C.grisCalido}`, borderRadius: 999, padding: "6px 12px", maxWidth: 240 }}>
+          <Icon name="factura" size={13} color={C.peach} />
+          <span style={{ fontFamily: C.sans, fontSize: 10.5, color: C.negro, letterSpacing: "0.02em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.name}</span>
+          <button onClick={() => setFile(null)} title={es ? "Quitar" : "Remove"} className="sp-btn" style={{ border: "none", background: "transparent", cursor: "pointer", padding: 0, display: "inline-flex" }}>
+            <Icon name="x" size={12} color={C.tierra} />
+          </button>
+        </span>
+      ) : (
+        <button onClick={() => inputRef.current && inputRef.current.click()} className="sp-btn"
+          style={{ background: C.white, color: C.negro, border: `1px solid ${C.grisCalido}`, borderRadius: 10, padding: "8px 14px",
+            fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.05em", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 7 }}>
+          <Icon name="upload" size={13} color={C.tierra} /> {es ? "Adjuntar factura" : "Attach invoice"}
+        </button>
+      )}
+      <button onClick={notify} disabled={state === "sending"} className="sp-btn"
+        style={{ background: C.negro, color: C.alabaster, border: "none", borderRadius: 10, padding: "8px 14px",
+          fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.05em", cursor: "pointer", fontWeight: 500, display: "inline-flex", alignItems: "center", gap: 7 }}>
+        <Icon name="mail" size={13} color={C.alabaster} /> {state === "sending" ? t.segInvoiceSending : (state === "fail" ? t.hospFail : (file ? (es ? "Enviar factura y marcar lista" : "Send invoice & mark ready") : t.segInvoiceReady))}
+      </button>
+      {err && <span style={{ fontFamily: C.sans, fontSize: 10.5, color: C.peach, letterSpacing: "0.02em" }}>{err}</span>}
+    </span>
   );
 }
 
@@ -2980,7 +3019,7 @@ function SeguimientoScreen({ t, roster, initialReqs, initialGacc, initialStrm })
       setReqs((loadStore().hostRequests || []).map((r) => ({ ...r, decision: null })));
     }
   };
-  useEffectAd(() => { reload(); }, [connected]);
+  useEffectAd(() => { if (!connected) reload(); }, [connected]);
   // decisión efectiva: la del backend, o la marca local como respaldo
   const decisionOf = (r) => r.decision || (marks[reqKey(r)] && marks[reqKey(r)].decision) || null;
   // aprobar / rechazar → registra y avisa al huésped por correo
@@ -3008,21 +3047,40 @@ function SeguimientoScreen({ t, roster, initialReqs, initialGacc, initialStrm })
   };
   // documento más viejo + retención (control de almacenamiento)
   const [stor, setStor] = useStateAd(null);
-  useEffectAd(() => {
+  const [storBusy, setStorBusy] = useStateAd(false);
+  const refreshStor = () => {
     if (!(Backend.isConnected && Backend.isConnected() && Backend.storageStats)) return;
-    Backend.storageStats().then((s) => { if (s && s.ok) setStor(s); }).catch(() => {});
-  }, []);
+    setStorBusy(true);
+    Backend.storageStats({ fresh: true }).then((s) => { if (s && s.ok) setStor(s); }).catch(() => {}).then(() => setStorBusy(false));
+  };
   // solicitudes de nuevos invitados (pestaña Invitados) y fotos de QR de streaming
   const [gacc, setGacc] = useStateAd(initialGacc || (Backend.cachedList && Backend.cachedList("gacc")) || null);
   const [strm, setStrm] = useStateAd(initialStrm || (Backend.cachedList && Backend.cachedList("strm")) || null);
   const [gaBusy, setGaBusy] = useStateAd("");
   const reloadGacc = () => { if (Backend.listGuestAccess) Backend.listGuestAccess().then((l) => { if (l) setGacc(l); }).catch(() => {}); };
   const reloadStrm = () => { if (Backend.listStreaming) Backend.listStreaming().then((l) => { if (l) setStrm(l); }).catch(() => {}); };
-  useEffectAd(() => { reloadGacc(); reloadStrm(); }, [connected]);
   // facturas: de la hoja (mismo origen que el contador de alertas), no de localStorage
   const [invoices, setInvoices] = useStateAd(() => (Backend.cachedList && Backend.cachedList("invoices")) || null);
   const reloadInvoices = () => Backend.listInvoices().then((l) => setInvoices(l || [])).catch(() => setInvoices([]));
-  useEffectAd(() => { reloadInvoices(); }, []);
+  // UNA sola llamada para toda la pestaña: antes eran cinco encadenadas
+  // (solicitudes, invitados, streaming, facturas, almacenamiento) y cada una
+  // es un viaje completo a Apps Script.
+  const [loadingAll, setLoadingAll] = useStateAd(true);
+  useEffectAd(() => {
+    let alive = true;
+    const fallback = () => { reload(); reloadGacc(); reloadStrm(); reloadInvoices(); };
+    if (connected && Backend.seguimientoAll) {
+      Backend.seguimientoAll().then((j) => {
+        if (!alive) return;
+        setLoadingAll(false);
+        if (!j) { fallback(); return; }
+        setReqs(j.requests || []); setGacc(j.gacc || []); setStrm(j.streaming || []);
+        setInvoices(j.invoices || []);
+        if (j.storage && j.storage.ok) setStor(j.storage);
+      }).catch(() => { if (alive) { setLoadingAll(false); fallback(); } });
+    } else { setLoadingAll(false); fallback(); }
+    return () => { alive = false; };
+  }, [connected]);
   // fecha de check-in / checkout por código (para mostrar y para caducar solicitudes)
   const infoOf = (code) => (roster || []).find((x) => normCode(x.code) === normCode(code)) || {};
   const todayISO = new Date().toISOString().slice(0, 10);
@@ -3139,19 +3197,33 @@ function SeguimientoScreen({ t, roster, initialReqs, initialGacc, initialStrm })
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 26 }}>
-      {stor && (
+      {(stor || (connected && loadingAll)) && (
         <section>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "0 0 12px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "0 0 12px", flexWrap: "wrap" }}>
             <Icon name="lock" size={17} color={C.peach} />
             <span style={{ fontFamily: C.serif, fontSize: 20, color: C.negro }}>{t.storTitle}</span>
+            {stor && (
+              <button onClick={refreshStor} disabled={storBusy} className="sp-btn"
+                style={{ marginLeft: "auto", background: C.white, color: C.negro, border: `1px solid ${C.grisCalido}`, borderRadius: 999,
+                  padding: "6px 12px", fontFamily: C.sans, fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase",
+                  cursor: storBusy ? "wait" : "pointer", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 7, opacity: storBusy ? 0.6 : 1 }}>
+                {storBusy ? <Spinner color={C.taupe} /> : <Icon name="refresh" size={13} color={C.tierra} />}
+                {es ? "Actualizar" : "Refresh"}
+              </button>
+            )}
           </div>
-          {stor.stored > 0 ? (
+          {!stor ? (
+            <div style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 14, padding: "18px 20px",
+              fontFamily: C.sans, fontSize: 12, color: C.tierra, letterSpacing: "0.02em", display: "inline-flex", alignItems: "center", gap: 9 }}>
+              <Spinner color={C.taupe} /> {t.reading}
+            </div>
+          ) : stor.stored > 0 ? (
             <div style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 14, padding: "18px 20px",
               display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 18 }}>
               {storStat(t.storOldest, stor.oldest ? fmtDate(stor.oldest) : "—")}
               {storStat(t.storAge, stor.oldestAgeDays != null ? `${stor.oldestAgeDays} ${t.storDays}` : "—", true)}
               {storStat(t.storStored, String(stor.stored))}
-              {storStat(es ? "Memoria" : "Storage", stor.bytes != null ? fmtBytes(stor.bytes) : "—", true)}
+              {storStat(es ? "Memoria" : "Storage", stor.bytes != null ? (stor.bytesPartial ? "≈ " : "") + fmtBytes(stor.bytes) : "—", true)}
               {storStat(t.storNextPurge, stor.nextPurge ? fmtDate(stor.nextPurge) : "—")}
               {storStat(t.storRetention, `${stor.retentionMonths} ${t.storMonths}`)}
             </div>

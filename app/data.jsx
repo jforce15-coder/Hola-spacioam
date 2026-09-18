@@ -1346,9 +1346,24 @@ const Backend = {
     if (!this.isConnected()) return null;
     try { return await this.call("listContacts"); } catch (e) { return null; }
   },
-  async storageStats() {
+  async storageStats(opts) {
     if (!this.isConnected()) return null;
-    try { return await this.call("storageStats"); } catch (e) { return null; }
+    try { return await this.call("storageStats", opts || {}); } catch (e) { return null; }
+  },
+  /* Seguimiento completo en UNA sola llamada: solicitudes + invitados +
+     streaming + facturas + almacenamiento. Cinco viajes a Apps Script eran la
+     razón por la que la pestaña tardaba tanto en pintar. */
+  async seguimientoAll() {
+    if (!this.isConnected()) return null;
+    try {
+      const j = await this.call("seguimientoAll");
+      if (!j || !j.ok) return null;
+      this._cacheList("reqs", j.requests || []);
+      this._cacheList("gacc", j.gacc || []);
+      this._cacheList("strm", j.streaming || []);
+      this._cacheList("invoices", j.invoices || []);
+      return j;
+    } catch (e) { return null; }
   },
   async hostRequestResolve(payload) {
     if (!this.isConnected()) return { ok: false, offline: true };

@@ -27,6 +27,7 @@ function LtGuestScreen({ t, token, onSwitchLang }) {
   const es = t.code === "es";
   const [lt, setLt] = useStateLt(() => (Backend.ltGuestCached && Backend.ltGuestCached(token)) || undefined);   // pinta al instante lo último visto
   const [concepto, setConcepto] = useStateLt("renta");
+  const [modo, setModo] = useStateLt("uno");   // uno · varios
   const [sel, setSel] = useStateLt([]);
   const [files, setFiles] = useStateLt([]);
   const [ref, setRef] = useStateLt("");
@@ -41,7 +42,12 @@ function LtGuestScreen({ t, token, onSwitchLang }) {
   const load = () => Backend.ltGuest(token).then((r) => setLt((prev) => r && r.ok ? r.lt : (r && r.error === "invalid") || !prev ? null : prev)).catch(() => setLt((prev) => prev || null));
   useEffectLt(() => { load(); const id = setInterval(() => { if (!document.hidden && !busy) load(); }, 60000); return () => clearInterval(id); }, [token]);
   const today = new Date().toLocaleDateString("en-CA");
-  const pagos = (lt && lt.pagos) || [];
+  // defensa: si llegan periodos repetidos, se muestra uno por periodo (el más avanzado)
+  const pagos = useMemoLt(() => {
+    const rk = (p) => ({ verificado: 5, revision: 4, rechazado: 1 }[p.estado] || (p.compId ? 3 : 0)), m = new Map();
+    ((lt && lt.pagos) || []).forEach((p) => { const k = p.concepto + "|" + String(p.inicio || p.periodo).slice(0, 10), b = m.get(k); if (!b || rk(p) > rk(b)) m.set(k, p); });
+    return [...m.values()].sort((a, b) => String(a.vence).localeCompare(String(b.vence)));
+  }, [lt]);
   const isOpen = (p) => ["pendiente", "vencido", "rechazado"].includes(p.estado);
   const payable = (p) => isOpen(p) && (p.concepto !== "luz" || p.inicio <= today);   // luz: sin monto fijo, se paga cuando llega el recibo
   const luzOpen = pagos.filter((p) => p.concepto === "luz" && payable(p));
@@ -125,7 +131,13 @@ function LtGuestScreen({ t, token, onSwitchLang }) {
             </div>}
           </div>
           {!totalOpen && <div style={{ display: "flex", alignItems: "center", gap: 10, fontFamily: C.sans, fontSize: 14, color: "#3d6b52" }}><Icon name="check" size={18} color="#3d6b52" strokeWidth={1.5} />{t.lt.gAllClear}</div>}
-          {list.length > 0 && <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+          {concepto === "renta" && list.length > 1 && <div style={{ display: "inline-flex", alignSelf: "flex-start", background: C.beige, borderRadius: 999, padding: 3, marginBottom: 16 }}>
+            {[["uno", t.lt.bOne], ["varios", t.lt.bMany]].map(([k, l]) => <button key={k} onClick={() => setModo(k)} className="sp-btn"
+              style={{ border: "none", cursor: "pointer", borderRadius: 999, padding: "8px 16px", minHeight: 36, fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", fontWeight: 600,
+                background: modo === k ? C.white : "transparent", color: C.negro, boxShadow: modo === k ? "0 1px 2px rgba(62,63,63,.08)" : "none" }}>{l}</button>)}
+          </div>}
+          {concepto === "renta" && modo === "varios" && list.length > 1 && <LtBatch t={t} es={es} token={token} cur={cur} periods={list} onDone={(x) => { if (x) setLt(x); else load(); }} />}
+          {list.length > 0 && !(concepto === "renta" && modo === "varios" && list.length > 1) && <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
             {concepto === "luz" && <div style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, display: "flex", gap: 8, alignItems: "center" }}><Icon name="zap" size={15} color={C.peach} strokeWidth={1.5} />{t.lt.gLuzNote}</div>}
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <span style={ltLabel}>{t.lt.gSelect}</span>

@@ -275,6 +275,7 @@ function LtDetail({ t, es, code, seed, onClose, onChanged, onEdit, onToast, onDe
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <LtPill small icon="link" onClick={copyLink} disabled={lt.estado === "terminada"}>{t.lt.copyLink}</LtPill>
+        {lt.url && lt.estado !== "terminada" && <LtPill small icon="eye" onClick={() => window.open(lt.url, "_blank", "noopener")}>{es ? "Ver como huésped" : "View as guest"}</LtPill>}
         <LtPill small icon="mail" tone="accent" onClick={() => setSendOpen(true)} disabled={lt.estado === "terminada"}>{t.lt.sendLink}</LtPill>
         <LtPill small icon="refresh" onClick={() => setConfirmRegen(true)} disabled={lt.estado === "terminada"}>{t.lt.regen}</LtPill>
         {lt.guest.docFileId && <LtPill small icon="image" onClick={() => setFile(lt.guest.docFileId)}>{t.lt.docImg}</LtPill>}

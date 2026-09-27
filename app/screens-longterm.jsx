@@ -15,21 +15,34 @@ function LtEditModal({ t, es, initial, properties, onClose, onSaved }) {
   const [f, setF] = useStateLt(() => JSON.parse(JSON.stringify(initial || ltEmpty())));
   const [busy, setBusy] = useStateLt(false);
   const [err, setErr] = useStateLt("");
+  const busyRef = React.useRef(false);
+  const reqId = React.useRef("r" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8));   // mismo id en reintentos → nunca duplica
+  const close = () => { if (!busyRef.current) onClose(); };
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
   const setG = (k, v) => setF((p) => ({ ...p, guest: { ...p.guest, [k]: v } }));
   const valid = f.propertyName && f.entrada && +f.monto > 0 && (f.tipoFin === "indefinido" || f.salida > f.entrada) && (f.frecuencia !== "personalizado" || +f.cadaDias > 0);
   const save = async () => {
     if (!valid) { setErr(es ? "Completa propiedad, fechas y monto." : "Fill in property, dates and amount."); return; }
-    setBusy(true); setErr("");
-    const r = await Backend.ltSave({ ...f, monto: +f.monto, diaCobro: Math.max(1, Math.min(31, +f.diaCobro || 1)), cadaDias: Math.max(1, +f.cadaDias || 30) });
-    setBusy(false);
-    if (!r || !r.ok) { setErr((es ? "No se pudo guardar" : "Could not save") + (r && r.error ? " · " + r.error : "")); return; }
-    onSaved(r);
+    if (busyRef.current) return;
+    busyRef.current = true; setBusy(true); setErr("");
+    const r = await Backend.ltSave({ ...f, reqId: reqId.current, monto: +f.monto, diaCobro: Math.max(1, Math.min(31, +f.diaCobro || 1)), cadaDias: Math.max(1, +f.cadaDias || 30) });
+    busyRef.current = false; setBusy(false);
+    if (!r || !r.ok) { setErr((es ? "No se pudo confirmar el guardado" : "Could not confirm the save") + (r && r.error ? " · " + r.error : "") + ". " + t.lt.retrySafe); return; }
+    onSaved(r, !initial);
   };
   const g2 = { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 14 };
-  return <LtModal title={initial ? t.lt.edit + " · " + initial.code : t.lt.newRes} onClose={onClose} wide
-    footer={<><LtPill onClick={onClose}>{t.lt.cancel}</LtPill><LtPill tone="solid" icon="check" onClick={save} disabled={busy}>{busy ? t.lt.saving : t.lt.save}</LtPill></>}>
-    <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+  return <LtModal title={initial ? t.lt.edit + " · " + initial.code : t.lt.newRes} onClose={close} wide
+    footer={<><LtPill onClick={close} disabled={busy}>{t.lt.cancel}</LtPill><LtPill tone="solid" icon="check" onClick={save} disabled={busy}>{busy ? t.lt.saving : t.lt.save}</LtPill></>}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 22, position: "relative" }}>
+      {busy && <div style={{ position: "absolute", inset: -8, zIndex: 3, background: "rgba(255,255,255,.82)", borderRadius: 14, display: "flex", alignItems: "flex-start", justifyContent: "center", paddingTop: 80 }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, maxWidth: 320, textAlign: "center" }}>
+          <div style={{ width: 160, height: 3, borderRadius: 999, background: C.beige, overflow: "hidden", position: "relative" }}>
+            <div style={{ position: "absolute", top: 0, bottom: 0, width: "40%", borderRadius: 999, background: C.peach, animation: "lt-slide 1.2s " + C.ease + " infinite" }}></div></div>
+          <div style={{ fontFamily: C.sans, fontSize: 13, color: C.negro }}>{t.lt.savingLong}</div>
+          <div style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra, lineHeight: 1.5 }}>{t.lt.savingHint}</div>
+        </div>
+        <style>{"@keyframes lt-slide{0%{left:-40%}100%{left:100%}}"}</style>
+      </div>}
       <section style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={{ ...ltLabel, color: C.negro }}>{t.lt.stay}</div>
         <div style={g2}>
@@ -179,7 +192,8 @@ function LtPayRow({ t, es, p, first, c, busy, onFile, onVerify, onAdjust }) {
   </div>;
 }
 
-function LtDetail({ t, es, code, onClose, onChanged, onEdit, onToast }) {
+function LtDetail({ t, es, code, onClose, onChanged, onEdit, onToast, onDeleted }) {
+  const [confirmDel, setConfirmDel] = useStateLt(false);
   const [lt, setLt] = useStateLt(null);
   const [busy, setBusy] = useStateLt(false);
   const [file, setFile] = useStateLt(null);
@@ -193,6 +207,11 @@ function LtDetail({ t, es, code, onClose, onChanged, onEdit, onToast }) {
   const copyLink = async () => { const r = await Backend.ltLink(code); if (r && r.url) { try { await navigator.clipboard.writeText(r.url); } catch (e) {} onToast(t.lt.copied); } };
   const regen = async () => { setConfirmRegen(false); const r = await Backend.ltToken(code); if (r && r.url) { try { await navigator.clipboard.writeText(r.url); } catch (e) {} onToast(t.lt.copied); } };
   const endStay = async () => { setBusy(true); apply(await Backend.ltEnd(code, lt.estado === "terminada")); setBusy(false); };
+  const del = async () => {
+    setBusy(true); const r = await Backend.ltDelete(code); setBusy(false);
+    if (r && r.ok) { onToast(t.lt.deleted + " · " + code); onDeleted && onDeleted(code); }
+    else onToast((es ? "No se pudo eliminar" : "Could not delete") + (r && r.error ? " · " + r.error : ""));
+  };
   if (!lt) return <LtModal title={code} onClose={onClose} wide><div style={{ height: 280, borderRadius: 14, background: C.beige }}></div></LtModal>;
   const compOf = (p) => (lt.comprobantes || []).find((c) => c.id === p.compId);
   const tabs = [["periods", t.lt.periods], ["messages", t.lt.messages + (lt.unread ? " · " + lt.unread : "")], ["log", t.lt.log]];
@@ -227,7 +246,13 @@ function LtDetail({ t, es, code, onClose, onChanged, onEdit, onToast }) {
         {lt.guest.docFileId && <LtPill small icon="image" onClick={() => setFile(lt.guest.docFileId)}>{t.lt.docImg}</LtPill>}
         <LtPill small icon="edit" onClick={() => onEdit(lt)}>{t.lt.edit}</LtPill>
         <LtPill small tone={lt.estado === "terminada" ? "ghost" : "danger"} onClick={endStay} disabled={busy}>{lt.estado === "terminada" ? t.lt.reopen : t.lt.end}</LtPill>
+        <LtPill small icon="trash" tone="danger" onClick={() => setConfirmDel(true)} disabled={busy}>{t.lt.del}</LtPill>
       </div>
+      {confirmDel && <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", border: "1px solid rgba(192,57,43,.35)", background: "rgba(192,57,43,.05)", borderRadius: 14, padding: "12px 14px" }}>
+        <span style={{ fontFamily: C.sans, fontSize: 13, color: C.negro, flex: "1 1 220px", lineHeight: 1.5 }}>{t.lt.delWarn}</span>
+        <LtPill small onClick={() => setConfirmDel(false)} disabled={busy}>{t.lt.cancel}</LtPill>
+        <LtPill small tone="danger" onClick={del} disabled={busy}>{busy ? t.lt.deleting : t.lt.delConfirm}</LtPill>
+      </div>}
       {confirmRegen && <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", border: `1px solid ${C.peach}`, background: "rgba(233,130,106,.08)", borderRadius: 14, padding: "12px 14px" }}>
         <span style={{ fontFamily: C.sans, fontSize: 13, color: C.negro, flex: "1 1 200px" }}>{t.lt.regenWarn}</span>
         <LtPill small onClick={() => setConfirmRegen(false)}>{t.lt.cancel}</LtPill><LtPill small tone="solid" onClick={regen}>{t.lt.regen}</LtPill>
@@ -288,9 +313,10 @@ function LongTermScreen({ t, roster, onToast, openCode, onOpened }) {
   }).sort((a, b) => (b.counts.revision - a.counts.revision) || (b.counts.vencido - a.counts.vencido) || (b.unread - a.unread) || String((a.next || {}).vence || "9").localeCompare(String((b.next || {}).vence || "9")));
   const act = (list || []).filter((l) => l.estado === "activa");
   const sum = (k) => act.reduce((n, l) => n + (l.counts[k] || 0), 0);
-  const onSaved = (r) => {
+  const onSaved = (r, isNew) => {
     setEdit(null); load();
-    if (r.url) { try { navigator.clipboard.writeText(r.url); } catch (e) {} onToast(t.lt.copied); }
+    if (r.url) { try { navigator.clipboard.writeText(r.url); } catch (e) {} onToast((isNew ? t.lt.created + " · " : "") + t.lt.copied); }
+    else onToast(isNew ? t.lt.created : t.lt.savedOk);
     if (r.lt) { setOpen(r.lt.code); setVer((v) => v + 1); }
   };
   return <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -341,7 +367,8 @@ function LongTermScreen({ t, roster, onToast, openCode, onOpened }) {
           <LtBadge t={t} estado={l.estado === "terminada" ? "terminada" : flag} />
         </button>; })}
     </div>}
-    {open && <LtDetail key={open + "|" + ver} t={t} es={es} code={open} onClose={() => setOpen("")} onChanged={load} onToast={onToast} onEdit={(lt) => setEdit(lt)} />}
+    {open && <LtDetail key={open + "|" + ver} t={t} es={es} code={open} onClose={() => setOpen("")} onChanged={load} onToast={onToast} onEdit={(lt) => setEdit(lt)}
+      onDeleted={(c) => { setOpen(""); setList((p) => (p || []).filter((l) => l.code !== c)); load(); }} />}
     {edit && <LtEditModal t={t} es={es} initial={edit === "new" ? null : edit} properties={properties} onClose={() => setEdit(null)} onSaved={onSaved} />}
   </div>;
 }

@@ -1463,6 +1463,11 @@ const LT_T_ES = {
   verify: "Verificar", reject: "Rechazar", reason: "Motivo del rechazo", viewProof: "Ver comprobante", reply: "Escribe una respuesta", send: "Enviar",
   copyLink: "Copiar enlace", sendLink: "Enviar enlace", regen: "Regenerar enlace", regenWarn: "El enlace anterior dejará de funcionar.",
   copied: "Enlace copiado", end: "Terminar estancia", reopen: "Reactivar", edit: "Editar",
+  del: "Eliminar", delConfirm: "Eliminar definitivamente", deleting: "Eliminando…", deleted: "Reserva eliminada",
+  delWarn: "Se borran la reserva, sus periodos, comprobantes, mensajes y envíos. El enlace del huésped deja de funcionar. No se puede deshacer.",
+  created: "Reserva creada", savedOk: "Cambios guardados", savingLong: "Guardando la reserva…",
+  savingHint: "Estamos creando los periodos de cobro. Puede tardar unos segundos; no cierres esta ventana.",
+  retrySafe: "Puedes volver a presionar Guardar: no se creará una reserva duplicada.",
   sendTitle: "Enviar enlace", channel: "Canal", msgLabel: "Mensaje", sent: "Enviado",
   linkMsg: (n, p, url) => (n ? "Hola " + n + ", este" : "Hola, este") + " es tu perfil de estancia en " + p + ". Ahí ves tus periodos pendientes, subes tus comprobantes y nos escribes: " + url,
   missingData: "Datos por completar", due: "Vence", paidWith: "Comprobante", ref: "Referencia", payDate: "Fecha de pago", paid: "Monto pagado", comment: "Comentario",
@@ -1500,6 +1505,11 @@ const LT_T_EN = {
   verify: "Verify", reject: "Reject", reason: "Rejection reason", viewProof: "View receipt", reply: "Write a reply", send: "Send",
   copyLink: "Copy link", sendLink: "Send link", regen: "Regenerate link", regenWarn: "The previous link will stop working.",
   copied: "Link copied", end: "End stay", reopen: "Reactivate", edit: "Edit",
+  del: "Delete", delConfirm: "Delete permanently", deleting: "Deleting…", deleted: "Reservation deleted",
+  delWarn: "This removes the reservation, its periods, receipts, messages and sends. The guest link stops working. It can't be undone.",
+  created: "Reservation created", savedOk: "Changes saved", savingLong: "Saving the reservation…",
+  savingHint: "We're creating the billing periods. It can take a few seconds; don't close this window.",
+  retrySafe: "You can press Save again: no duplicate reservation will be created.",
   sendTitle: "Send link", channel: "Channel", msgLabel: "Message", sent: "Sent",
   linkMsg: (n, p, url) => (n ? "Hi " + n + ", this" : "Hi, this") + " is your stay profile at " + p + ". See your pending periods, upload receipts and message us: " + url,
   missingData: "Missing details", due: "Due", paidWith: "Receipt", ref: "Reference", payDate: "Payment date", paid: "Amount paid", comment: "Comment",
@@ -1601,7 +1611,7 @@ Object.assign(Backend, {
     let j;
     try { j = await this.call(action, payload); } catch (e) { return { ok: false, error: (e && e.message) || "backend-error" }; }
     // un backend sin el bloque Long Term responde ok:true sin datos ("skip: action …")
-    const need = { ltList: "list", ltGet: "lt", ltSave: "lt", ltSetPeriod: "lt", ltVerify: "lt", ltAdminMsg: "lt", ltEnd: "lt", ltGuest: "lt", ltUpload: "lt", ltGuestMsg: "lt", ltToken: "url", ltLink: "url" }[action];
+    const need = { ltList: "list", ltGet: "lt", ltSave: "lt", ltSetPeriod: "lt", ltVerify: "lt", ltAdminMsg: "lt", ltEnd: "lt", ltDelete: "deleted", ltGuest: "lt", ltUpload: "lt", ltGuestMsg: "lt", ltToken: "url", ltLink: "url" }[action];
     if ((j && typeof j.result === "string" && /^skip/i.test(j.result)) || (need && !(j && j[need]))) {
       return { ok: false, error: "El backend publicado no tiene Long Term. Publica una versión nueva del Apps Script." };
     }
@@ -1678,6 +1688,10 @@ Object.assign(Backend, {
     if (this.isConnected()) return this._lt("ltEnd", { code, reopen: !!reopen });
     const d = ltDemo.load(), r = ltDemo.find(d, code); r.estado = reopen ? "activa" : "terminada"; if (reopen) ltDemo.periods(r);
     ltDemo.save(d); return { ok: true, lt: ltDemo.detail(r) };
+  },
+  async ltDelete(code) {
+    if (this.isConnected()) return this._lt("ltDelete", { code });
+    const d = ltDemo.load(); d.list = d.list.filter((x) => x.code !== code); ltDemo.save(d); return { ok: true, deleted: code };
   },
   async ltFile(fileId, token) {
     if (!fileId) return "";

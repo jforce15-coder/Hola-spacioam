@@ -90,9 +90,10 @@ function ltReadFile(file) {
 }
 
 /* hilo de mensajes (panel y huésped) */
-function LtThread({ t, es, mensajes, mine, onSend, busy }) {
+function LtThread({ t, es, mensajes, mine, onSend, busy, draft }) {
   const [txt, setTxt] = useStateLt("");
-  const box = useRefLt(null);
+  const box = useRefLt(null), ta = useRefLt(null);
+  useEffectLt(() => { if (draft && draft.text) { setTxt(draft.text); setTimeout(() => { if (ta.current) { ta.current.focus(); ta.current.setSelectionRange(draft.text.length, draft.text.length); } }, 60); } }, [draft]);
   useEffectLt(() => { if (box.current) box.current.scrollTop = box.current.scrollHeight; }, [mensajes && mensajes.length]);
   const send = () => { const v = txt.trim(); if (!v) return; Promise.resolve(onSend(v)).then(() => setTxt("")); };
   return <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -106,7 +107,7 @@ function LtThread({ t, es, mensajes, mine, onSend, busy }) {
         </div>); })}
     </div>
     <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
-      <textarea value={txt} onChange={(e) => setTxt(e.target.value)} rows={2} placeholder={mine === "admin" ? t.lt.reply : t.lt.gWrite}
+      <textarea ref={ta} value={txt} onChange={(e) => setTxt(e.target.value)} rows={2} placeholder={mine === "admin" ? t.lt.reply : t.lt.gWrite}
         onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) send(); }}
         style={{ ...ltInputStyle, resize: "vertical", minHeight: 48, fontSize: 13.5 }}></textarea>
       <LtPill tone="solid" icon="arrow" onClick={send} disabled={busy || !txt.trim()}>{t.lt.send}</LtPill>

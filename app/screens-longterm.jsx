@@ -143,7 +143,7 @@ function ltGroups(pagos) {
   return [...m.values()];
 }
 
-function LtPayRow({ t, es, p, first, c, busy, onFile, onVerify, onAdjust }) {
+function LtPayRow({ t, es, p, first, cs, busy, onFile, onVerify, onAdjust }) {
   const [adj, setAdj] = useStateLt(false);
   const [monto, setMonto] = useStateLt(String(p.monto || ""));
   const [vence, setVence] = useStateLt(p.vence);
@@ -171,14 +171,25 @@ function LtPayRow({ t, es, p, first, c, busy, onFile, onVerify, onAdjust }) {
       <LtPill small onClick={() => setAdj(false)}>{t.lt.cancel}</LtPill>
       <LtPill small tone="solid" icon="check" disabled={busy || !(+monto >= 0)} onClick={() => { onAdjust(monto, vence); setAdj(false); }}>{t.lt.apply}</LtPill>
     </div>}
-    {c && <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center", background: C.beige, borderRadius: 10, padding: "10px 12px", fontFamily: C.sans, fontSize: 12, color: C.negro }}>
-      {c.referencia && <span><span style={{ color: C.tierra }}>{t.lt.ref} </span>{c.referencia}</span>}
-      {c.fecha && <span><span style={{ color: C.tierra }}>{t.lt.payDate} </span>{ltDate(c.fecha, es)}</span>}
-      {c.monto > 0 && <span><span style={{ color: C.tierra }}>{t.lt.paid} </span>{ltMoney(c.monto, p.moneda)}</span>}
-      {c.periodos.length > 1 && <span style={{ color: C.tierra }}>{c.periodos.length} {es ? "periodos" : "periods"}</span>}
-      {c.comentario && <span style={{ flexBasis: "100%", color: C.tierra }}>{c.comentario}</span>}
-      {c.files.map((fid, i) => <LtPill key={fid} small icon="eye" onClick={() => onFile(fid)}>{t.lt.viewProof}{c.files.length > 1 ? " " + (i + 1) : ""}</LtPill>)}
-    </div>}
+    {(cs || []).map((c) => { const rc = t.lt.rc, lec = c.lectura, ap = c.asignacion && c.asignacion[p.id]; return (
+      <div key={c.id} style={{ display: "flex", flexDirection: "column", gap: 8, background: C.beige, borderRadius: 10, padding: "10px 12px", fontFamily: C.sans, fontSize: 12, color: C.negro }}>
+        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
+          {c.banco && <span>{c.banco}</span>}
+          {c.referencia && <span><span style={{ color: C.tierra }}>{t.lt.ref} </span>{c.referencia}</span>}
+          {c.fecha && <span><span style={{ color: C.tierra }}>{t.lt.payDate} </span>{ltDate(c.fecha, es)}</span>}
+          {c.monto > 0 && <span style={{ fontVariantNumeric: "tabular-nums" }}><span style={{ color: C.tierra }}>{t.lt.paid} </span>{ltMoney(c.monto, p.moneda)}</span>}
+          {ap > 0 && ap !== c.monto && <span style={{ fontVariantNumeric: "tabular-nums" }}><span style={{ color: C.tierra }}>{rc.applied} </span>{ltMoney(ap, p.moneda)}</span>}
+          {c.periodos.length > 1 && <span style={{ color: C.tierra }}>{c.periodos.length} {es ? "periodos" : "periods"}</span>}
+          {c.comentario && <span style={{ flexBasis: "100%", color: C.tierra }}>{c.comentario}</span>}
+          {c.files.map((fid, i) => <LtPill key={fid} small icon="eye" onClick={() => onFile(fid)}>{t.lt.viewProof}{c.files.length > 1 ? " " + (i + 1) : ""}</LtPill>)}
+        </div>
+        {(c.alertas || []).length > 0 && <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {c.alertas.map((k) => { const hard = ["manipulacion", "no-acreditado", "cuenta", "no-comprobante"].includes(k); return <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 6, borderRadius: 999, padding: "4px 10px",
+            background: hard ? "rgba(192,57,43,.09)" : "rgba(242,117,90,.10)", color: hard ? "#C0392B" : "#B54D36", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 600 }}>
+            <span style={{ width: 6, height: 6, borderRadius: 999, background: hard ? "#C0392B" : "#F2755A" }}></span>{rc.aFlag[k] || k}</span>; })}
+        </div>}
+        {lec && (c.alertas || []).includes("editado") && <span style={{ color: C.tierra, fontVariantNumeric: "tabular-nums" }}>{rc.read}: {[lec.fecha && ltDate(lec.fecha, es), lec.monto > 0 && ltMoney(lec.monto, lec.moneda || p.moneda), lec.referencia].filter(Boolean).join(" · ")}</span>}
+      </div>); })}
     {p.estado === "rechazado" && p.motivo && <div style={{ fontFamily: C.sans, fontSize: 12, color: "#C0392B" }}>{p.motivo}</div>}
     {p.estado === "revision" && (rej
       ? <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -247,7 +258,7 @@ function LtDetail({ t, es, code, seed, onClose, onChanged, onEdit, onToast, onDe
   if (!lt) return <LtModal title={code} onClose={onClose} wide>{loadErr
     ? <div style={{ display: "flex", flexDirection: "column", gap: 12, alignItems: "flex-start" }}><span style={{ fontFamily: C.sans, fontSize: 13, color: "#C0392B" }}>{loadErr}</span><LtPill small icon="refresh" onClick={() => { setLoadErr(""); load(); }}>{es ? "Reintentar" : "Retry"}</LtPill></div>
     : <div style={{ height: 280, borderRadius: 14, background: C.beige }}></div>}</LtModal>;
-  const compOf = (p) => (lt.comprobantes || []).find((c) => c.id === p.compId);
+  const compOf = (p) => (lt.comprobantes || []).filter((c) => c.id === p.compId || (c.periodos || []).includes(p.id));
   const tabs = [["periods", t.lt.periods], ["messages", t.lt.messages + (lt.unread ? " · " + lt.unread : "")], ["log", t.lt.log]];
   const meta = (k, v) => v ? <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}><span style={{ ...ltLabel, fontSize: 9.5 }}>{k}</span>
     <span style={{ fontFamily: C.sans, fontSize: 13.5, color: C.negro, overflowWrap: "anywhere" }}>{v}</span></div> : null;
@@ -283,6 +294,18 @@ function LtDetail({ t, es, code, seed, onClose, onChanged, onEdit, onToast, onDe
         <LtPill small tone={lt.estado === "terminada" ? "ghost" : "danger"} onClick={endStay} disabled={busy}>{lt.estado === "terminada" ? t.lt.reopen : t.lt.end}</LtPill>
         <LtPill small icon="trash" tone="danger" onClick={() => setConfirmDel(true)} disabled={busy}>{t.lt.del}</LtPill>
       </div>
+      {lt.avisoSalida && <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", background: "rgba(233,130,106,.10)", border: `1px solid ${C.peach}`, borderRadius: 14, padding: "12px 14px" }}>
+        <span style={{ flex: "1 1 240px", minWidth: 0, fontFamily: C.sans, fontSize: 13, color: C.negro, lineHeight: 1.5 }}>
+          <span style={{ ...ltLabel, fontSize: 9.5, display: "block", marginBottom: 4 }}>{t.lt.ex.admNotice}</span>
+          <strong style={{ fontWeight: 600 }}>{ltDate(lt.avisoSalida, es)}</strong>{lt.avisoCreado ? <span style={{ color: C.tierra }}> · {t.lt.ex.admSent} {ltStamp(lt.avisoCreado, es)}</span> : null}
+          {lt.avisoMotivo ? <span style={{ display: "block", color: C.tierra }}>{lt.avisoMotivo}</span> : null}</span>
+        {lt.tipoFin === "fecha" && lt.salida === lt.avisoSalida
+          ? <span style={{ fontFamily: C.sans, fontSize: 12, color: "#3d6b52", display: "inline-flex", alignItems: "center", gap: 6 }}><Icon name="check" size={14} color="#3d6b52" strokeWidth={1.5} />{t.lt.ex.admApplied}</span>
+          : <LtPill small tone="solid" icon="check" disabled={busy} onClick={async () => { setBusy(true); const g = lt.guest || {};
+              apply(await Backend.ltSave({ code: lt.code, propertyCode: lt.propertyCode, propertyName: lt.propertyName, entrada: lt.entrada, moneda: lt.moneda, notas: lt.notas || "",
+                frecuencia: lt.frecuencia || "mensual", cadaDias: lt.cadaDias || 30, tipoFin: "fecha", salida: lt.avisoSalida, monto: +lt.monto, diaCobro: lt.diaCobro, cobraLuz: !!lt.cobraLuz,
+                guest: { nombre: g.nombre || "", telefono: g.telefono || "", email: g.email || "", docTipo: g.docTipo || "", docNumero: g.docNumero || "" } })); setBusy(false); }}>{t.lt.ex.admApply}</LtPill>}
+      </div>}
       {linkBox && <LtLinkBox t={t} url={linkBox} onToast={onToast} />}
       {confirmDel && <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", border: "1px solid rgba(192,57,43,.35)", background: "rgba(192,57,43,.05)", borderRadius: 14, padding: "12px 14px" }}>
         <span style={{ fontFamily: C.sans, fontSize: 13, color: C.negro, flex: "1 1 220px", lineHeight: 1.5 }}>{t.lt.delWarn}</span>
@@ -301,7 +324,7 @@ function LtDetail({ t, es, code, seed, onClose, onChanged, onEdit, onToast, onDe
 
       {sec === "periods" && <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {ltGroups(lt.pagos).map((grp) => <div key={grp.key} style={{ border: `1px solid ${C.grisCalido}`, borderRadius: 14, overflow: "hidden" }}>
-          {grp.items.map((p, i) => <LtPayRow key={p.id} t={t} es={es} p={p} first={i === 0} c={compOf(p)} busy={busy} onFile={setFile}
+          {grp.items.map((p, i) => <LtPayRow key={p.id} t={t} es={es} p={p} first={i === 0} cs={compOf(p)} busy={busy} onFile={setFile}
             onVerify={(estado, m) => verify(p, estado, m)}
             onAdjust={async (monto, vence) => { setBusy(true); apply(await Backend.ltSetPeriod(code, p.id, monto, vence)); setBusy(false); }} />)}
         </div>)}

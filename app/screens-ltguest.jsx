@@ -87,6 +87,8 @@ function LtGuestScreen({ t, token, onSwitchLang }) {
   const earlier = (text) => { setDraft({ text }); setTimeout(() => { const el = msgRef.current; if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 80, behavior: "smooth" }); }, 30); };
 
   const renta = open.filter((p) => p.concepto === "renta"), overdue = renta.filter((p) => p.estado === "vencido" || p.estado === "rechazado");
+  // en la lista solo lo que ya venció o vence hoy; lo futuro se anuncia como "Próximo"
+  const due = open.filter((p) => (p.concepto === "luz" ? p.inicio : p.vence) <= today), upcoming = renta.find((p) => p.vence > today);
   const inReview = pagos.filter((p) => p.estado === "revision").length;
   const status = !lt ? null : overdue.length ? { c: "#C0392B", text: ex.overdue(overdue.length, fmt(overdue.reduce((n, p) => n + p.need, 0))) }
     : renta[0] ? { c: C.negro, dot: C.peach, text: ex.next(renta[0].label || ltPeriod(renta[0].periodo, es), fmt(renta[0].need), ltDate(renta[0].vence, es)) }
@@ -130,8 +132,8 @@ function LtGuestScreen({ t, token, onSwitchLang }) {
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontFamily: C.sans, fontSize: 14, color: status.c, fontWeight: 500 }}>
               {status.dot ? <span style={{ width: 7, height: 7, borderRadius: 999, background: status.dot }}></span> : <Icon name={status.c === "#3d6b52" ? "check" : "alert"} size={16} color={status.c} strokeWidth={1.5} />}
               {status.text}{inReview > 0 && <span style={{ fontWeight: 400, color: C.tierra, fontSize: 12.5 }}>· {ex.inReview(inReview)}</span>}</div>
-            {open.length > 0 && <div style={{ display: "flex", flexDirection: "column", border: `1px solid ${C.grisCalido}`, borderRadius: 14 }}>
-              {open.map((p, i) => { const luz = p.concepto === "luz", noAmt = luz && !(p.monto > 0); return (
+            {due.length > 0 && <div style={{ display: "flex", flexDirection: "column", border: `1px solid ${C.grisCalido}`, borderRadius: 14 }}>
+              {due.map((p, i) => { const luz = p.concepto === "luz", noAmt = luz && !(p.monto > 0); return (
                 <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "12px 14px", borderTop: i ? `1px solid ${C.grisCalido}` : "none" }}>
                   <span style={{ flex: "1 1 150px", minWidth: 0 }}>
                     <span style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: C.sans, fontSize: 14, color: C.negro, fontWeight: 500 }}>
@@ -144,6 +146,7 @@ function LtGuestScreen({ t, token, onSwitchLang }) {
                 </div>); })}
             </div>}
           </div>
+          {upcoming && (overdue.length > 0 || due.length > 0) && <span style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, marginTop: -8 }}>{t.lt.rc.upcoming(upcoming.label || ltPeriod(upcoming.periodo, es), fmt(upcoming.need), ltDate(upcoming.vence, es))}</span>}
           <LtNotice t={t} es={es} lt={lt} token={token} onLt={setLt} onEarlier={earlier} />
         </section>
 

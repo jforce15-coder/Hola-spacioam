@@ -1518,9 +1518,11 @@ const LT_T_ES = {
     },
     srvErr: { duplicado: "Ya recibimos este comprobante.", "ya-enviado": "Ese periodo ya tiene un comprobante en revisión.", "fecha-futura": "La fecha es posterior a hoy.", "sin-monto": "Falta el monto." },
     aFlag: { parcial: "Monto menor al pactado", excedente: "Monto mayor al pactado", moneda: "Moneda distinta", editado: "Datos editados por el huésped", "sin-lectura": "Sin lectura IA", manual: "Escrito a mano",
-      "no-acreditado": "Transferencia pendiente o rechazada", manipulacion: "Posible alteración", "fecha-antigua": "Fecha antigua", "ref-repetida": "Referencia repetida", reenvio: "Reenvío tras rechazo", cuenta: "Cuenta destino no coincide", "no-comprobante": "No parece comprobante", "fecha-interpretada": "Fecha interpretada (día/mes/año)", "periodo-lejano": "Periodo lejano a la fecha" },
+      "no-acreditado": "Transferencia pendiente o rechazada", manipulacion: "Posible alteración", "fecha-antigua": "Fecha antigua", "ref-repetida": "Referencia repetida", reenvio: "Reenvío tras rechazo", cuenta: "Cuenta destino no coincide", "no-comprobante": "No parece comprobante", "fecha-interpretada": "Fecha interpretada (día/mes/año)", "periodo-lejano": "Periodo lejano a la fecha", reasignado: "Reasignado por el equipo" },
     applied: "Aplicado", read: "Lectura IA",
-    why: { date: (d) => "Por la fecha del depósito" + (d ? ", " + d : ""), arrears: (d, l) => "Depósito del " + d + ": cubre primero " + l + ", que seguía pendiente", manual: "Periodo elegido a mano", range: (r) => "periodo " + r },
+    why: { due: (d, v) => "Depósito del " + d + " · cubre el pendiente más antiguo a esa fecha (vencía el " + v + ")", next: (d) => "Depósito del " + d + " · sin pendientes a esa fecha: cubre el siguiente periodo", manual: "Periodo elegido a mano", range: (r) => "periodo " + r },
+    reassign: "Reasignar", reassignTo: "Asignar a", delComp: "Eliminar comprobante", delCompWarn: "Se borra el comprobante y sus archivos. Los periodos que cubría vuelven a pendiente. No se puede deshacer.", delConfirm: "Eliminar", lockedVerified: "Verificado: para moverlo o borrarlo, primero recházalo.",
+    upcoming: (l, m, d) => "Próximo: " + l + " · " + m + " · vence " + d, noDue: "Aún no vence ningún periodo.",
   },
   ex: {
     stay: "Tu estancia", entry: "Entrada", exit: "Salida", openEnd: "Sin fecha", rent: "Renta", payDay: "Día de cobro", payDayV: (d) => "El " + d + " de cada mes",
@@ -1607,9 +1609,11 @@ const LT_T_EN = {
     },
     srvErr: { duplicado: "We already received this receipt.", "ya-enviado": "That period already has a receipt in review.", "fecha-futura": "The date is after today.", "sin-monto": "The amount is missing." },
     aFlag: { parcial: "Below agreed amount", excedente: "Above agreed amount", moneda: "Different currency", editado: "Edited by guest", "sin-lectura": "No AI read", manual: "Typed by hand",
-      "no-acreditado": "Transfer pending or rejected", manipulacion: "Possible tampering", "fecha-antigua": "Old date", "ref-repetida": "Repeated reference", reenvio: "Resent after rejection", cuenta: "Destination account mismatch", "no-comprobante": "Not a receipt", "fecha-interpretada": "Date interpreted (d/m/y)", "periodo-lejano": "Period far from date" },
+      "no-acreditado": "Transfer pending or rejected", manipulacion: "Possible tampering", "fecha-antigua": "Old date", "ref-repetida": "Repeated reference", reenvio: "Resent after rejection", cuenta: "Destination account mismatch", "no-comprobante": "Not a receipt", "fecha-interpretada": "Date interpreted (d/m/y)", "periodo-lejano": "Period far from date", reasignado: "Reassigned by team" },
     applied: "Applied", read: "AI read",
-    why: { date: (d) => "By deposit date" + (d ? ", " + d : ""), arrears: (d, l) => "Deposit of " + d + ": covers " + l + " first, which was still pending", manual: "Period picked by hand", range: (r) => "period " + r },
+    why: { due: (d, v) => "Deposit of " + d + " · covers the oldest pending as of that date (due " + v + ")", next: (d) => "Deposit of " + d + " · nothing pending as of that date: covers the next period", manual: "Period picked by hand", range: (r) => "period " + r },
+    reassign: "Reassign", reassignTo: "Assign to", delComp: "Delete receipt", delCompWarn: "The receipt and its files are deleted. Periods it covered go back to pending. It can't be undone.", delConfirm: "Delete", lockedVerified: "Verified: reject it first to move or delete it.",
+    upcoming: (l, m, d) => "Next: " + l + " · " + m + " · due " + d, noDue: "No period is due yet.",
   },
   ex: {
     stay: "Your stay", entry: "Check-in", exit: "Check-out", openEnd: "Open-ended", rent: "Rent", payDay: "Billing day", payDayV: (d) => "Day " + d + " of each month",
@@ -1714,7 +1718,7 @@ Object.assign(Backend, {
         return { ok: false, error: m === "timeout" ? "La conexión tardó demasiado. Intenta de nuevo." : m }; }
     }
     // un backend sin el bloque Long Term responde ok:true sin datos ("skip: action …")
-    const need = { ltList: "list", ltGet: "lt", ltSave: "lt", ltSetPeriod: "lt", ltVerify: "lt", ltAdminMsg: "lt", ltEnd: "lt", ltDelete: "deleted", ltGuest: "lt", ltUpload: "lt", ltGuestMsg: "lt", ltToken: "url", ltLink: "url", ltReadReceipt: "text", ltGuestNotice: "lt" }[action];
+    const need = { ltList: "list", ltGet: "lt", ltSave: "lt", ltSetPeriod: "lt", ltVerify: "lt", ltAdminMsg: "lt", ltEnd: "lt", ltDelete: "deleted", ltGuest: "lt", ltUpload: "lt", ltGuestMsg: "lt", ltToken: "url", ltLink: "url", ltReadReceipt: "text", ltGuestNotice: "lt", ltCompReassign: "lt", ltCompDelete: "lt" }[action];
     if ((j && typeof j.result === "string" && /^skip/i.test(j.result)) || (need && !(j && j[need]))) {
       return { ok: false, error: "El backend publicado no tiene Long Term. Publica una versión nueva del Apps Script." };
     }
@@ -1776,6 +1780,37 @@ Object.assign(Backend, {
     const d = ltDemo.load(), r = ltDemo.find(d, code), p = r.pagos.find((x) => x.id === periodoId);
     p.estado = estado === "verificado" ? "verificado" : "rechazado"; p.motivo = p.estado === "rechazado" ? motivo : ""; p.verificadoAt = p.estado === "verificado" ? ltDemo.now() : "";
     ltDemo.log(r, p.estado, "email", periodoId); ltDemo.save(d); return { ok: true, lt: ltDemo.detail(r) };
+  },
+  _ltRelease(r, p, compId) {
+    if (!p || p.estado === "verificado" || (p.compId && p.compId !== compId)) return;
+    const other = r.comprobantes.find((x) => x.id !== compId && x.periodos.includes(p.id));
+    if (other && p.estado === "revision") p.compId = other.id; else { p.estado = "pendiente"; p.compId = ""; p.motivo = ""; }
+  },
+  _ltCompCtx(code, compId) {
+    const d = ltDemo.load(), r = ltDemo.find(d, code), c = r && r.comprobantes.find((x) => x.id === compId);
+    if (!c) return { error: "not-found" };
+    if (c.periodos.some((id) => { const p = r.pagos.find((x) => x.id === id); return p && p.estado === "verificado" && p.compId === c.id; })) return { error: "verificado" };
+    return { d, r, c };
+  },
+  async ltCompReassign(code, compId, periodoId) {
+    if (this.isConnected()) return this._lt("ltCompReassign", { code, compId, periodoId });
+    const x = this._ltCompCtx(code, compId); if (x.error) return { ok: false, error: x.error };
+    const { d, r, c } = x, t = r.pagos.find((p) => p.id === periodoId); if (!t || t.estado === "verificado") return { ok: false, error: "destino-verificado" };
+    c.periodos.forEach((id) => { if (id !== t.id) this._ltRelease(r, r.pagos.find((p) => p.id === id), c.id); });
+    c.periodos = [t.id]; c.asignacion = { [t.id]: +c.monto || 0 }; c.concepto = t.concepto;
+    const al = (c.alertas || []).filter((k) => !["parcial", "excedente", "periodo-lejano"].includes(k));
+    if (t.concepto === "renta" && t.monto > 0) { if (c.monto < t.monto - 1) al.push("parcial"); else if (c.monto > t.monto + 1) al.push("excedente"); }
+    c.alertas = [...new Set(al.concat("reasignado"))];
+    t.estado = "revision"; t.compId = c.id; t.motivo = "";
+    ltDemo.overdue(d); ltDemo.save(d); return { ok: true, lt: ltDemo.detail(r) };
+  },
+  async ltCompDelete(code, compId) {
+    if (this.isConnected()) return this._lt("ltCompDelete", { code, compId });
+    const x = this._ltCompCtx(code, compId); if (x.error) return { ok: false, error: x.error };
+    const { d, r, c } = x;
+    c.periodos.forEach((id) => this._ltRelease(r, r.pagos.find((p) => p.id === id), c.id));
+    r.comprobantes = r.comprobantes.filter((y) => y.id !== c.id);
+    ltDemo.overdue(d); ltDemo.save(d); return { ok: true, lt: ltDemo.detail(r) };
   },
   async ltAdminMsg(code, texto) {
     if (this.isConnected()) return this._lt("ltAdminMsg", { code, texto });

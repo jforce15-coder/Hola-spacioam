@@ -143,7 +143,32 @@ function ltGroups(pagos) {
   return [...m.values()];
 }
 
-function LtPayRow({ t, es, p, first, cs, busy, onFile, onVerify, onAdjust }) {
+function LtCompActions({ t, es, c, p, pagos, busy, onReassign, onDelete }) {
+  const rc = t.lt.rc, [mode, setMode] = useStateLt(""), [to, setTo] = useStateLt("");
+  const locked = (c.periodos || []).some((id) => { const x = (pagos || []).find((y) => y.id === id); return x && x.estado === "verificado" && x.compId === c.id; });
+  if (locked) return <span style={{ fontFamily: C.sans, fontSize: 11.5, color: C.tierra }}>{rc.lockedVerified}</span>;
+  const opts = (pagos || []).filter((x) => x.estado !== "verificado" && !(c.periodos || []).includes(x.id)).sort((a, b) => String(a.vence).localeCompare(String(b.vence)));
+  if (!mode) return <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+    <LtPill small icon="refresh" onClick={() => { setTo(""); setMode("move"); }} disabled={busy || !opts.length}>{rc.reassign}</LtPill>
+    <LtPill small icon="trash" tone="danger" onClick={() => setMode("del")} disabled={busy}>{rc.delComp}</LtPill>
+  </div>;
+  if (mode === "move") return <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+    <div style={{ flex: "1 1 220px" }}><LtField label={rc.reassignTo}>
+      <select value={to} onChange={(e) => setTo(e.target.value)} style={{ ...ltInputStyle, background: C.white }}>
+        <option value="">—</option>
+        {opts.map((x) => <option key={x.id} value={x.id}>{(x.label || ltPeriod(x.periodo, es)) + (x.concepto === "luz" ? " · " + t.lt.luz : "") + " · " + t.lt.due.toLowerCase() + " " + ltDate(x.vence, es) + " · " + ((t.lt.st || {})[x.estado] || x.estado)}</option>)}
+      </select></LtField></div>
+    <LtPill small onClick={() => setMode("")} disabled={busy}>{t.lt.cancel}</LtPill>
+    <LtPill small tone="solid" icon="check" onClick={() => { onReassign(c.id, to); setMode(""); }} disabled={busy || !to}>{t.lt.apply}</LtPill>
+  </div>;
+  return <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", border: "1px solid rgba(192,57,43,.35)", background: C.white, borderRadius: 10, padding: "10px 12px" }}>
+    <span style={{ fontFamily: C.sans, fontSize: 12.5, color: C.negro, flex: "1 1 220px", lineHeight: 1.5 }}>{rc.delCompWarn}</span>
+    <LtPill small onClick={() => setMode("")} disabled={busy}>{t.lt.cancel}</LtPill>
+    <LtPill small tone="danger" icon="trash" onClick={() => { onDelete(c.id); setMode(""); }} disabled={busy}>{rc.delConfirm}</LtPill>
+  </div>;
+}
+
+function LtPayRow({ t, es, p, first, cs, busy, onFile, onVerify, onAdjust, pagos, onReassign, onDelComp }) {
   const [adj, setAdj] = useStateLt(false);
   const [monto, setMonto] = useStateLt(String(p.monto || ""));
   const [vence, setVence] = useStateLt(p.vence);
@@ -189,6 +214,7 @@ function LtPayRow({ t, es, p, first, cs, busy, onFile, onVerify, onAdjust }) {
             <span style={{ width: 6, height: 6, borderRadius: 999, background: hard ? "#C0392B" : "#F2755A" }}></span>{rc.aFlag[k] || k}</span>; })}
         </div>}
         {lec && (c.alertas || []).includes("editado") && <span style={{ color: C.tierra, fontVariantNumeric: "tabular-nums" }}>{rc.read}: {[lec.fecha && ltDate(lec.fecha, es), lec.monto > 0 && ltMoney(lec.monto, lec.moneda || p.moneda), lec.referencia].filter(Boolean).join(" · ")}</span>}
+        {onReassign && <LtCompActions t={t} es={es} c={c} p={p} pagos={pagos} busy={busy} onReassign={onReassign} onDelete={onDelComp} />}
       </div>); })}
     {p.estado === "rechazado" && p.motivo && <div style={{ fontFamily: C.sans, fontSize: 12, color: "#C0392B" }}>{p.motivo}</div>}
     {p.estado === "revision" && (rej
@@ -324,7 +350,9 @@ function LtDetail({ t, es, code, seed, onClose, onChanged, onEdit, onToast, onDe
 
       {sec === "periods" && <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {ltGroups(lt.pagos).map((grp) => <div key={grp.key} style={{ border: `1px solid ${C.grisCalido}`, borderRadius: 14, overflow: "hidden" }}>
-          {grp.items.map((p, i) => <LtPayRow key={p.id} t={t} es={es} p={p} first={i === 0} cs={compOf(p)} busy={busy} onFile={setFile}
+          {grp.items.map((p, i) => <LtPayRow key={p.id} t={t} es={es} p={p} first={i === 0} cs={compOf(p)} busy={busy} onFile={setFile} pagos={lt.pagos}
+            onReassign={async (cid, pid) => { setBusy(true); apply(await Backend.ltCompReassign(code, cid, pid)); setBusy(false); }}
+            onDelComp={async (cid) => { setBusy(true); apply(await Backend.ltCompDelete(code, cid)); setBusy(false); }}
             onVerify={(estado, m) => verify(p, estado, m)}
             onAdjust={async (monto, vence) => { setBusy(true); apply(await Backend.ltSetPeriod(code, p.id, monto, vence)); setBusy(false); }} />)}
         </div>)}

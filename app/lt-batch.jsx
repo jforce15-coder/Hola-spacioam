@@ -53,13 +53,13 @@ function ltAllocate(rows, open, today) {
     }
     if (!(m > 0)) { out[r.key] = res; return; }
     let rest = m;
-    // regla: el periodo pendiente MÁS ANTIGUO que ya podía pagarse en la fecha del depósito (inicio ≤ fecha + 20 días)
-    const f = r.fecha || today;
-    const pool = r.pick !== "auto" ? renta.filter((p) => p.id === r.pick) : renta.filter((p) => p.inicio <= ltAddIso(f, LT_WINDOW));
-    const first = pool.find((p) => need[p.id] > LT_TOL);
+    // regla: el pendiente MÁS ANTIGUO que ya vencía a la fecha del depósito (vence ≤ fecha); si no hay ninguno, el siguiente periodo
+    const f = r.fecha || today, open1 = (p) => need[p.id] > LT_TOL;
+    let first = null;
+    if (r.pick !== "auto") first = renta.find((p) => p.id === r.pick && open1(p)) || null;
+    else first = renta.find((p) => open1(p) && p.vence <= f) || renta.find((p) => open1(p) && p.vence > f) || null;
     if (first) {
-      const here = renta.find((p) => p.inicio <= f && f <= p.fin);
-      res.why = r.pick !== "auto" ? "manual" : here && here.id !== first.id && first.inicio < here.inicio ? "arrears" : "date";
+      res.why = r.pick !== "auto" ? "manual" : first.vence <= f ? "due" : "next";
       const a = Math.min(rest, need[first.id]); need[first.id] -= a; rest -= a;
       res.alloc.push({ id: first.id, amt: a, full: need[first.id] <= LT_TOL, faltan: Math.max(0, need[first.id]) });
       if (r.pick === "auto" && need[first.id] <= LT_TOL) for (const p of renta) {
@@ -279,7 +279,7 @@ function LtReceiptIntake({ t, es, token, lt, onDone, perfilSlot, perfil, resetPe
                   : !hard ? rc.noAssign : r.file.name}</span>
               {a && a.alloc.length > 0 && a.why && (() => { const p0 = byId[a.alloc[0].id], rng = p0 && p0.inicio && p0.fin ? ltRange(p0.inicio, p0.fin, es) : "", d0 = r.fecha ? ltDate(r.fecha, es) : "";
                 return <span style={{ fontFamily: C.sans, fontSize: 11.5, color: C.tierra, lineHeight: 1.5 }}>
-                  {a.why === "manual" ? rc.why.manual : a.why === "arrears" ? rc.why.arrears(d0, lbl(p0)) : rc.why.date(d0)}{rng ? " · " + rc.why.range(rng) : ""}</span>; })()}
+                  {a.why === "manual" ? rc.why.manual : a.why === "due" ? rc.why.due(d0, ltDate(p0.vence, es)) : rc.why.next(d0)}{rng ? " · " + rc.why.range(rng) : ""}</span>; })()}
             </>}
           </span>
           {r.status === "ok" && !r.editing && <LtPill small icon="edit" onClick={() => upd(r.key, { editing: true })} disabled={busy}>{rc.edit}</LtPill>}
@@ -301,7 +301,7 @@ function LtReceiptIntake({ t, es, token, lt, onDone, perfilSlot, perfil, resetPe
             <LtField label={t.lt.bPeriod}>
               <select value={r.pick} onChange={(e) => upd(r.key, { pick: e.target.value })} style={ltInputStyle}>
                 <option value="auto">{t.lt.bAuto}</option>
-                {(r.concepto === "luz" ? luzOpen : renta).map((p) => <option key={p.id} value={p.id}>{lbl(p)}</option>)}
+                {(r.concepto === "luz" ? luzOpen : renta.filter((p) => p.vence <= today)).map((p) => <option key={p.id} value={p.id}>{lbl(p) + " · " + t.lt.due.toLowerCase() + " " + ltDate(p.vence, es)}</option>)}
               </select></LtField>
           </div>
           <div><LtPill small icon="check" onClick={() => upd(r.key, { editing: false })}>{rc.done}</LtPill></div>

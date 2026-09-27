@@ -1579,16 +1579,16 @@ const ltDemo = {
     r.pagos.sort((a, b) => (a.inicio < b.inicio ? -1 : a.inicio > b.inicio ? 1 : a.concepto === "renta" ? -1 : 1));
   },
   reset(r) { r.pagos = r.pagos.filter((p) => !((p.estado === "pendiente" || p.estado === "vencido") && !p.compId && !p.ajustado)); },
-  overdue(d) { const t = isoDay(todayDay()); d.list.forEach((r) => r.pagos.forEach((p) => { if (p.estado === "pendiente" && p.vence < t) p.estado = "vencido"; })); },
+  overdue(d) { const t = isoDay(todayDay()); d.list.forEach((r) => r.pagos.forEach((p) => { if (p.concepto === "luz") { if (p.estado === "vencido") p.estado = "pendiente"; } else if (p.estado === "pendiente" && p.vence < t) p.estado = "vencido"; })); },
   summary(r) {
-    const live = r.pagos, c = (s) => live.filter((p) => p.estado === s).length;
+    const live = r.pagos, c = (s) => live.filter((p) => p.estado === s && (s === "revision" || s === "verificado" || p.concepto === "renta")).length;
     const next = live.filter((p) => p.concepto === "renta" && ["pendiente", "vencido", "rechazado"].includes(p.estado)).sort((a, b) => (a.vence < b.vence ? -1 : 1))[0] || null;
     const g = r.guest || {}, faltan = [];
     if (!g.nombre) faltan.push("nombre"); if (!g.email) faltan.push("email"); if (!g.telefono) faltan.push("telefono"); if (!g.docNumero) faltan.push("doc");
     const t = isoDay(todayDay());
     return { ...r, tokenActivo: r.estado !== "terminada", faltan,
       counts: { pendiente: c("pendiente"), revision: c("revision"), verificado: c("verificado"), rechazado: c("rechazado"), vencido: c("vencido"),
-        luzSinMonto: r.cobraLuz ? r.pagos.filter((p) => p.concepto === "luz" && !(p.monto > 0) && p.fin < t).length : 0 },
+        luzSinMonto: 0, luzPend: r.pagos.filter((p) => p.concepto === "luz" && ["pendiente", "vencido", "rechazado"].includes(p.estado) && p.inicio <= t).length },
       next: next && { id: next.id, periodo: next.periodo, label: next.label, vence: next.vence, estado: next.estado, monto: next.monto },
       unread: r.mensajes.filter((m) => m.autor === "huesped" && !m.leido).length };
   },
@@ -1634,7 +1634,7 @@ Object.assign(Backend, {
     if (j && Array.isArray(j.list)) j.list.forEach((x) => { if (x.url) x.url = this._ltFix(x.url); });
     return j;
   },
-  _ltUrl(tok) { return location.origin + location.pathname + "#lt=" + tok; },
+  _ltUrl(tok) { return location.origin + location.pathname + "?lt=" + tok; },   // query (no #): sobrevive a WhatsApp, correo y Safari
   _ltFix(u) { const m = /[#&?]lt=([A-Za-z0-9_-]+)/.exec(String(u || "")); return m ? this._ltUrl(m[1]) : u; },
   async ltList() {
     if (this.isConnected()) { const j = await this._lt("ltList"); if (j.ok) { try { localStorage.setItem("spacioam_cache_lt", JSON.stringify({ list: j.list })); } catch (e) { try { localStorage.removeItem("spacioam_cache_lt"); } catch (e2) {} } } return j; }

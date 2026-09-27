@@ -1598,7 +1598,14 @@ const ltDemo = {
 
 Object.assign(Backend, {
   async _lt(action, payload) {
-    try { return await this.call(action, payload); } catch (e) { return { ok: false, error: (e && e.message) || "backend-error" }; }
+    let j;
+    try { j = await this.call(action, payload); } catch (e) { return { ok: false, error: (e && e.message) || "backend-error" }; }
+    // un backend sin el bloque Long Term responde ok:true sin datos ("skip: action …")
+    const need = { ltList: "list", ltGet: "lt", ltSave: "lt", ltSetPeriod: "lt", ltVerify: "lt", ltAdminMsg: "lt", ltEnd: "lt", ltGuest: "lt", ltUpload: "lt", ltGuestMsg: "lt", ltToken: "url", ltLink: "url" }[action];
+    if ((j && typeof j.result === "string" && /^skip/i.test(j.result)) || (need && !(j && j[need]))) {
+      return { ok: false, error: "El backend publicado no tiene Long Term. Publica una versión nueva del Apps Script." };
+    }
+    return j;
   },
   _ltUrl(tok) { return location.origin + location.pathname + "#lt=" + tok; },
   async ltList() {

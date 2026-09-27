@@ -272,7 +272,8 @@ function LongTermScreen({ t, roster, onToast, openCode, onOpened }) {
   const [edit, setEdit] = useStateLt(null);    // null · "new" · lt
   const [open, setOpen] = useStateLt(openCode || "");
   const [ver, setVer] = useStateLt(0);
-  const load = () => Backend.ltList().then((r) => { if (r && r.ok) setList(r.list); });
+  const [loadErr, setLoadErr] = useStateLt("");
+  const load = () => Backend.ltList().then((r) => { if (r && r.ok && Array.isArray(r.list)) { setList(r.list); setLoadErr(""); } else { setLoadErr((r && r.error) || "backend-error"); setList((p) => p || []); } });
   useEffectLt(() => { load(); const id = setInterval(() => { if (!document.hidden) load(); }, 60000); return () => clearInterval(id); }, []);
   useEffectLt(() => { if (openCode) { setOpen(openCode); onOpened && onOpened(); } }, [openCode]);
   const properties = useMemoLt(() => {
@@ -315,6 +316,7 @@ function LongTermScreen({ t, roster, onToast, openCode, onOpened }) {
       <PillSelect value={filter} onChange={setFilter} minWidth={160}
         options={[{ value: "activa", label: t.lt.active }, { value: "terminada", label: t.lt.ended }, { value: "all", label: t.lt.all }]} />
     </div>
+    {loadErr && <div style={{ fontFamily: C.sans, fontSize: 13, color: "#C0392B", background: "rgba(192,57,43,.06)", border: "1px solid rgba(192,57,43,.25)", borderRadius: 14, padding: "12px 16px" }}>{loadErr}</div>}
     {list === null && <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{[0, 1, 2].map((i) => <div key={i} style={{ height: 68, borderRadius: 14, background: C.beige }}></div>)}</div>}
     {list && !rows.length && <div style={{ textAlign: "center", padding: "40px 0", fontFamily: C.sans, fontSize: 13, color: C.tierra }}>{t.lt.empty}</div>}
     {rows.length > 0 && <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

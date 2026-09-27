@@ -997,6 +997,7 @@ const Backend = {
     if (action === "formCompleted") return 20000;
     if (action === "getDocImage") return 25000;
     if (action === "ltUpload" || action === "ltSave") return 120000;
+    if (action === "ltList" || action === "ltGuest") return 60000;
     if (action === "findReservation") {
       if (p.sync === "deep") return 210000;   // 60 días
       if (p.sync === "quick") return 90000;   // 5 días
@@ -1456,8 +1457,11 @@ const LT_T_ES = {
   stay: "Estancia", prop: "Propiedad", entry: "Entrada", endType: "Fin", endDate: "Con fecha", endOpen: "Indefinido", exit: "Salida",
   amount: "Monto por periodo", currency: "Moneda", payDay: "Día de cobro", notes: "Notas internas", save: "Guardar", cancel: "Cancelar", saving: "Guardando…",
   freq: "Periodo de cobro", fMensual: "Mensual", fQuincenal: "Quincenal", fSemanal: "Semanal", fCustom: "Personalizado", everyDays: "Cada cuántos días",
-  luz: "Luz", luzToggle: "El huésped paga la luz", luzHint: "Cada periodo tendrá un cobro de luz con su propio comprobante. Tú pones el monto cuando llegue el recibo.",
-  luzSet: "Poner monto de luz", luzPending: "Luz sin monto",
+  luz: "Luz", luzToggle: "El huésped paga la luz", luzHint: "Cada periodo tendrá un cobro de luz sin monto fijo: el huésped sube su recibo pagado, aparte de la renta.",
+  luzSet: "Poner monto de luz", luzPending: "Luz sin monto", luzVar: "Según recibo",
+  payDayHint: (d) => "Se cobra el " + d + " de cada mes. Si el mes no tiene ese día (p. ej. febrero), se cobra el último día del mes.",
+  quickEdit: "Edición rápida", swipeHint: "Desliza a la izquierda para eliminar · a la derecha para editar rápido", undo: "Deshacer",
+  linkReady: "Enlace del huésped", copyAgain: "Copiar", copyFail: "Mantén presionado el enlace para copiarlo.",
   rent: "Renta", adjust: "Ajustar", adjustTitle: "Ajustar periodo", apply: "Aplicar", adjusted: "Ajustado",
   periods: "Periodos", messages: "Mensajes", log: "Envíos", noLog: "Sin envíos registrados.", noMsgs: "Sin mensajes.",
   verify: "Verificar", reject: "Rechazar", reason: "Motivo del rechazo", viewProof: "Ver comprobante", reply: "Escribe una respuesta", send: "Enviar",
@@ -1476,7 +1480,7 @@ const LT_T_ES = {
   gPending: "Pendientes", gAllClear: "Estás al día. Gracias.", gUpload: "Enviar comprobante", gSelect: "¿Qué periodos cubre este pago?",
   gOverdue: "Vencidos", gNow: "Por pagar", gNext: "Próximos",
   gFiles: "Comprobante (foto o PDF, hasta 5 archivos)", gAddFile: "Agregar archivo", gSending: "Enviando…", gDone: "Recibimos tu comprobante. Te avisamos al verificarlo.",
-  gLuzWait: "Monto por confirmar", gLuzNote: "La luz va en un comprobante aparte.",
+  gLuzWait: "Monto por confirmar", gLuzNote: "La luz va en un comprobante aparte. Sube tu recibo pagado y escribe cuánto pagaste.",
   gHistory: "Historial", gMessages: "Mensajes", gWrite: "Escríbenos", gInvalid: "Este enlace ya no es válido. Pídenos uno nuevo.", gSince: "Desde", gUntil: "Hasta", gOpenEnd: "Sin fecha de salida",
   gMissing: "Selecciona al menos un periodo y agrega tu comprobante.", perMonth: "mes", perPeriod: "periodo",
   gAsk: {
@@ -1498,8 +1502,11 @@ const LT_T_EN = {
   stay: "Stay", prop: "Property", entry: "Check-in", endType: "End", endDate: "Fixed date", endOpen: "Open-ended", exit: "Check-out",
   amount: "Amount per period", currency: "Currency", payDay: "Billing day", notes: "Internal notes", save: "Save", cancel: "Cancel", saving: "Saving…",
   freq: "Billing period", fMensual: "Monthly", fQuincenal: "Every 15 days", fSemanal: "Weekly", fCustom: "Custom", everyDays: "Every how many days",
-  luz: "Electricity", luzToggle: "Guest pays electricity", luzHint: "Each period gets an electricity charge with its own receipt. You set the amount when the bill arrives.",
-  luzSet: "Set electricity amount", luzPending: "Electricity without amount",
+  luz: "Electricity", luzToggle: "Guest pays electricity", luzHint: "Each period gets an electricity charge with no fixed amount: the guest uploads the paid bill, separate from rent.",
+  luzSet: "Set electricity amount", luzPending: "Electricity without amount", luzVar: "Per bill",
+  payDayHint: (d) => "Charged on day " + d + " of every month. If a month doesn't have that day (e.g. February), it's charged on the month's last day.",
+  quickEdit: "Quick edit", swipeHint: "Swipe left to delete · right to quick edit", undo: "Undo",
+  linkReady: "Guest link", copyAgain: "Copy", copyFail: "Long-press the link to copy it.",
   rent: "Rent", adjust: "Adjust", adjustTitle: "Adjust period", apply: "Apply", adjusted: "Adjusted",
   periods: "Periods", messages: "Messages", log: "Sends", noLog: "No sends yet.", noMsgs: "No messages.",
   verify: "Verify", reject: "Reject", reason: "Rejection reason", viewProof: "View receipt", reply: "Write a reply", send: "Send",
@@ -1517,7 +1524,7 @@ const LT_T_EN = {
   gPending: "Pending", gAllClear: "You're all caught up. Thank you.", gUpload: "Send receipt", gSelect: "Which periods does this payment cover?",
   gOverdue: "Overdue", gNow: "Due now", gNext: "Upcoming",
   gFiles: "Receipt (photo or PDF, up to 5 files)", gAddFile: "Add file", gSending: "Sending…", gDone: "We got your receipt. We'll let you know once verified.",
-  gLuzWait: "Amount to be confirmed", gLuzNote: "Electricity goes in a separate receipt.",
+  gLuzWait: "Amount to be confirmed", gLuzNote: "Electricity goes in a separate receipt. Upload your paid bill and enter how much you paid.",
   gHistory: "History", gMessages: "Messages", gWrite: "Write to us", gInvalid: "This link is no longer valid. Ask us for a new one.", gSince: "From", gUntil: "Until", gOpenEnd: "No check-out date",
   gMissing: "Pick at least one period and add your receipt.", perMonth: "month", perPeriod: "period",
   gAsk: {
@@ -1554,7 +1561,7 @@ const ltDemo = {
       for (let g = 0; g < 240; g++) {
         const first = isoDay(new Date(y, m, 1)); if (first > horizon || (salida && first >= salida)) break;
         const last = new Date(y, m + 1, 0).getDate(), lastIso = isoDay(new Date(y, m, last));
-        list.push({ periodo: y + "-" + String(m + 1).padStart(2, "0"), inicio: first < r.entrada ? r.entrada : first, fin: salida && salida <= lastIso ? ltIsoAdd(salida, -1) : lastIso, vence: isoDay(new Date(y, m, Math.min(day, last))) });
+        list.push({ periodo: y + "-" + String(m + 1).padStart(2, "0"), inicio: first < r.entrada ? r.entrada : first, fin: salida && salida <= lastIso ? ltIsoAdd(salida, -1) : lastIso, vence: (() => { const v = isoDay(new Date(y, m, Math.min(day, last))); return v < r.entrada ? r.entrada : v; })() });
         m++; if (m > 11) { m = 0; y++; }
       }
     } else {
@@ -1572,9 +1579,9 @@ const ltDemo = {
     r.pagos.sort((a, b) => (a.inicio < b.inicio ? -1 : a.inicio > b.inicio ? 1 : a.concepto === "renta" ? -1 : 1));
   },
   reset(r) { r.pagos = r.pagos.filter((p) => !((p.estado === "pendiente" || p.estado === "vencido") && !p.compId && !p.ajustado)); },
-  overdue(d) { const t = isoDay(todayDay()); d.list.forEach((r) => r.pagos.forEach((p) => { if (p.estado === "pendiente" && p.monto > 0 && p.vence < t) p.estado = "vencido"; })); },
+  overdue(d) { const t = isoDay(todayDay()); d.list.forEach((r) => r.pagos.forEach((p) => { if (p.estado === "pendiente" && p.vence < t) p.estado = "vencido"; })); },
   summary(r) {
-    const live = r.pagos.filter((p) => p.concepto === "renta" || p.monto > 0), c = (s) => live.filter((p) => p.estado === s).length;
+    const live = r.pagos, c = (s) => live.filter((p) => p.estado === s).length;
     const next = live.filter((p) => p.concepto === "renta" && ["pendiente", "vencido", "rechazado"].includes(p.estado)).sort((a, b) => (a.vence < b.vence ? -1 : 1))[0] || null;
     const g = r.guest || {}, faltan = [];
     if (!g.nombre) faltan.push("nombre"); if (!g.email) faltan.push("email"); if (!g.telefono) faltan.push("telefono"); if (!g.docNumero) faltan.push("doc");
@@ -1602,24 +1609,35 @@ const ltDemo = {
     this.overdue(d); return this.save(d);
   },
   find(d, code) { return d.list.find((r) => normCode(r.code) === normCode(code)); },
-  detail(r, forGuest) { const o = this.summary(r); delete o.token; if (forGuest) { delete o.notas; delete o.envios; } return JSON.parse(JSON.stringify(o)); },
+  detail(r, forGuest) { const o = this.summary(r); if (!forGuest && r.token && r.estado !== "terminada") o.url = Backend._ltUrl(r.token); delete o.token; if (forGuest) { delete o.notas; delete o.envios; } return JSON.parse(JSON.stringify(o)); },
   log(r, tipo, canal, periodo) { r.envios.unshift({ id: this.id("E"), periodo: periodo || "", tipo, canal, destino: canal === "email" ? r.guest.email : r.guest.telefono, estado: canal === "email" ? (r.guest.email ? "enviado" : "fallido") : "abierto", creado: this.now() }); },
 };
 
 Object.assign(Backend, {
   async _lt(action, payload) {
     let j;
-    try { j = await this.call(action, payload); } catch (e) { return { ok: false, error: (e && e.message) || "backend-error" }; }
+    // lecturas: un reintento automático si hubo timeout o red caída
+    const read = /^(ltList|ltGet|ltGuest|ltLink)$/.test(action);
+    for (let i = 0; i < (read ? 2 : 1); i++) {
+      try { j = await this.call(action, payload); break; }
+      catch (e) { const m = (e && e.message) || "backend-error"; if (i === 0 && read && /timeout|network/.test(m)) { await new Promise((r) => setTimeout(r, 800)); continue; }
+        return { ok: false, error: m === "timeout" ? "La conexión tardó demasiado. Intenta de nuevo." : m }; }
+    }
     // un backend sin el bloque Long Term responde ok:true sin datos ("skip: action …")
     const need = { ltList: "list", ltGet: "lt", ltSave: "lt", ltSetPeriod: "lt", ltVerify: "lt", ltAdminMsg: "lt", ltEnd: "lt", ltDelete: "deleted", ltGuest: "lt", ltUpload: "lt", ltGuestMsg: "lt", ltToken: "url", ltLink: "url" }[action];
     if ((j && typeof j.result === "string" && /^skip/i.test(j.result)) || (need && !(j && j[need]))) {
       return { ok: false, error: "El backend publicado no tiene Long Term. Publica una versión nueva del Apps Script." };
     }
+    // el enlace del huésped siempre apunta a ESTA app (no depende de APP_URL en el backend)
+    if (j && j.url) j.url = this._ltFix(j.url);
+    if (j && j.lt && j.lt.url) j.lt.url = this._ltFix(j.lt.url);
+    if (j && Array.isArray(j.list)) j.list.forEach((x) => { if (x.url) x.url = this._ltFix(x.url); });
     return j;
   },
   _ltUrl(tok) { return location.origin + location.pathname + "#lt=" + tok; },
+  _ltFix(u) { const m = /[#&?]lt=([A-Za-z0-9_-]+)/.exec(String(u || "")); return m ? this._ltUrl(m[1]) : u; },
   async ltList() {
-    if (this.isConnected()) { const j = await this._lt("ltList"); if (j.ok) { try { localStorage.setItem("spacioam_cache_lt", JSON.stringify({ list: j.list })); } catch (e) {} } return j; }
+    if (this.isConnected()) { const j = await this._lt("ltList"); if (j.ok) { try { localStorage.setItem("spacioam_cache_lt", JSON.stringify({ list: j.list })); } catch (e) { try { localStorage.removeItem("spacioam_cache_lt"); } catch (e2) {} } } return j; }
     const d = ltDemo.load(); ltDemo.overdue(d); ltDemo.save(d); return { ok: true, list: d.list.map((r) => ltDemo.detail(r)) };
   },
   async ltGet(code) {
@@ -1699,8 +1717,9 @@ Object.assign(Backend, {
     return (ltDemo._files && ltDemo._files[fileId]) || "";
   },
   /* huésped */
+  ltGuestCached(token) { try { const o = JSON.parse(localStorage.getItem("spacioam_ltg_" + token)); return o && o.code ? o : null; } catch (e) { return null; } },
   async ltGuest(token) {
-    if (this.isConnected()) return this._lt("ltGuest", { token });
+    if (this.isConnected()) { const j = await this._lt("ltGuest", { token }); if (j && j.ok && j.lt) { try { localStorage.setItem("spacioam_ltg_" + token, JSON.stringify(j.lt)); } catch (e) {} } return j; }
     const d = ltDemo.load(), r = d.list.find((x) => x.token === token && x.estado !== "terminada");
     if (!r) return { ok: false, error: "invalid" };
     ltDemo.periods(r); ltDemo.overdue(d); ltDemo.save(d); return { ok: true, lt: ltDemo.detail(r, true) };

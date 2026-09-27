@@ -542,6 +542,7 @@ const Icon = ({ name, size = 22, color = C.negro, strokeWidth = 1.4 }) => {
     visits: <><circle cx="9" cy="8" r="3" /><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M17 11l2 2 4-4" /></>,
     parqueo: <><rect x="4" y="4" width="16" height="16" rx="3" /><path d="M9 16V8h3.5a2.5 2.5 0 0 1 0 5H9" /></>,
     factura: <><path d="M6 3h9l3 3v13.5a.5.5 0 0 1-.8.4L15 18l-1.5 1.4a.7.7 0 0 1-1 0L11 18l-1.5 1.4a.7.7 0 0 1-1 0L7 18l-1.2 1.3a.5.5 0 0 1-.8-.4V3z" /><path d="M9 8h6M9 11h6M9 14h4" /></>,
+    zap: <path d="M13 2L4.5 13.5H11L10 22l8.5-11.5H12L13 2z" />,
     flame: <><path d="M12 3c1 3-2 4-2 7a2 2 0 0 0 4 0c0-1-.5-2-.5-2 2 1 3.5 3 3.5 5.5a5 5 0 0 1-10 0C7 9 11 8 12 3z" /></>,
     tv: <><rect x="3" y="6" width="18" height="12" rx="2" /><path d="M8 21h8" /></>,
     wifi: <><path d="M2 8.5C5.5 5.5 18.5 5.5 22 8.5M5 12c3-2.5 11-2.5 14 0M8 15.5c2-1.5 6-1.5 8 0" /><circle cx="12" cy="19" r="1" /></>,

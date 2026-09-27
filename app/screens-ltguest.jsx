@@ -25,7 +25,7 @@ function LtAskMissing({ t, faltan, perfil, setPerfil }) {
 
 function LtGuestScreen({ t, token, onSwitchLang }) {
   const es = t.code === "es";
-  const [lt, setLt] = useStateLt(undefined);
+  const [lt, setLt] = useStateLt(() => (Backend.ltGuestCached && Backend.ltGuestCached(token)) || undefined);   // pinta al instante lo último visto
   const [concepto, setConcepto] = useStateLt("renta");
   const [sel, setSel] = useStateLt([]);
   const [files, setFiles] = useStateLt([]);
@@ -38,14 +38,14 @@ function LtGuestScreen({ t, token, onSwitchLang }) {
   const [msg, setMsg] = useStateLt("");
   const [view, setView] = useStateLt(null);
   const fileRef = useRefLt(null);
-  const load = () => Backend.ltGuest(token).then((r) => setLt(r && r.ok ? r.lt : null)).catch(() => setLt(null));
+  const load = () => Backend.ltGuest(token).then((r) => setLt((prev) => r && r.ok ? r.lt : (r && r.error === "invalid") || !prev ? null : prev)).catch(() => setLt((prev) => prev || null));
   useEffectLt(() => { load(); const id = setInterval(() => { if (!document.hidden && !busy) load(); }, 60000); return () => clearInterval(id); }, [token]);
   const today = new Date().toLocaleDateString("en-CA");
   const pagos = (lt && lt.pagos) || [];
   const isOpen = (p) => ["pendiente", "vencido", "rechazado"].includes(p.estado);
-  const payable = (p) => isOpen(p) && (p.concepto !== "luz" || p.monto > 0);
+  const payable = (p) => isOpen(p) && (p.concepto !== "luz" || p.inicio <= today);   // luz: sin monto fijo, se paga cuando llega el recibo
   const luzOpen = pagos.filter((p) => p.concepto === "luz" && payable(p));
-  const luzWaiting = pagos.filter((p) => p.concepto === "luz" && isOpen(p) && !(p.monto > 0) && p.inicio <= today);
+  const luzWaiting = [];
   const hasLuz = !!(lt && lt.cobraLuz);
   const list = pagos.filter((p) => p.concepto === concepto && payable(p));
   const soon = addDaysIso(today, 10);
@@ -126,7 +126,7 @@ function LtGuestScreen({ t, token, onSwitchLang }) {
           </div>
           {!totalOpen && <div style={{ display: "flex", alignItems: "center", gap: 10, fontFamily: C.sans, fontSize: 14, color: "#3d6b52" }}><Icon name="check" size={18} color="#3d6b52" strokeWidth={1.5} />{t.lt.gAllClear}</div>}
           {list.length > 0 && <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-            {concepto === "luz" && <div style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, display: "flex", gap: 8, alignItems: "center" }}><Icon name="flame" size={15} color={C.peach} strokeWidth={1.5} />{t.lt.gLuzNote}</div>}
+            {concepto === "luz" && <div style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, display: "flex", gap: 8, alignItems: "center" }}><Icon name="zap" size={15} color={C.peach} strokeWidth={1.5} />{t.lt.gLuzNote}</div>}
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <span style={ltLabel}>{t.lt.gSelect}</span>
               {groups.map(([gk, items]) => <div key={gk} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -138,7 +138,7 @@ function LtGuestScreen({ t, token, onSwitchLang }) {
                       <span style={{ display: "block", fontFamily: C.sans, fontSize: 14, color: C.negro, fontWeight: 500 }}>{p.label || ltPeriod(p.periodo, es)}</span>
                       <span style={{ display: "block", fontFamily: C.sans, fontSize: 11.5, color: C.tierra, marginTop: 2 }}>{t.lt.due} {ltDate(p.vence, es)}{p.estado === "rechazado" && p.motivo ? " · " + p.motivo : ""}</span>
                     </span>
-                    <span style={{ fontFamily: C.sans, fontSize: 13.5, color: C.negro, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{ltMoney(p.monto, p.moneda)}</span>
+                    <span style={{ fontFamily: C.sans, fontSize: 13.5, color: p.concepto === "luz" && !(p.monto > 0) ? C.tierra : C.negro, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{p.concepto === "luz" && !(p.monto > 0) ? t.lt.luzVar : ltMoney(p.monto, p.moneda)}</span>
                     {p.estado !== "pendiente" && <LtBadge t={t} estado={p.estado} />}
                   </label>); })}
               </div>)}
@@ -166,7 +166,7 @@ function LtGuestScreen({ t, token, onSwitchLang }) {
           </div>}
           {hasLuz && luzWaiting.length > 0 && <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 6 }}>
             {luzWaiting.map((p) => <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, fontFamily: C.sans, fontSize: 12.5, color: C.tierra }}>
-              <Icon name="flame" size={14} color={C.earth} strokeWidth={1.5} />{t.lt.luz} · {p.label || ltPeriod(p.periodo, es)} · {t.lt.gLuzWait}</div>)}
+              <Icon name="zap" size={14} color={C.earth} strokeWidth={1.5} />{t.lt.luz} · {p.label || ltPeriod(p.periodo, es)} · {t.lt.gLuzWait}</div>)}
           </div>}
           {msg && <div style={{ marginTop: 14, fontFamily: C.sans, fontSize: 13, color: msg === t.lt.gDone ? "#3d6b52" : "#C0392B" }}>{msg}</div>}
         </section>
@@ -177,8 +177,8 @@ function LtGuestScreen({ t, token, onSwitchLang }) {
             {history.map((p) => { const c = (lt.comprobantes || []).find((x) => x.id === p.compId); return (
               <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "12px 0", borderBottom: `1px solid ${C.grisCalido}` }}>
                 <span style={{ flex: "1 1 150px", display: "inline-flex", alignItems: "center", gap: 8, fontFamily: C.sans, fontSize: 14, color: C.negro }}>
-                  {p.concepto === "luz" && <Icon name="flame" size={14} color={C.peach} strokeWidth={1.5} />}{p.label || ltPeriod(p.periodo, es)}{p.concepto === "luz" ? " · " + t.lt.luz : ""}</span>
-                <span style={{ fontFamily: C.sans, fontSize: 13, color: C.negro, fontVariantNumeric: "tabular-nums" }}>{ltMoney(p.monto, p.moneda)}</span>
+                  {p.concepto === "luz" && <Icon name="zap" size={14} color={C.peach} strokeWidth={1.5} />}{p.label || ltPeriod(p.periodo, es)}{p.concepto === "luz" ? " · " + t.lt.luz : ""}</span>
+                <span style={{ fontFamily: C.sans, fontSize: 13, color: C.negro, fontVariantNumeric: "tabular-nums" }}>{p.monto > 0 ? ltMoney(p.monto, p.moneda) : c && c.monto > 0 ? ltMoney(c.monto, p.moneda) : "—"}</span>
                 <LtBadge t={t} estado={p.estado} />
                 {c && c.files[0] && <button onClick={() => setView(c.files[0])} aria-label={t.lt.viewProof} className="sp-btn"
                   style={{ width: 44, height: 44, borderRadius: 999, border: `1px solid ${C.grisCalido}`, background: C.white, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>

@@ -4,7 +4,21 @@
        (inicio ≤ fecha + 40 días). Si alcanza para periodos completos siguientes, los adelanta; si no alcanza, queda como abono parcial.
    3 · Cada comprobante lleva avisos (bloqueantes o de atención). El servidor repite los controles contra su propia lectura:
        el navegador solo anticipa. Nada se verifica solo. */
-const LT_TOL = 1, LT_MAX_FILES = 12;
+const LT_TOL = 1, LT_MAX_FILES = 12, LT_WINDOW = 20;
+const ltPad = (n) => String(n).padStart(2, "0");
+/* "25/08/26" es día/mes/año en Guatemala. Si la lectura quedó fuera de la estancia, prueba la interpretación año↔día y un año de desfase. */
+function ltFixDate(f, entrada, today) {
+  if (!f) return { fecha: "", fixed: false };
+  const lo = entrada ? ltAddIso(entrada, -60) : "2000-01-01", ok = (x) => x >= lo && x <= today;
+  if (ok(f)) return { fecha: f, fixed: false };
+  const [y, m, d] = f.split("-").map(Number), cands = [[2000 + d, m, y % 100], [y + 1, m, d], [y, d, m]];
+  for (const [Y, M, D] of cands) {
+    if (!(M >= 1 && M <= 12 && D >= 1 && D <= 31)) continue;
+    const iso = Y + "-" + ltPad(M) + "-" + ltPad(D), dt = new Date(iso + "T12:00:00");
+    if (!isNaN(dt) && dt.getDate() === D && ok(iso)) return { fecha: iso, fixed: true };
+  }
+  return { fecha: f, fixed: false };
+}
 const ltAddIso = (iso, n) => { const d = new Date(iso + "T12:00:00"); d.setDate(d.getDate() + n); return d.toLocaleDateString("en-CA"); };
 const ltNormRef = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 const ltOpenSt = (p) => ["pendiente", "vencido", "rechazado"].includes(p.estado);
@@ -39,9 +53,13 @@ function ltAllocate(rows, open, today) {
     }
     if (!(m > 0)) { out[r.key] = res; return; }
     let rest = m;
-    const pool = r.pick !== "auto" ? renta.filter((p) => p.id === r.pick) : renta.filter((p) => p.inicio <= ltAddIso(r.fecha || today, 40));
+    // regla: el periodo pendiente MÁS ANTIGUO que ya podía pagarse en la fecha del depósito (inicio ≤ fecha + 20 días)
+    const f = r.fecha || today;
+    const pool = r.pick !== "auto" ? renta.filter((p) => p.id === r.pick) : renta.filter((p) => p.inicio <= ltAddIso(f, LT_WINDOW));
     const first = pool.find((p) => need[p.id] > LT_TOL);
     if (first) {
+      const here = renta.find((p) => p.inicio <= f && f <= p.fin);
+      res.why = r.pick !== "auto" ? "manual" : here && here.id !== first.id && first.inicio < here.inicio ? "arrears" : "date";
       const a = Math.min(rest, need[first.id]); need[first.id] -= a; rest -= a;
       res.alloc.push({ id: first.id, amt: a, full: need[first.id] <= LT_TOL, faltan: Math.max(0, need[first.id]) });
       if (r.pick === "auto" && need[first.id] <= LT_TOL) for (const p of renta) {
@@ -55,6 +73,10 @@ function ltAllocate(rows, open, today) {
   return out;
 }
 
+function ltRange(a, b, es) {
+  const f = (iso, y) => new Date(iso + "T12:00:00").toLocaleDateString(es ? "es-GT" : "en-US", y ? { day: "numeric", month: "short", year: "numeric" } : { day: "numeric", month: "short" }).replace(/\./g, "");
+  return f(a, false) + " – " + f(b, true);
+}
 async function ltHashFile(f) {
   try { const d = await crypto.subtle.digest("SHA-256", await f.arrayBuffer()); return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 40); }
   catch (e) { return ""; }
@@ -74,10 +96,11 @@ async function ltShrinkForAI(dataUrl) {
 const LT_RC_PROMPT = (hoy) => `Eres un lector de comprobantes de pago de Guatemala: transferencias, depósitos, pagos en banca en línea, boletas de depósito, capturas de apps bancarias y recibos de energía eléctrica (EEGSA, Energuate). Hoy es ${hoy}.
 Observa ESTRICTAMENTE el archivo. Extrae SOLO lo que realmente aparece; NUNCA inventes ni completes datos.
 Responde únicamente con un objeto JSON válido, sin texto adicional:
-{"es_comprobante": true|false, "legible": true|false, "tipo": "transferencia|deposito|recibo_luz|otro", "estado": "completada|pendiente|rechazada|desconocido", "banco": "", "fecha": "YYYY-MM-DD", "monto": 0, "moneda": "GTQ|USD|", "referencia": "", "cuenta_destino": "", "beneficiario": "", "ordenante": "", "senales_edicion": false}
+{"es_comprobante": true|false, "legible": true|false, "tipo": "transferencia|deposito|recibo_luz|otro", "estado": "completada|pendiente|rechazada|desconocido", "banco": "", "fecha": "YYYY-MM-DD", "monto": 0, "moneda": "GTQ|USD|", "referencia": "", "cuenta_destino": "", "beneficiario": "", "ordenante": "", "periodo_desde": "", "periodo_hasta": "", "senales_edicion": false}
 Reglas:
 - es_comprobante=false si no es un comprobante de pago ni un recibo de luz.
-- fecha = fecha de la operación. Si el año no aparece, usa el más reciente que no sea posterior a hoy.
+- fecha = fecha de la operación. En Guatemala las fechas van en día/mes/año: "25/08/26" es 2026-08-25. Si el año no aparece, usa el más reciente que no sea posterior a hoy.
+- periodo_desde / periodo_hasta = solo si el comprobante (comentario, concepto o descripción) menciona qué periodo de renta paga, p. ej. "Renta 25 agosto a 25 septiembre" → 2026-08-25 / 2026-09-25. Si no lo menciona, vacíos.
 - monto = total transferido o depositado, número sin símbolo ni comas. En recibo de luz, el total pagado.
 - moneda: Q, GTQ o quetzales = GTQ; $, US$ o USD = USD. Vacío si no aparece.
 - referencia = número de autorización, referencia, boleta o transacción.
@@ -101,6 +124,7 @@ async function ltReadReceipt(file, token) {
     const j = JSON.parse(jm[0]);
     j.fecha = /^\d{4}-\d{2}-\d{2}$/.test(j.fecha || "") ? j.fecha : ""; j.monto = +String(j.monto == null ? "" : j.monto).replace(/[^\d.]/g, "") || 0;
     j.moneda = /^(GTQ|USD)$/.test(j.moneda || "") ? j.moneda : "";
+    ["periodo_desde", "periodo_hasta"].forEach((k) => { if (!/^\d{4}-\d{2}-\d{2}$/.test(j[k] || "")) j[k] = ""; });
     return { ai: j, key };
   } catch (e) { return null; }
 }
@@ -131,8 +155,13 @@ function ltRowFlags(r, ctx) {
   if (ai.moneda && ai.moneda !== cur) push("currency", F.currency(ai.moneda === "USD" ? "US$" : "Q"));
   if (r.fecha && lt.entrada && r.fecha < ltAddIso(lt.entrada, -31)) push("old", F.old);
   if (ai.senales_edicion === true) push("tampered", F.tampered);
+  if (r.dateFixed && ai.fecha) push("dateFixed", F.dateFixed(ltDate(r.fecha, ctx.es)));
+  if (res && res.alloc.length && ai.periodo_desde && r.concepto === "renta") {
+    const all = ltDedupPagos(lt).filter((p) => p.concepto === "renta"), said = all.find((p) => p.inicio <= ai.periodo_desde && ai.periodo_desde <= p.fin);
+    if (said && !res.alloc.some((a) => a.id === said.id)) push("hintDiff", F.hintDiff(said.label || ltPeriod(said.periodo, ctx.es), (byId[res.alloc[0].id] || {}).label || ""));
+  }
   if (r.manual) push("manual", F.manual);
-  else if (r.ai && ((ai.fecha && ai.fecha !== r.fecha) || (ai.monto > 0 && Math.abs(ai.monto - (+r.monto || 0)) > 0.01) || (ai.referencia && ltNormRef(ai.referencia) !== ref))) push("edited", F.edited);
+  else if (r.ai && ((ai.fecha && ai.fecha !== r.fecha && !r.dateFixed) || (ai.monto > 0 && Math.abs(ai.monto - (+r.monto || 0)) > 0.01) || (ai.referencia && ltNormRef(ai.referencia) !== ref))) push("edited", F.edited);
   return out;
 }
 
@@ -156,9 +185,9 @@ function LtReceiptIntake({ t, es, token, lt, onDone, perfilSlot, perfil, resetPe
   const renta = open.filter((p) => p.concepto === "renta"), luzOpen = open.filter((p) => p.concepto === "luz");
   const lbl = (p) => p ? (p.label || ltPeriod(p.periodo, es)) + (p.concepto === "luz" ? " · " + t.lt.luz : "") : "";
   // bloqueos que no dependen de la asignación se calculan primero, para no asignar dinero a un comprobante que no se enviará
-  const pre = rows.map((r) => ({ ...r, hard: ltRowFlags(r, { t, rows, lt, cur, today, res: null, fmt, byId }).some((f) => f.hard) }));
+  const pre = rows.map((r) => ({ ...r, hard: ltRowFlags(r, { t, es, rows, lt, cur, today, res: null, fmt, byId }).some((f) => f.hard) }));
   const assign = ltAllocate(pre, open, today);
-  const flags = {}; pre.forEach((r) => { flags[r.key] = ltRowFlags(r, { t, rows, lt, cur, today, res: r.status === "ok" && !r.hard ? assign[r.key] || { alloc: [], sobrante: 0 } : null, fmt, byId }); });
+  const flags = {}; pre.forEach((r) => { flags[r.key] = ltRowFlags(r, { t, es, rows, lt, cur, today, res: r.status === "ok" && !r.hard ? assign[r.key] || { alloc: [], sobrante: 0 } : null, fmt, byId }); });
   const sendable = pre.filter((r) => r.status === "ok" && !flags[r.key].some((f) => f.hard) && (assign[r.key] || { alloc: [] }).alloc.length);
   const reading = rows.some((r) => r.status === "reading");
   const upd = (key, patch) => setRows((p) => p.map((r) => (r.key === key ? { ...r, ...patch } : r)));
@@ -178,7 +207,8 @@ function LtReceiptIntake({ t, es, token, lt, onDone, perfilSlot, perfil, resetPe
           upd(key, { status: "ok", ai: ai || null, aiKey: (x && x.key) || "", manual: true, editing: true, fecha: (ai && ai.fecha) || "", monto: ai && ai.monto ? String(ai.monto) : "", ref: (ai && ai.referencia) || "", banco: (ai && ai.banco) || "" });
           return;
         }
-        upd(key, { status: "ok", ai, aiKey: x.key, fecha: ai.fecha, monto: String(ai.monto), ref: ai.referencia || "", banco: ai.banco || "",
+        const fx = ltFixDate(ai.fecha, lt.entrada, today);
+        upd(key, { status: "ok", ai, aiKey: x.key, fecha: fx.fecha, dateFixed: fx.fixed, monto: String(ai.monto), ref: ai.referencia || "", banco: ai.banco || "",
           concepto: ai.tipo === "recibo_luz" ? "luz" : "renta" });
       });
     }
@@ -247,6 +277,9 @@ function LtReceiptIntake({ t, es, token, lt, onDone, perfilSlot, perfil, resetPe
                 {a && a.alloc.length ? <><Icon name="arrow" size={13} color={C.peach} strokeWidth={1.5} />
                   {a.alloc.length === 1 && !a.alloc[0].full && r.concepto !== "luz" ? rc.partialTo(lbl(byId[a.alloc[0].id]), fmt(a.alloc[0].faltan)) : rc.covers + " " + a.alloc.map((x) => lbl(byId[x.id])).join(" · ")}</>
                   : !hard ? rc.noAssign : r.file.name}</span>
+              {a && a.alloc.length > 0 && a.why && (() => { const p0 = byId[a.alloc[0].id], rng = p0 && p0.inicio && p0.fin ? ltRange(p0.inicio, p0.fin, es) : "", d0 = r.fecha ? ltDate(r.fecha, es) : "";
+                return <span style={{ fontFamily: C.sans, fontSize: 11.5, color: C.tierra, lineHeight: 1.5 }}>
+                  {a.why === "manual" ? rc.why.manual : a.why === "arrears" ? rc.why.arrears(d0, lbl(p0)) : rc.why.date(d0)}{rng ? " · " + rc.why.range(rng) : ""}</span>; })()}
             </>}
           </span>
           {r.status === "ok" && !r.editing && <LtPill small icon="edit" onClick={() => upd(r.key, { editing: true })} disabled={busy}>{rc.edit}</LtPill>}
@@ -259,7 +292,7 @@ function LtReceiptIntake({ t, es, token, lt, onDone, perfilSlot, perfil, resetPe
         {r.status === "ok" && r.editing && <div style={{ display: "flex", flexDirection: "column", gap: 10, background: C.beige, borderRadius: 10, padding: 12 }}>
           {r.manual && <span style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra, lineHeight: 1.5 }}>{rc.manualHint}</span>}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10 }}>
-            <LtField label={t.lt.payDate}><LtInput type="date" value={r.fecha} onChange={(v) => upd(r.key, { fecha: v, srvErr: "" })} max={today} /></LtField>
+            <LtField label={t.lt.payDate}><LtInput type="date" value={r.fecha} onChange={(v) => upd(r.key, { fecha: v, dateFixed: false, srvErr: "" })} max={today} /></LtField>
             <LtField label={t.lt.paid + " · " + (cur === "USD" ? "US$" : "Q")}><LtInput type="number" value={r.monto} onChange={(v) => upd(r.key, { monto: v, srvErr: "" })} inputMode="decimal" /></LtField>
             <LtField label={t.lt.ref}><LtInput value={r.ref} onChange={(v) => upd(r.key, { ref: v, srvErr: "" })} /></LtField>
             {lt.cobraLuz && <LtField label={rc.concept}>
@@ -287,4 +320,4 @@ function LtReceiptIntake({ t, es, token, lt, onDone, perfilSlot, perfil, resetPe
   </div>;
 }
 
-Object.assign(window, { LtReceiptIntake, ltAllocate, ltOpenPeriods, ltDedupPagos, ltRowFlags, LtFlag });
+Object.assign(window, { LtReceiptIntake, ltFixDate, ltRange, ltAllocate, ltOpenPeriods, ltDedupPagos, ltRowFlags, LtFlag });

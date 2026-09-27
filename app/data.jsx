@@ -996,6 +996,7 @@ const Backend = {
     if (action === "getRegistration") return 30000;
     if (action === "formCompleted") return 20000;
     if (action === "getDocImage") return 25000;
+    if (action === "ltUpload" || action === "ltSave") return 120000;
     if (action === "findReservation") {
       if (p.sync === "deep") return 210000;   // 60 días
       if (p.sync === "quick") return 90000;   // 5 días
@@ -1443,6 +1444,265 @@ const Backend = {
   },
 };
 /* backwards-compat alias for existing admin references */
+
+/* ── Long Term: textos, backend y datos demo ── */
+const LT_T_ES = {
+  tab: "Long Term", eyebrow: "Estancias largas", title: "Long Term", sub: "Reservas por periodo, sus pagos y la conversación con cada huésped.",
+  newRes: "Nueva reserva", search: "Buscar huésped, propiedad o código", all: "Todas", active: "Activas", ended: "Terminadas",
+  kActive: "Activas", kReview: "Por revisar", kOverdue: "Vencidos", kUnread: "Mensajes",
+  thNext: "Próximo pago", empty: "Sin reservas Long Term todavía.",
+  st: { pendiente: "Pendiente", revision: "En revisión", verificado: "Verificado", rechazado: "Rechazado", vencido: "Vencido", activa: "Activa", terminada: "Terminada", porDefinir: "Por definir" },
+  guest: "Huésped", name: "Nombre completo", phone: "Teléfono", email: "Correo", docType: "Tipo de documento", docNum: "Número de documento", docImg: "Foto del documento",
+  stay: "Estancia", prop: "Propiedad", entry: "Entrada", endType: "Fin", endDate: "Con fecha", endOpen: "Indefinido", exit: "Salida",
+  amount: "Monto por periodo", currency: "Moneda", payDay: "Día de cobro", notes: "Notas internas", save: "Guardar", cancel: "Cancelar", saving: "Guardando…",
+  freq: "Periodo de cobro", fMensual: "Mensual", fQuincenal: "Quincenal", fSemanal: "Semanal", fCustom: "Personalizado", everyDays: "Cada cuántos días",
+  luz: "Luz", luzToggle: "El huésped paga la luz", luzHint: "Cada periodo tendrá un cobro de luz con su propio comprobante. Tú pones el monto cuando llegue el recibo.",
+  luzSet: "Poner monto de luz", luzPending: "Luz sin monto",
+  rent: "Renta", adjust: "Ajustar", adjustTitle: "Ajustar periodo", apply: "Aplicar", adjusted: "Ajustado",
+  periods: "Periodos", messages: "Mensajes", log: "Envíos", noLog: "Sin envíos registrados.", noMsgs: "Sin mensajes.",
+  verify: "Verificar", reject: "Rechazar", reason: "Motivo del rechazo", viewProof: "Ver comprobante", reply: "Escribe una respuesta", send: "Enviar",
+  copyLink: "Copiar enlace", sendLink: "Enviar enlace", regen: "Regenerar enlace", regenWarn: "El enlace anterior dejará de funcionar.",
+  copied: "Enlace copiado", end: "Terminar estancia", reopen: "Reactivar", edit: "Editar",
+  sendTitle: "Enviar enlace", channel: "Canal", msgLabel: "Mensaje", sent: "Enviado",
+  linkMsg: (n, p, url) => (n ? "Hola " + n + ", este" : "Hola, este") + " es tu perfil de estancia en " + p + ". Ahí ves tus periodos pendientes, subes tus comprobantes y nos escribes: " + url,
+  missingData: "Datos por completar", due: "Vence", paidWith: "Comprobante", ref: "Referencia", payDate: "Fecha de pago", paid: "Monto pagado", comment: "Comentario",
+  /* huésped */
+  gEyebrow: "Tu estancia", gHello: (n) => n ? "Hola, " + n + "." : "Hola.", gSub: "Tus pagos, tus comprobantes y una línea directa con nosotros.",
+  gPending: "Pendientes", gAllClear: "Estás al día. Gracias.", gUpload: "Enviar comprobante", gSelect: "¿Qué periodos cubre este pago?",
+  gOverdue: "Vencidos", gNow: "Por pagar", gNext: "Próximos",
+  gFiles: "Comprobante (foto o PDF, hasta 5 archivos)", gAddFile: "Agregar archivo", gSending: "Enviando…", gDone: "Recibimos tu comprobante. Te avisamos al verificarlo.",
+  gLuzWait: "Monto por confirmar", gLuzNote: "La luz va en un comprobante aparte.",
+  gHistory: "Historial", gMessages: "Mensajes", gWrite: "Escríbenos", gInvalid: "Este enlace ya no es válido. Pídenos uno nuevo.", gSince: "Desde", gUntil: "Hasta", gOpenEnd: "Sin fecha de salida",
+  gMissing: "Selecciona al menos un periodo y agrega tu comprobante.", perMonth: "mes", perPeriod: "periodo",
+  gAsk: {
+    intro: "Y de paso, para tenerte bien registrado:",
+    nombre: ["¿Cómo te llamas?", "Tu nombre completo"],
+    email: ["¿A qué correo te avisamos cuando verifiquemos tus pagos?", "tu@correo.com"],
+    telefono: ["¿Un número para escribirte si hace falta?", "+502 5555 5555"],
+    doc: ["Tu documento de identidad, para tu expediente.", "Número de DPI o pasaporte"],
+    docPhoto: "Foto del documento", optional: "Opcional",
+  },
+};
+const LT_T_EN = {
+  tab: "Long Term", eyebrow: "Long stays", title: "Long Term", sub: "Bookings by period, their payments and each guest's conversation.",
+  newRes: "New booking", search: "Search guest, property or code", all: "All", active: "Active", ended: "Ended",
+  kActive: "Active", kReview: "To review", kOverdue: "Overdue", kUnread: "Messages",
+  thNext: "Next payment", empty: "No Long Term bookings yet.",
+  st: { pendiente: "Pending", revision: "In review", verificado: "Verified", rechazado: "Rejected", vencido: "Overdue", activa: "Active", terminada: "Ended", porDefinir: "To be set" },
+  guest: "Guest", name: "Full name", phone: "Phone", email: "Email", docType: "Document type", docNum: "Document number", docImg: "Document photo",
+  stay: "Stay", prop: "Property", entry: "Check-in", endType: "End", endDate: "Fixed date", endOpen: "Open-ended", exit: "Check-out",
+  amount: "Amount per period", currency: "Currency", payDay: "Billing day", notes: "Internal notes", save: "Save", cancel: "Cancel", saving: "Saving…",
+  freq: "Billing period", fMensual: "Monthly", fQuincenal: "Every 15 days", fSemanal: "Weekly", fCustom: "Custom", everyDays: "Every how many days",
+  luz: "Electricity", luzToggle: "Guest pays electricity", luzHint: "Each period gets an electricity charge with its own receipt. You set the amount when the bill arrives.",
+  luzSet: "Set electricity amount", luzPending: "Electricity without amount",
+  rent: "Rent", adjust: "Adjust", adjustTitle: "Adjust period", apply: "Apply", adjusted: "Adjusted",
+  periods: "Periods", messages: "Messages", log: "Sends", noLog: "No sends yet.", noMsgs: "No messages.",
+  verify: "Verify", reject: "Reject", reason: "Rejection reason", viewProof: "View receipt", reply: "Write a reply", send: "Send",
+  copyLink: "Copy link", sendLink: "Send link", regen: "Regenerate link", regenWarn: "The previous link will stop working.",
+  copied: "Link copied", end: "End stay", reopen: "Reactivate", edit: "Edit",
+  sendTitle: "Send link", channel: "Channel", msgLabel: "Message", sent: "Sent",
+  linkMsg: (n, p, url) => (n ? "Hi " + n + ", this" : "Hi, this") + " is your stay profile at " + p + ". See your pending periods, upload receipts and message us: " + url,
+  missingData: "Missing details", due: "Due", paidWith: "Receipt", ref: "Reference", payDate: "Payment date", paid: "Amount paid", comment: "Comment",
+  gEyebrow: "Your stay", gHello: (n) => n ? "Hi, " + n + "." : "Hi.", gSub: "Your payments, your receipts and a direct line to us.",
+  gPending: "Pending", gAllClear: "You're all caught up. Thank you.", gUpload: "Send receipt", gSelect: "Which periods does this payment cover?",
+  gOverdue: "Overdue", gNow: "Due now", gNext: "Upcoming",
+  gFiles: "Receipt (photo or PDF, up to 5 files)", gAddFile: "Add file", gSending: "Sending…", gDone: "We got your receipt. We'll let you know once verified.",
+  gLuzWait: "Amount to be confirmed", gLuzNote: "Electricity goes in a separate receipt.",
+  gHistory: "History", gMessages: "Messages", gWrite: "Write to us", gInvalid: "This link is no longer valid. Ask us for a new one.", gSince: "From", gUntil: "Until", gOpenEnd: "No check-out date",
+  gMissing: "Pick at least one period and add your receipt.", perMonth: "month", perPeriod: "period",
+  gAsk: {
+    intro: "And while you're here, so we have you properly on file:",
+    nombre: ["What's your name?", "Your full name"],
+    email: ["Which email should we use to confirm your payments?", "you@email.com"],
+    telefono: ["A number to reach you if needed?", "+1 555 555 5555"],
+    doc: ["Your ID, for your file.", "ID or passport number"],
+    docPhoto: "Photo of your ID", optional: "Optional",
+  },
+};
+T.es.lt = LT_T_ES; T.en.lt = LT_T_EN;
+
+const LT_DEMO_KEY = "spacioam_lt_demo2";
+const LT_MES3 = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+const ltIsoAdd = (iso, n) => { const d = new Date(iso + "T12:00:00"); d.setDate(d.getDate() + n); return isoDay(d); };
+function ltPerLabelEs(p) {
+  if (/^\d{4}-\d{2}$/.test(p.periodo)) { const [y, m] = p.periodo.split("-"); return ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"][+m - 1] + " " + y; }
+  const a = new Date(p.inicio + "T12:00:00"), b = new Date(p.fin + "T12:00:00"), same = a.getMonth() === b.getMonth();
+  return a.getDate() + (same ? "" : " " + LT_MES3[a.getMonth()]) + " – " + b.getDate() + " " + LT_MES3[b.getMonth()] + " " + b.getFullYear();
+}
+const ltDemo = {
+  load() { try { const d = JSON.parse(localStorage.getItem(LT_DEMO_KEY)); if (d && d.list) return d; } catch (e) {} return this.seed(); },
+  save(d) { try { localStorage.setItem(LT_DEMO_KEY, JSON.stringify(d)); } catch (e) {} return d; },
+  id(p) { return p + Math.random().toString(36).slice(2, 10).toUpperCase(); },
+  now() { const d = new Date(); return isoDay(d) + "T" + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0") + ":00"; },
+  step(r) { return r.frecuencia === "mensual" || !r.frecuencia ? 0 : r.frecuencia === "quincenal" ? 15 : r.frecuencia === "semanal" ? 7 : Math.max(1, +r.cadaDias || 30); },
+  periods(r) {
+    if (r.estado === "terminada") return;
+    const have = {}; r.pagos.forEach((p) => { have[p.concepto + "|" + p.periodo] = 1; });
+    const salida = r.tipoFin === "fecha" ? r.salida : "", horizon = salida || ltIsoAdd(isoDay(todayDay()), 62), step = this.step(r), list = [];
+    if (!step) {
+      let [y, m, d0] = r.entrada.split("-").map(Number); m -= 1; const day = +r.diaCobro || d0;
+      for (let g = 0; g < 240; g++) {
+        const first = isoDay(new Date(y, m, 1)); if (first > horizon || (salida && first >= salida)) break;
+        const last = new Date(y, m + 1, 0).getDate(), lastIso = isoDay(new Date(y, m, last));
+        list.push({ periodo: y + "-" + String(m + 1).padStart(2, "0"), inicio: first < r.entrada ? r.entrada : first, fin: salida && salida <= lastIso ? ltIsoAdd(salida, -1) : lastIso, vence: isoDay(new Date(y, m, Math.min(day, last))) });
+        m++; if (m > 11) { m = 0; y++; }
+      }
+    } else {
+      for (let ini = r.entrada, k = 0; ini <= horizon && k < 400; k++) {
+        if (salida && ini >= salida) break;
+        let fin = ltIsoAdd(ini, step - 1); if (salida && fin >= salida) fin = ltIsoAdd(salida, -1);
+        list.push({ periodo: ini, inicio: ini, fin, vence: ini }); ini = ltIsoAdd(ini, step);
+      }
+    }
+    list.forEach((x) => {
+      if (!have["renta|" + x.periodo]) r.pagos.push({ id: this.id("P"), concepto: "renta", ...x, monto: +r.monto, moneda: r.moneda, estado: "pendiente" });
+      if (r.cobraLuz && !have["luz|" + x.periodo]) r.pagos.push({ id: this.id("P"), concepto: "luz", ...x, vence: ltIsoAdd(x.fin, 10), monto: 0, moneda: r.moneda, estado: "pendiente" });
+    });
+    r.pagos.forEach((p) => { p.label = ltPerLabelEs(p); });
+    r.pagos.sort((a, b) => (a.inicio < b.inicio ? -1 : a.inicio > b.inicio ? 1 : a.concepto === "renta" ? -1 : 1));
+  },
+  reset(r) { r.pagos = r.pagos.filter((p) => !((p.estado === "pendiente" || p.estado === "vencido") && !p.compId && !p.ajustado)); },
+  overdue(d) { const t = isoDay(todayDay()); d.list.forEach((r) => r.pagos.forEach((p) => { if (p.estado === "pendiente" && p.monto > 0 && p.vence < t) p.estado = "vencido"; })); },
+  summary(r) {
+    const live = r.pagos.filter((p) => p.concepto === "renta" || p.monto > 0), c = (s) => live.filter((p) => p.estado === s).length;
+    const next = live.filter((p) => p.concepto === "renta" && ["pendiente", "vencido", "rechazado"].includes(p.estado)).sort((a, b) => (a.vence < b.vence ? -1 : 1))[0] || null;
+    const g = r.guest || {}, faltan = [];
+    if (!g.nombre) faltan.push("nombre"); if (!g.email) faltan.push("email"); if (!g.telefono) faltan.push("telefono"); if (!g.docNumero) faltan.push("doc");
+    const t = isoDay(todayDay());
+    return { ...r, tokenActivo: r.estado !== "terminada", faltan,
+      counts: { pendiente: c("pendiente"), revision: c("revision"), verificado: c("verificado"), rechazado: c("rechazado"), vencido: c("vencido"),
+        luzSinMonto: r.cobraLuz ? r.pagos.filter((p) => p.concepto === "luz" && !(p.monto > 0) && p.fin < t).length : 0 },
+      next: next && { id: next.id, periodo: next.periodo, label: next.label, vence: next.vence, estado: next.estado, monto: next.monto },
+      unread: r.mensajes.filter((m) => m.autor === "huesped" && !m.leido).length };
+  },
+  seed() {
+    const t = todayDay(), iso = (y, m, dd) => isoDay(new Date(y, m, dd));
+    const mk = (code, prop, guest, entrada, tipoFin, salida, monto, moneda, dia, extra) => ({ code, propertyCode: "", propertyName: prop, entrada, tipoFin, salida, monto, moneda, diaCobro: dia,
+      frecuencia: "mensual", cadaDias: 30, cobraLuz: false, notas: "", estado: "activa", token: "demo" + code.toLowerCase(), guest, pagos: [], comprobantes: [], mensajes: [], envios: [], actualizado: "", ...extra });
+    const a = mk("LT2609A1", "Casa Amberes 3", { nombre: "Lucía Herrera", telefono: "50255550101", email: "lucia@correo.com", docTipo: "DPI", docNumero: "2987 44120 0101", docFileId: "" },
+      iso(t.getFullYear(), t.getMonth() - 2, 5), "indefinido", "", 7800, "GTQ", 5, { cobraLuz: true });
+    const b = mk("LT2609B2", "Loft Zona 4 · 1402", { nombre: "", telefono: "15551230000", email: "", docTipo: "", docNumero: "", docFileId: "" },
+      iso(t.getFullYear(), t.getMonth() - 1, 15), "fecha", iso(t.getFullYear(), t.getMonth() + 3, 14), 1250, "USD", 15);
+    const d = { list: [a, b] }; d.list.forEach((r) => this.periods(r));
+    const ar = a.pagos.filter((p) => p.concepto === "renta"), al = a.pagos.filter((p) => p.concepto === "luz");
+    ar[0].estado = "verificado"; ar[0].verificadoAt = this.now(); al[0].monto = 412.5; al[0].estado = "verificado";
+    const c = { id: this.id("C"), concepto: "renta", periodos: [ar[1].id], files: [], referencia: "BI-448120", fecha: ar[1].vence, monto: 7800, comentario: "Transferencia Banco Industrial", creado: this.now() };
+    a.comprobantes.push(c); ar[1].estado = "revision"; ar[1].compId = c.id; al[1].monto = 386; al[1].ajustado = true;
+    a.mensajes.push({ id: this.id("M"), autor: "huesped", texto: "Hola, ¿el mantenimiento del aire acondicionado lo agendan ustedes?", creado: this.now(), leido: false });
+    this.overdue(d); return this.save(d);
+  },
+  find(d, code) { return d.list.find((r) => normCode(r.code) === normCode(code)); },
+  detail(r, forGuest) { const o = this.summary(r); delete o.token; if (forGuest) { delete o.notas; delete o.envios; } return JSON.parse(JSON.stringify(o)); },
+  log(r, tipo, canal, periodo) { r.envios.unshift({ id: this.id("E"), periodo: periodo || "", tipo, canal, destino: canal === "email" ? r.guest.email : r.guest.telefono, estado: canal === "email" ? (r.guest.email ? "enviado" : "fallido") : "abierto", creado: this.now() }); },
+};
+
+Object.assign(Backend, {
+  async _lt(action, payload) {
+    try { return await this.call(action, payload); } catch (e) { return { ok: false, error: (e && e.message) || "backend-error" }; }
+  },
+  _ltUrl(tok) { return location.origin + location.pathname + "#lt=" + tok; },
+  async ltList() {
+    if (this.isConnected()) { const j = await this._lt("ltList"); if (j.ok) { try { localStorage.setItem("spacioam_cache_lt", JSON.stringify({ list: j.list })); } catch (e) {} } return j; }
+    const d = ltDemo.load(); ltDemo.overdue(d); ltDemo.save(d); return { ok: true, list: d.list.map((r) => ltDemo.detail(r)) };
+  },
+  async ltGet(code) {
+    if (this.isConnected()) return this._lt("ltGet", { code });
+    const r = ltDemo.find(ltDemo.load(), code); return r ? { ok: true, lt: ltDemo.detail(r) } : { ok: false, error: "not-found" };
+  },
+  async ltSave(lt) {
+    if (this.isConnected()) return this._lt("ltSave", { lt });
+    const d = ltDemo.load(); let r = lt.code && ltDemo.find(d, lt.code), url = "";
+    const g = { ...lt.guest }; delete g.docImage;
+    const shape = (o) => [o.entrada, o.tipoFin, o.tipoFin === "indefinido" ? "" : o.salida, +o.diaCobro, o.frecuencia, +o.cadaDias].join("|");
+    if (r) {
+      const reshaped = shape(r) !== shape(lt), luzOff = r.cobraLuz && !lt.cobraLuz;
+      Object.assign(r, { ...lt, pagos: r.pagos, comprobantes: r.comprobantes, mensajes: r.mensajes, envios: r.envios, token: r.token, estado: r.estado, guest: { ...r.guest, ...g }, salida: lt.tipoFin === "indefinido" ? "" : lt.salida });
+      if (reshaped) ltDemo.reset(r);
+      if (luzOff) r.pagos = r.pagos.filter((p) => !(p.concepto === "luz" && !p.compId));
+    } else {
+      r = { ...lt, code: "LT" + String(new Date().getFullYear()).slice(2) + String(new Date().getMonth() + 1).padStart(2, "0") + ltDemo.id("").slice(0, 4), estado: "activa",
+        token: ltDemo.id("t").toLowerCase(), guest: g, pagos: [], comprobantes: [], mensajes: [], envios: [] };
+      d.list.push(r); url = this._ltUrl(r.token);
+    }
+    r.pagos.forEach((p) => { if (p.concepto === "renta" && (p.estado === "pendiente" || p.estado === "vencido") && !p.ajustado) { p.monto = +r.monto; p.moneda = r.moneda; } });
+    r.actualizado = ltDemo.now(); ltDemo.periods(r); ltDemo.overdue(d); ltDemo.save(d);
+    return { ok: true, lt: ltDemo.detail(r), url };
+  },
+  async ltSetPeriod(code, periodoId, monto, vence) {
+    if (this.isConnected()) return this._lt("ltSetPeriod", { periodoId, monto, vence });
+    const d = ltDemo.load(), r = ltDemo.find(d, code), p = r.pagos.find((x) => x.id === periodoId);
+    const wasZero = !(p.monto > 0);
+    if (monto !== "" && monto != null) p.monto = +monto || 0; if (vence) p.vence = vence; p.ajustado = true;
+    if (p.estado === "vencido" && p.vence >= isoDay(todayDay())) p.estado = "pendiente";
+    if (p.concepto === "luz" && wasZero && p.monto > 0) ltDemo.log(r, "luz", "email", p.id);
+    ltDemo.overdue(d); ltDemo.save(d); return { ok: true, lt: ltDemo.detail(r) };
+  },
+  async ltToken(code) {
+    if (this.isConnected()) return this._lt("ltToken", { code });
+    const d = ltDemo.load(), r = ltDemo.find(d, code); r.token = ltDemo.id("t").toLowerCase(); ltDemo.save(d);
+    return { ok: true, url: this._ltUrl(r.token) };
+  },
+  async ltLink(code) {
+    if (this.isConnected()) return this._lt("ltLink", { code });
+    const r = ltDemo.find(ltDemo.load(), code); return { ok: true, url: this._ltUrl(r.token) };
+  },
+  async ltVerify(code, periodoId, estado, motivo) {
+    if (this.isConnected()) return this._lt("ltVerify", { periodoId, estado, motivo });
+    const d = ltDemo.load(), r = ltDemo.find(d, code), p = r.pagos.find((x) => x.id === periodoId);
+    p.estado = estado === "verificado" ? "verificado" : "rechazado"; p.motivo = p.estado === "rechazado" ? motivo : ""; p.verificadoAt = p.estado === "verificado" ? ltDemo.now() : "";
+    ltDemo.log(r, p.estado, "email", periodoId); ltDemo.save(d); return { ok: true, lt: ltDemo.detail(r) };
+  },
+  async ltAdminMsg(code, texto) {
+    if (this.isConnected()) return this._lt("ltAdminMsg", { code, texto });
+    const d = ltDemo.load(), r = ltDemo.find(d, code);
+    r.mensajes.forEach((m) => { m.leido = true; }); r.mensajes.push({ id: ltDemo.id("M"), autor: "admin", texto, creado: ltDemo.now() });
+    ltDemo.log(r, "mensaje", "email"); ltDemo.save(d); return { ok: true, lt: ltDemo.detail(r) };
+  },
+  async ltRead(code) {
+    if (this.isConnected()) return this._lt("ltRead", { code });
+    const d = ltDemo.load(), r = ltDemo.find(d, code); if (r) { r.mensajes.forEach((m) => { m.leido = true; }); ltDemo.save(d); } return { ok: true };
+  },
+  async ltSend(code, canal, texto) {
+    if (this.isConnected()) return this._lt("ltSend", { code, canal, texto });
+    const d = ltDemo.load(), r = ltDemo.find(d, code); ltDemo.log(r, "enlace", canal); ltDemo.save(d);
+    return { ok: true, to: canal === "email" ? r.guest.email : r.guest.telefono };
+  },
+  async ltEnd(code, reopen) {
+    if (this.isConnected()) return this._lt("ltEnd", { code, reopen: !!reopen });
+    const d = ltDemo.load(), r = ltDemo.find(d, code); r.estado = reopen ? "activa" : "terminada"; if (reopen) ltDemo.periods(r);
+    ltDemo.save(d); return { ok: true, lt: ltDemo.detail(r) };
+  },
+  async ltFile(fileId, token) {
+    if (!fileId) return "";
+    if (this.isConnected()) { const j = await this._lt(token ? "ltGuestFile" : "ltAdminFile", token ? { token, fileId } : { fileId }); return (j && j.image) || ""; }
+    return (ltDemo._files && ltDemo._files[fileId]) || "";
+  },
+  /* huésped */
+  async ltGuest(token) {
+    if (this.isConnected()) return this._lt("ltGuest", { token });
+    const d = ltDemo.load(), r = d.list.find((x) => x.token === token && x.estado !== "terminada");
+    if (!r) return { ok: false, error: "invalid" };
+    ltDemo.periods(r); ltDemo.overdue(d); ltDemo.save(d); return { ok: true, lt: ltDemo.detail(r, true) };
+  },
+  async ltUpload(token, data) {
+    if (this.isConnected()) return this._lt("ltUpload", { token, ...data });
+    const d = ltDemo.load(), r = d.list.find((x) => x.token === token); if (!r) return { ok: false, error: "invalid" };
+    ltDemo._files = ltDemo._files || {};
+    const files = data.files.map((f) => { const id = ltDemo.id("F"); ltDemo._files[id] = f.dataUrl; return id; });
+    const c = { id: ltDemo.id("C"), concepto: data.concepto || "renta", periodos: data.periodoIds, files, referencia: data.referencia, fecha: data.fecha, monto: +data.monto || 0, comentario: data.comentario, creado: ltDemo.now() };
+    r.comprobantes.push(c); r.pagos.forEach((p) => { if (data.periodoIds.includes(p.id)) { p.estado = "revision"; p.compId = c.id; p.motivo = ""; } });
+    const pf = data.perfil || {}, g = r.guest;
+    if (pf.nombre && !g.nombre) g.nombre = pf.nombre.trim(); if (pf.email && !g.email) g.email = pf.email.trim().toLowerCase();
+    if (pf.telefono && !g.telefono) g.telefono = pf.telefono; if (pf.docNumero && !g.docNumero) { g.docNumero = pf.docNumero; g.docTipo = pf.docTipo || g.docTipo; }
+    ltDemo.log(r, "recibido", "email"); ltDemo.save(d); return { ok: true, lt: ltDemo.detail(r, true) };
+  },
+  async ltGuestMsg(token, texto) {
+    if (this.isConnected()) return this._lt("ltGuestMsg", { token, texto });
+    const d = ltDemo.load(), r = d.list.find((x) => x.token === token); if (!r) return { ok: false, error: "invalid" };
+    r.mensajes.push({ id: ltDemo.id("M"), autor: "huesped", texto, creado: ltDemo.now(), leido: false }); ltDemo.save(d); return { ok: true, lt: ltDemo.detail(r, true) };
+  },
+});
+
 const HospitableAPI = {
   loadConfig: () => Backend.loadConfig(),
   saveConfig: (c) => Backend.saveConfig(c),
@@ -1727,7 +1987,7 @@ GENERAL
 Gracias por elegir Spacio AM, donde cada detalle tiene intención.
 ────────────────────────`;
 
-Object.assign(window, {
+Object.assign(window, { ltDemo,
   C, IMG, ADMIN_SETTINGS, money, DIAL_CODES, DIAL_CODES_SORTED, parsePhone,
   resPhoto, resName, resListingPhoto, titleCaseName,
   T, RESERVATIONS, groupReservations, findReservation, normCode, nightsBetween,

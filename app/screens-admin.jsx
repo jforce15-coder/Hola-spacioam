@@ -753,8 +753,22 @@ function loadFormsBaseline() { try { return JSON.parse(localStorage.getItem("spa
 function saveFormsBaseline(o) { try { localStorage.setItem("spacioam_admin_formsBaseline2", JSON.stringify(o)); } catch (e) {} }
 
 /* Construye las notificaciones del panel a partir de seguimiento + registros. */
-function buildAdminNotis({ roster, records, gacc, strm, alerts, formsFirst, es, goTab, openReservation }) {
+function buildAdminNotis({ roster, records, gacc, strm, alerts, formsFirst, es, goTab, openReservation, lt, openLt }) {
   const out = [];
+  (lt || []).forEach((l) => {
+    if (l.estado !== "activa") return;
+    const who = (l.guest && l.guest.nombre) || l.code, ctx = [l.propertyName, l.code].filter(Boolean).join(" · ");
+    const go = () => openLt && openLt(l.code);
+    if (l.counts.revision) out.push({ id: "ltrev|" + l.code + "|" + l.counts.revision, tipo: "accion", subcat: "Long Term",
+      texto: es ? (who + " subió un comprobante.") : (who + " uploaded a receipt."), contexto: ctx, ts: Date.now(), peso: 26000, abrir: go });
+    if (l.unread) out.push({ id: "ltmsg|" + l.code + "|" + l.unread, tipo: "accion", subcat: "Long Term",
+      texto: es ? (who + " te escribió.") : (who + " sent a message."), contexto: ctx, ts: Date.now(), peso: 24000, abrir: go });
+    if (l.counts.luzSinMonto) out.push({ id: "ltluz|" + l.code + "|" + l.counts.luzSinMonto, tipo: "accion", subcat: "Long Term",
+      texto: es ? (who + ": falta el monto de luz.") : (who + ": electricity amount missing."), contexto: ctx, ts: Date.now(), peso: 21000, abrir: go });
+    if (l.counts.vencido) out.push({ id: "ltdue|" + l.code + "|" + l.counts.vencido, tipo: "alerta", subcat: "Long Term",
+      texto: es ? (who + ": " + l.counts.vencido + " pago" + (l.counts.vencido === 1 ? "" : "s") + " vencido" + (l.counts.vencido === 1 ? "" : "s") + ".") : (who + ": " + l.counts.vencido + " overdue payment(s)."),
+      contexto: ctx, ts: Date.now(), peso: 29000, abrir: go });
+  });
   (roster || []).forEach((h) => {
     const code = normCode(h.code);
     const done = h.statusForm === "completo" || (records && records[h.id]);
@@ -945,6 +959,8 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
   const [strmTop, setStrmTop] = useStateAd(() => (Backend.cachedList && Backend.cachedList("strm")) || null);
   const [reqsTop, setReqsTop] = useStateAd(() => (Backend.cachedList && Backend.cachedList("reqs")) || null);
   const [alerts, setAlerts] = useStateAd(null);
+  const [ltTop, setLtTop] = useStateAd(() => (Backend.isConnected() && Backend.cachedList && Backend.cachedList("lt")) || null);
+  const [ltOpen, setLtOpen] = useStateAd("");
   const [notiDismiss, setNotiDismiss] = useStateAd(() => { try { return JSON.parse(localStorage.getItem("spacioam_admin_notiDismiss") || "{}"); } catch (e) { return {}; } });
   // arranca con lo último que este dispositivo ya tenía: el panel pinta al
   // instante y la hoja se relee en segundo plano (nunca spinner en blanco).
@@ -994,6 +1010,7 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
       if (Backend.listGuestAccess) Backend.listGuestAccess().then((l) => { if (l) setGaccTop(l); }).catch(() => {});
       if (Backend.listStreaming) Backend.listStreaming().then((l) => { if (l) setStrmTop(l); }).catch(() => {});
       if (Backend.listRequests) Backend.listRequests().then((l) => { if (l) setReqsTop(l); }).catch(() => {});
+      if (Backend.ltList) Backend.ltList().then((r) => { if (r && r.ok) setLtTop(r.list); }).catch(() => {});
       if (Backend.isConnected && Backend.isConnected() && Backend.call) Backend.call("adminAlerts").then((a) => { if (a && a.ok) setAlerts(a); }).catch(() => {});
     };
     load(); const id = setInterval(() => { if (!document.hidden) load(); }, 60000);
@@ -1110,7 +1127,8 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
   const notis = useMemoAd(() => buildAdminNotis({
     roster, records, gacc: gaccTop, strm: strmTop, alerts, formsFirst: loadFormsFirst(), es: t.code === "es",
     goTab: setTab, openReservation: (h) => { setTab("registros"); setSummary({ h, rec: recordFor(h), autoPrint: false }); },
-  }).filter((n) => !notiDismiss[n.id]), [roster, gaccTop, strmTop, alerts, notiDismiss, t.code]);
+    lt: ltTop, openLt: (code) => { setTab("longterm"); setLtOpen(code); },
+  }).filter((n) => !notiDismiss[n.id]), [roster, gaccTop, strmTop, alerts, ltTop, notiDismiss, t.code]);
   const dismissNoti = (n) => setNotiDismiss((p) => { const u = { ...p, [n.id]: 1 }; try { localStorage.setItem("spacioam_admin_notiDismiss", JSON.stringify(u)); } catch (e) {} return u; });
 
   const doneCount = rows ? rows.filter((r) => isDone(r.h, r.rec)).length : 0;
@@ -1167,8 +1185,12 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
           tabs={[
             { id: "registros", icon: "checkin", label: t.tabRegistros },
             { id: "seguimiento", icon: "activities", label: t.tabSeguimiento },
+            { id: "longterm", icon: "clock", label: t.lt.tab },
             { id: "propiedades", icon: "amenities", label: t.tabPropiedades },
           ]} />
+
+        {tab === "longterm" && <LongTermScreen t={t} roster={roster} openCode={ltOpen} onOpened={() => setLtOpen("")}
+          onToast={(m) => { setToast(m); setTimeout(() => setToast(""), 2600); }} />}
 
         {tab === "propiedades" && <PropertyInfoScreen t={t} roster={roster} focusProp={focusProp} onToast={(m) => { setToast(m); setTimeout(() => setToast(""), 2600); }} />}
         {tab === "seguimiento" && <SeguimientoScreen t={t} roster={roster} initialReqs={reqsTop} initialGacc={gaccTop} initialStrm={strmTop} />}
@@ -3083,7 +3105,7 @@ function SeguimientoScreen({ t, roster, initialReqs, initialGacc, initialStrm })
   }, [connected]);
   // fecha de check-in / checkout por código (para mostrar y para caducar solicitudes)
   const infoOf = (code) => (roster || []).find((x) => normCode(x.code) === normCode(code)) || {};
-  const todayISO = new Date().toISOString().slice(0, 10);
+  const todayISO = new Date().toLocaleDateString("en-CA");
   // caducidad: early / maletas / noche extra vencen pasado el check-in;
   // salida tardía vence pasado el checkout. Se ocultan aunque no tengan respuesta.
   const isExpired = (r) => {
@@ -3429,7 +3451,7 @@ function SeguimientoScreen({ t, roster, initialReqs, initialGacc, initialStrm })
               <div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
                   <div style={{ fontFamily: C.serif, fontSize: 16, color: C.negro }}>{s.propertyName || s.apartment || s.code}</div>
-                  <span style={{ flexShrink: 0, fontFamily: C.sans, fontSize: 10, color: C.tierra }}>{new Date(s.at).toISOString().slice(0, 10)}</span>
+                  <span style={{ flexShrink: 0, fontFamily: C.sans, fontSize: 10, color: C.tierra }}>{new Date(s.at).toLocaleDateString("en-CA")}</span>
                 </div>
                 <p style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, lineHeight: 1.55, margin: "6px 0 0", letterSpacing: "0.01em" }}>{s.text}</p>
               </div>, i

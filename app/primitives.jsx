@@ -218,7 +218,50 @@ function PhoneInput({ label, value, onChange, required, hint }) {
 function loadImg(src) {
   return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = src; });
 }
-async function downscaleForAI(dataUrl, budget = 180000) {
+/* Gira la foto (grados en sentido horario: 90/180/270). */
+async function rotateDataUrl(dataUrl, deg) {
+  deg = ((Math.round((+deg || 0) / 90) * 90) % 360 + 360) % 360;
+  if (!deg) return dataUrl;
+  try {
+    const img = await loadImg(dataUrl), swap = deg % 180 !== 0;
+    const c = document.createElement("canvas"); c.width = swap ? img.height : img.width; c.height = swap ? img.width : img.height;
+    const ctx = c.getContext("2d"); ctx.translate(c.width / 2, c.height / 2); ctx.rotate(deg * Math.PI / 180);
+    ctx.drawImage(img, -img.width / 2, -img.height / 2);
+    return c.toDataURL("image/jpeg", 0.85);
+  } catch (e) { return dataUrl; }
+}
+/* Versión "rescatada" para fotos con sombras o reflejos: escala de grises con el
+   contraste estirado por zonas (cada bloque se normaliza contra su propio claro/oscuro),
+   así la sombra sobre una mitad y el brillo sobre otra dejan de tapar el texto. */
+async function enhanceForAI(dataUrl) {
+  try {
+    const img = await loadImg(dataUrl);
+    const k = Math.min(1, 1568 / Math.max(img.width, img.height));
+    const w = Math.round(img.width * k), h = Math.round(img.height * k);
+    const c = document.createElement("canvas"); c.width = w; c.height = h;
+    const ctx = c.getContext("2d"); ctx.drawImage(img, 0, 0, w, h);
+    const id = ctx.getImageData(0, 0, w, h), d = id.data, g = new Float32Array(w * h);
+    for (let i = 0; i < w * h; i++) g[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
+    const B = 8, bw = Math.ceil(w / B), bh = Math.ceil(h / B), lo = new Float32Array(B * B), hi = new Float32Array(B * B);
+    for (let by = 0; by < B; by++) for (let bx = 0; bx < B; bx++) {
+      const hist = new Uint32Array(256); let n = 0;
+      for (let y = by * bh; y < Math.min(h, (by + 1) * bh); y += 2) for (let x = bx * bw; x < Math.min(w, (bx + 1) * bw); x += 2) { hist[g[y * w + x] | 0]++; n++; }
+      let acc = 0, a = 0, b = 255; for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc >= n * 0.02) { a = v; break; } }
+      acc = 0; for (let v = 255; v >= 0; v--) { acc += hist[v]; if (acc >= n * 0.02) { b = v; break; } }
+      lo[by * B + bx] = a; hi[by * B + bx] = Math.max(b, a + 40);
+    }
+    const at = (arr, fx, fy) => { const x0 = Math.max(0, Math.min(B - 1, Math.floor(fx))), y0 = Math.max(0, Math.min(B - 1, Math.floor(fy))), x1 = Math.min(B - 1, x0 + 1), y1 = Math.min(B - 1, y0 + 1), tx = Math.max(0, Math.min(1, fx - x0)), ty = Math.max(0, Math.min(1, fy - y0));
+      return (arr[y0 * B + x0] * (1 - tx) + arr[y0 * B + x1] * tx) * (1 - ty) + (arr[y1 * B + x0] * (1 - tx) + arr[y1 * B + x1] * tx) * ty; };
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const fx = x / bw - 0.5, fy = y / bh - 0.5, a = at(lo, fx, fy), b = at(hi, fx, fy);
+      const v = Math.max(0, Math.min(255, (g[y * w + x] - a) * 255 / (b - a))), i = (y * w + x) * 4;
+      d[i] = d[i + 1] = d[i + 2] = v;
+    }
+    ctx.putImageData(id, 0, 0);
+    return c.toDataURL("image/jpeg", 0.85);
+  } catch (e) { return dataUrl; }
+}
+async function downscaleForAI(dataUrl, budget = 480000) {
   try {
     const img = await loadImg(dataUrl);
     const draw = (maxDim, q) => {
@@ -229,7 +272,7 @@ async function downscaleForAI(dataUrl, budget = 180000) {
       return c.toDataURL("image/jpeg", q);
     };
     let du = dataUrl;
-    for (const [dim, q] of [[1400, 0.8], [1200, 0.75], [1024, 0.7], [900, 0.65], [800, 0.6], [680, 0.55]]) {
+    for (const [dim, q] of [[1568, 0.85], [1400, 0.8], [1200, 0.75], [1024, 0.7], [900, 0.65]]) {
       du = draw(dim, q);
       const b64 = du.slice(du.indexOf(",") + 1);
       if (b64.length < budget) break;
@@ -264,38 +307,35 @@ async function compressDocPhoto(dataUrl, budget = 420000) {
   } catch (e) { return dataUrl; }
 }
 
-async function readDocumentAI(dataUrl) {
+async function readDocumentAI(dataUrl, opts) {
+  const o = opts || {};
   const src = /^data:(.*?);base64,/.test(dataUrl || "") ? await downscaleForAI(dataUrl) : dataUrl;
   const m = /^data:(.*?);base64,(.*)$/.exec(src || "");
   if (!m) return { ok: false, reason: "invalid" };
   const media_type = m[1], data = m[2];
   const supported = ["image/jpeg", "image/png", "image/webp", "image/gif"];
   if (!supported.includes(media_type)) return { ok: false, reason: "invalid", canManual: true };
-  const prompt = `Eres un lector de documentos de identidad. Observa ESTRICTAMENTE la imagen.
-Extrae SOLO lo que realmente aparece en el documento. NUNCA inventes ni completes datos que no puedas leer con claridad.
-Responde únicamente con un objeto JSON válido, sin texto adicional, con esta forma:
-{"is_document": true|false, "legible": true|false, "doc_type": "dpi|pasaporte|licencia|otro|ninguno", "full_name": "", "id_number": ""}
+  const prompt = `Eres un lector de documentos de identidad (DPI de Guatemala, pasaportes, licencias, cédulas de cualquier país).
+Las fotos las toman huéspedes con el teléfono: es NORMAL que tengan sombras, reflejos, brillo del plástico, poca luz, estén giradas, de lado o de cabeza, o algo inclinadas. Eso NO es motivo para rechazar.
+${o.enhanced ? "Esta imagen fue pasada a escala de grises y se le estiró el contraste para atenuar sombras y reflejos.\n" : ""}Haz tu mejor esfuerzo por leer el NOMBRE COMPLETO y el NÚMERO del documento. Si la imagen está girada, léela mentalmente girada.
+Si un dato se lee aunque sea parcialmente tapado por un reflejo, transcríbelo. Solo deja vacío lo que de verdad no se puede leer. No inventes letras ni dígitos que no veas.
+Responde únicamente con un objeto JSON válido, sin texto adicional:
+{"is_document": true|false, "doc_type": "dpi|pasaporte|licencia|otro|ninguno", "full_name": "", "id_number": "", "rotation": 0|90|180|270, "legible": true|false}
 Reglas:
-- is_document=false si la imagen NO es un documento de identidad (foto de una persona, paisaje, captura, objeto, etc.).
-- legible=false si el documento está borroso, cortado, muy oscuro o no se pueden leer nombre ni número.
-- full_name debe incluir nombres + apellidos, EXACTAMENTE como aparecen. id_number es el CUI / número de identificación. Si algo no se lee, deja el campo vacío "".`;
+- is_document=false SOLO si la imagen claramente NO es un documento de identidad (foto de una persona, paisaje, captura, objeto).
+- full_name: nombres + apellidos tal como aparecen. En pasaportes usa los campos de nombre o la zona MRZ (las líneas con <<< al pie) si el resto no se lee. En el DPI, el número es el CUI (13 dígitos, suele ir como 0000 00000 0000).
+- rotation: cuántos grados hay que girar la imagen EN SENTIDO HORARIO para que el texto del documento quede derecho y legible (0 si ya está derecho).
+- legible: true si lograste leer el nombre.`;
   try {
     let resp;
     const backend = window.Backend;
     if (backend && backend.isConnected && backend.isConnected()) {
-      // Producción: la lectura ocurre en el backend (Anthropic Claude),
-      // la llave vive server-side. Ver readDocument_ en Code.gs.
       const json = await backend.call("readDocument", { media_type, data, prompt });
       resp = json && json.text || "";
     } else if (window.claude && window.claude.complete) {
-      // Vista previa / desarrollo dentro del editor.
       resp = await window.claude.complete({
-        model: "claude-sonnet-4-5",
-        max_tokens: 500,
-        messages: [{ role: "user", content: [
-          { type: "text", text: prompt },
-          { type: "image", source: { type: "base64", media_type, data } },
-        ]}],
+        model: "claude-sonnet-4-5", max_tokens: 500,
+        messages: [{ role: "user", content: [{ type: "text", text: prompt }, { type: "image", source: { type: "base64", media_type, data } }] }],
       });
     } else {
       return { ok: false, reason: "invalid", isDocument: true, canManual: true };
@@ -303,13 +343,31 @@ Reglas:
     const jm = /\{[\s\S]*\}/.exec(resp);
     if (!jm) return { ok: false, reason: "invalid", canManual: true };
     const j = JSON.parse(jm[0]);
-    if (!j.is_document) return { ok: false, reason: "notId", isDocument: false };
-    if (!j.legible || !(j.full_name || "").trim()) return { ok: false, reason: "invalid", isDocument: true };
-    return { ok: true, isDocument: true, name: (j.full_name || "").trim(), id: (j.id_number || "").trim(), docType: j.doc_type };
+    const rotation = [90, 180, 270].includes(+j.rotation) ? +j.rotation : 0;
+    if (j.is_document === false) return { ok: false, reason: "notId", isDocument: false, rotation };
+    // el nombre manda: si lo leyó, la lectura sirve aunque el modelo la marque "no legible"
+    if (!(j.full_name || "").trim()) return { ok: false, reason: "invalid", isDocument: true, rotation };
+    return { ok: true, isDocument: true, name: (j.full_name || "").trim(), id: (j.id_number || "").trim(), docType: j.doc_type, rotation };
   } catch (e) {
-    // vision unavailable / network → allow manual entry so the flow never deadlocks
     return { ok: false, reason: "invalid", isDocument: true, canManual: true };
   }
+}
+
+/* Lectura con rescate: 1) foto tal cual · 2) si vino girada, ya derecha · 3) versión con
+   sombras/reflejos atenuados. Devuelve también la foto final, ya derecha y horizontal. */
+async function readDocumentRobust(dataUrl) {
+  let img = dataUrl, res = await readDocumentAI(img);
+  if (res.rotation) { img = await rotateDataUrl(img, res.rotation); if (!res.ok) res = await readDocumentAI(img); }
+  if (!res.ok && res.reason !== "notId") {
+    const enh = await enhanceForAI(img), r2 = await readDocumentAI(enh, { enhanced: true });
+    if (r2.ok || r2.reason === "notId") {
+      if (r2.rotation) img = await rotateDataUrl(img, r2.rotation);
+      res = r2;
+    }
+  }
+  // un documento siempre se guarda en horizontal
+  try { const im = await loadImg(img); if (im.height > im.width * 1.08 && res.isDocument !== false) { img = await rotateDataUrl(img, 270); } } catch (e) {}
+  return { ...res, image: img };
 }
 
 /* ---------- DOCUMENT UPLOADER (upload → AI read → confirm / correct) ---------- */
@@ -328,7 +386,8 @@ function DocUploader({ t, roleLabel, badge, badgeColor, doc, update }) {
       update({ file: file.name, dataUrl: reader.result, reading: true, error: null, manual: false, name: "", id: "" });
       const small = await compressDocPhoto(reader.result);
       update({ dataUrl: small });
-      const res = await readDocumentAI(small);
+      const res = await readDocumentRobust(small);
+      if (res.image && res.image !== small) update({ dataUrl: res.image });
       if (res.ok) {
         update({ reading: false, error: null, name: res.name, id: res.id, isDocument: true });
       } else {
@@ -594,5 +653,5 @@ const Icon = ({ name, size = 22, color = C.negro, strokeWidth = 1.4 }) => {
 
 Object.assign(window, {
   LogoMain, LogoS, LogoStamp, Sparkle, FlowLine, Brush3D, WeaveHero, Grain, Btn, Field,
-  PhoneInput, DocUploader, readDocumentAI, compressDocPhoto, Screen, TopBar, Steps, H, Alert, Spinner, Icon,
+  PhoneInput, DocUploader, readDocumentAI, readDocumentRobust, rotateDataUrl, compressDocPhoto, Screen, TopBar, Steps, H, Alert, Spinner, Icon,
 });

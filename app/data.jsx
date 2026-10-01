@@ -1061,10 +1061,14 @@ const Backend = {
     if (!this.isConnected()) { this._lastMeta = null; return new Promise((r) => setTimeout(() => r(HOSPITABLE), 260)); }
     try {
       const json = await this.call("listReservations", { days: o.days || 0, fast: o.fast !== false, withCached: true });
-      this._lastMeta = json.meta || null;
+      const meta = { ...(json.meta || {}) };
       let sheet = Array.isArray(json.cached) ? json.cached : null;
-      if (!sheet || !sheet.length) sheet = await this.listCached();   // backend viejo o lectura vacía → segunda lectura
+      if (!sheet || !sheet.length) {
+        // backend viejo o lectura vacía → segunda lectura, SIN perder el meta del sync (antes listCached lo pisaba)
+        try { const j2 = await this.call("listCached"); sheet = j2.reservations || []; } catch (e2) { meta.sheetError = meta.sheetError || String(e2 && e2.message || e2); sheet = []; }
+      }
       if (!Array.isArray(sheet)) sheet = [];
+      this._lastMeta = meta;
       // fusiona: la hoja manda (trae el estado del formulario); lo recién leído de Hospitable
       // rellena lo que la hoja aún no tenga → una reserva nueva aparece aunque la escritura falle
       const nc = (x) => String(x || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -1076,8 +1080,13 @@ const Backend = {
         else if (!by[k].checkin && r.checkin) by[k] = { ...r, statusForm: by[k].statusForm };
       });
       const list = Object.values(by);
-      this._lastMeta = { ...(this._lastMeta || {}), sheetRows: sheet.length, notInSheet: extra };
-      if (!list.length) return null;
+      this._lastMeta = { ...meta, sheetRows: sheet.length, notInSheet: extra, hospRows: (json.reservations || []).length };
+      // diagnóstico legible para el pie del panel
+      const sh = meta.sheet || {};
+      this._lastMeta.diag = "hoja " + (sh.name ? '"' + sh.name + '"' : "") + (sh.tab === false ? " SIN pestaña Reservas" : " " + sheet.length + " filas") + " · Hospitable " + (json.reservations || []).length + " reservas"
+        + (meta.propertiesCount != null ? " · " + meta.propertiesCount + " propiedades" : "") + (meta.sheetWriteError ? " · error al escribir: " + meta.sheetWriteError : "") + (meta.sheetError ? " · error al leer la hoja: " + meta.sheetError : "")
+        + (meta.errorsSample && meta.errorsSample.length ? " · " + meta.errorsSample[0] : "");
+      if (!list.length) { this._lastMeta.error = this._lastMeta.error || this._lastMeta.diag; return null; }
       this.saveRoster(list); return list;
     } catch (e) { this._lastMeta = { error: String(e && e.message || e) }; return null; }
   },

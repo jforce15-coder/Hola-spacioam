@@ -1062,8 +1062,23 @@ const Backend = {
     try {
       const json = await this.call("listReservations", { days: o.days || 0, fast: o.fast !== false, withCached: true });
       this._lastMeta = json.meta || null;
-      if (!Array.isArray(json.cached)) return (await this.listCached()) || null;   // backend viejo
-      this.saveRoster(json.cached); return json.cached;
+      let sheet = Array.isArray(json.cached) ? json.cached : null;
+      if (!sheet || !sheet.length) sheet = await this.listCached();   // backend viejo o lectura vacía → segunda lectura
+      if (!Array.isArray(sheet)) sheet = [];
+      // fusiona: la hoja manda (trae el estado del formulario); lo recién leído de Hospitable
+      // rellena lo que la hoja aún no tenga → una reserva nueva aparece aunque la escritura falle
+      const nc = (x) => String(x || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+      const by = {}; sheet.forEach((r) => { by[nc(r.code)] = r; });
+      let extra = 0;
+      (json.reservations || []).forEach((r) => {
+        const k = nc(r.code); if (!k) return;
+        if (!by[k]) { by[k] = { ...r, statusForm: "" }; extra++; }
+        else if (!by[k].checkin && r.checkin) by[k] = { ...r, statusForm: by[k].statusForm };
+      });
+      const list = Object.values(by);
+      this._lastMeta = { ...(this._lastMeta || {}), sheetRows: sheet.length, notInSheet: extra };
+      if (!list.length) return null;
+      this.saveRoster(list); return list;
     } catch (e) { this._lastMeta = { error: String(e && e.message || e) }; return null; }
   },
   async listCached() {

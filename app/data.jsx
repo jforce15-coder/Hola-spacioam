@@ -1079,8 +1079,15 @@ const Backend = {
     const prev = (this.cachedRoster() || {}).list || [];
     let meta = {}, hosp = [];
     try {
-      const json = await this.call("listReservations", { days: o.days || 0, fast: o.fast !== false });
+      const json = await this.call("listReservations", { days: o.days || 0, fast: o.fast !== false, withCached: true });
       meta = { ...(json.meta || {}) }; hosp = json.reservations || [];
+      if (Array.isArray(json.cached) && json.cached.length) {
+        // la instantánea del servidor es la verdad para TODOS los dispositivos (nunca la memoria local de este);
+        // lo recién leído de Hospitable solo refresca fechas/nombres y añade lo que aún no esté guardado
+        const m = this._mergeRoster(json.cached, hosp, false);
+        meta.hospRows = hosp.length; meta.sheetRows = json.cached.length; meta.notInSheet = m.added; meta.sheetPending = false;
+        this._lastMeta = meta; this.saveRoster(m.list); return m.list;
+      }
     } catch (e) { meta = { error: "Hospitable no respondió (" + String(e && e.message || e) + "). Se conserva la lista anterior." }; }
     const m1 = this._mergeRoster(prev, hosp, false);
     meta.hospRows = hosp.length; meta.notInSheet = m1.added; meta.sheetPending = true;

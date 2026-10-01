@@ -982,17 +982,17 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
       // including status_form (completed), which the live feed doesn't carry.
       // Default = fast window: today + next 5 days, no photo scraping (seconds).
       // deep = full 6-month sync (minutes) — only when explicitly asked.
+      // si algo falla se conserva la lista anterior (antes se reemplazaba por vacío → "0 completos · 0 pendientes")
       setRefreshing(true);
-      Backend.listReservations(deep ? { days: 0, fast: false } : { days: 5, fast: true })
-        .then(() => Backend.listCached())
-        .then((list) => { setRoster(list); setMeta(Backend._lastMeta); setRefreshing(false); })
-        .catch(() => setRefreshing(false));
+      Backend.refreshRoster(deep ? { days: 0, fast: false } : { days: 90, fast: true })
+        .then((list) => { if (Array.isArray(list)) setRoster(list); setMeta(Backend._lastMeta); setRefreshing(false); })
+        .catch(() => { setMeta({ error: "network-error" }); setRefreshing(false); });
       return;
     }
     setRefreshing(true);
     // cache-only by default: the stored DB (synced 5am/3pm) is the source of
     // truth. Si ya había datos en el dispositivo se siguen viendo mientras llega.
-    Backend.listCached().then((list) => { if (list && list.length) setRoster(list); setMeta(Backend._lastMeta); setRefreshing(false); })
+    Backend.listCached().then((list) => { if (Array.isArray(list) && (list.length || !roster)) setRoster(list); setMeta(Backend._lastMeta); setRefreshing(false); })
       .catch(() => setRefreshing(false));
   };
   useEffectAd(() => { loadRoster(); }, []);
@@ -1300,7 +1300,7 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
           )}
           {connected && meta && !meta.error && !meta.note && typeof meta.reservationsRaw === "number" && (
             <span style={{ fontFamily: C.sans, fontSize: 10, letterSpacing: "0.02em", color: C.tierra }}>
-              {meta.propertiesCount} propiedades · {meta.reservationsRaw} reservas en la ventana de fechas
+              {meta.propertiesCount} propiedades · {meta.reservationsRaw} reservas en la ventana de fechas{typeof meta.added === "number" ? " · " + meta.added + " nuevas · " + meta.updated + " con cambios" : ""}
             </span>
           )}
         </div>

@@ -1003,7 +1003,7 @@ const Backend = {
       if (p.sync === "quick") return 90000;   // 5 días
       return 12000;                            // solo caché
     }
-    if (action === "listReservations") return p.days === 0 || p.fast === false ? 600000 : 120000;
+    if (action === "listReservations") return p.days === 0 || p.fast === false ? 600000 : 180000;
     return 45000;
   },
   async call(action, payload) {
@@ -1055,10 +1055,21 @@ const Backend = {
   saveRoster(list) {
     try { if (list && list.length) localStorage.setItem(this.ROSTER_KEY, JSON.stringify({ at: Date.now(), list })); } catch (e) {}
   },
+  /* Actualizar: sync + hoja en UNA llamada. Devuelve null si falla (el panel conserva lo que ya mostraba). */
+  async refreshRoster(opts) {
+    const o = opts || { days: 90, fast: true };
+    if (!this.isConnected()) { this._lastMeta = null; return new Promise((r) => setTimeout(() => r(HOSPITABLE), 260)); }
+    try {
+      const json = await this.call("listReservations", { days: o.days || 0, fast: o.fast !== false, withCached: true });
+      this._lastMeta = json.meta || null;
+      if (!Array.isArray(json.cached)) return (await this.listCached()) || null;   // backend viejo
+      this.saveRoster(json.cached); return json.cached;
+    } catch (e) { this._lastMeta = { error: String(e && e.message || e) }; return null; }
+  },
   async listCached() {
     if (this.isConnected()) {
       try { const json = await this.call("listCached"); this._lastMeta = json.meta || null; const l = json.reservations || []; this.saveRoster(l); return l; }
-      catch (e) { this._lastMeta = { error: String(e && e.message || e) }; return []; }
+      catch (e) { this._lastMeta = { error: String(e && e.message || e) }; return null; }
     }
     this._lastMeta = null;
     return new Promise((resolve) => setTimeout(() => resolve(HOSPITABLE), 120));

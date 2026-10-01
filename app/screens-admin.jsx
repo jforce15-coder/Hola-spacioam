@@ -985,14 +985,14 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
       // si algo falla se conserva la lista anterior (antes se reemplazaba por vacío → "0 completos · 0 pendientes")
       setRefreshing(true);
       Backend.refreshRoster(deep ? { days: 0, fast: false } : { days: 90, fast: true })
-        .then((list) => { if (Array.isArray(list)) setRoster(list); setMeta(Backend._lastMeta); setRefreshing(false); })
+        .then((list) => { if (Array.isArray(list) && list.length) setRoster(list); setMeta({ ...(Backend._lastMeta || {}), ...(Array.isArray(list) && !list.length ? { error: "La hoja respondió vacía; se conserva la lista anterior." } : {}) }); setRefreshing(false); })
         .catch(() => { setMeta({ error: "network-error" }); setRefreshing(false); });
       return;
     }
     setRefreshing(true);
     // cache-only by default: the stored DB (synced 5am/3pm) is the source of
     // truth. Si ya había datos en el dispositivo se siguen viendo mientras llega.
-    Backend.listCached().then((list) => { if (Array.isArray(list) && (list.length || !roster)) setRoster(list); setMeta(Backend._lastMeta); setRefreshing(false); })
+    Backend.listCached().then((list) => { if (Array.isArray(list)) setRoster((prev) => (list.length || !prev || !prev.length ? list : prev)); setMeta((m) => (m && m.syncedAt ? m : Backend._lastMeta)); setRefreshing(false); })
       .catch(() => setRefreshing(false));
   };
   useEffectAd(() => { loadRoster(); }, []);
@@ -1300,7 +1300,7 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
           )}
           {connected && meta && !meta.error && !meta.note && typeof meta.reservationsRaw === "number" && (
             <span style={{ fontFamily: C.sans, fontSize: 10, letterSpacing: "0.02em", color: C.tierra }}>
-              {meta.propertiesCount} propiedades · {meta.reservationsRaw} reservas en la ventana de fechas{typeof meta.added === "number" ? " · " + meta.added + " nuevas · " + meta.updated + " con cambios" : ""}
+              {meta.syncedAt ? "Sincronizado " + new Date(meta.syncedAt).toLocaleTimeString("es-GT", { hour: "2-digit", minute: "2-digit" }) + " · " : ""}{meta.propertiesCount} propiedades · {meta.reservationsRaw} reservas leídas{typeof meta.added === "number" ? " · " + meta.added + " nuevas · " + meta.updated + " con cambios" : ""}{typeof meta.reservationsStatus === "string" ? " · " + meta.reservationsStatus : ""}
             </span>
           )}
         </div>

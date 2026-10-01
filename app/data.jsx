@@ -1004,6 +1004,7 @@ const Backend = {
       return 12000;                            // solo caché
     }
     if (action === "listReservations") return p.days === 0 || p.fast === false ? 600000 : 180000;
+    if (action === "listCached") return 300000;
     return 45000;
   },
   async call(action, payload) {
@@ -1055,40 +1056,50 @@ const Backend = {
   saveRoster(list) {
     try { if (list && list.length) localStorage.setItem(this.ROSTER_KEY, JSON.stringify({ at: Date.now(), list })); } catch (e) {}
   },
-  /* Actualizar: sync + hoja en UNA llamada. Devuelve null si falla (el panel conserva lo que ya mostraba). */
-  async refreshRoster(opts) {
+  /* Actualizar en dos pasos para que el panel nunca se quede esperando:
+     1) sync con Hospitable (~10-20 s) → se fusiona con la lista que ya está en pantalla y se muestra YA.
+     2) lectura de la hoja en segundo plano (puede tardar minutos si la hoja está pesada) → onSheet(lista, meta). */
+  _mergeRoster(base, incoming, incomingWins) {
+    const nc = (x) => String(x || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const by = {}; (base || []).forEach((r) => { const k = nc(r.code); if (k) by[k] = r; });
+    let added = 0;
+    (incoming || []).forEach((r) => {
+      const k = nc(r.code); if (!k) return;
+      const cur = by[k];
+      if (!cur) { by[k] = { ...r, statusForm: r.statusForm || "" }; added++; return; }
+      // el estado del formulario solo lo cambia la hoja; Hospitable actualiza fechas, nombre, huéspedes
+      by[k] = incomingWins ? { ...cur, ...r, statusForm: r.statusForm || cur.statusForm || "", photo: r.photo || cur.photo || "" }
+                           : { ...cur, ...r, statusForm: cur.statusForm || r.statusForm || "", photo: cur.photo || r.photo || "" };
+    });
+    return { list: Object.values(by), added };
+  },
+  async refreshRoster(opts, onSheet) {
     const o = opts || { days: 90, fast: true };
     if (!this.isConnected()) { this._lastMeta = null; return new Promise((r) => setTimeout(() => r(HOSPITABLE), 260)); }
+    const prev = (this.cachedRoster() || {}).list || [];
+    let meta = {}, hosp = [];
     try {
-      const json = await this.call("listReservations", { days: o.days || 0, fast: o.fast !== false, withCached: true });
-      const meta = { ...(json.meta || {}) };
-      let sheet = Array.isArray(json.cached) ? json.cached : null;
-      if (!sheet || !sheet.length) {
-        // backend viejo o lectura vacía → segunda lectura, SIN perder el meta del sync (antes listCached lo pisaba)
-        try { const j2 = await this.call("listCached"); sheet = j2.reservations || []; } catch (e2) { meta.sheetError = meta.sheetError || String(e2 && e2.message || e2); sheet = []; }
-      }
-      if (!Array.isArray(sheet)) sheet = [];
-      this._lastMeta = meta;
-      // fusiona: la hoja manda (trae el estado del formulario); lo recién leído de Hospitable
-      // rellena lo que la hoja aún no tenga → una reserva nueva aparece aunque la escritura falle
-      const nc = (x) => String(x || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-      const by = {}; sheet.forEach((r) => { by[nc(r.code)] = r; });
-      let extra = 0;
-      (json.reservations || []).forEach((r) => {
-        const k = nc(r.code); if (!k) return;
-        if (!by[k]) { by[k] = { ...r, statusForm: "" }; extra++; }
-        else if (!by[k].checkin && r.checkin) by[k] = { ...r, statusForm: by[k].statusForm };
-      });
-      const list = Object.values(by);
-      this._lastMeta = { ...meta, sheetRows: sheet.length, notInSheet: extra, hospRows: (json.reservations || []).length };
-      // diagnóstico legible para el pie del panel
-      const sh = meta.sheet || {};
-      this._lastMeta.diag = "hoja " + (sh.name ? '"' + sh.name + '"' : "") + (sh.tab === false ? " SIN pestaña Reservas" : " " + sheet.length + " filas") + " · Hospitable " + (json.reservations || []).length + " reservas"
-        + (meta.propertiesCount != null ? " · " + meta.propertiesCount + " propiedades" : "") + (meta.sheetWriteError ? " · error al escribir: " + meta.sheetWriteError : "") + (meta.sheetError ? " · error al leer la hoja: " + meta.sheetError : "")
-        + (meta.errorsSample && meta.errorsSample.length ? " · " + meta.errorsSample[0] : "");
-      if (!list.length) { this._lastMeta.error = this._lastMeta.error || this._lastMeta.diag; return null; }
-      this.saveRoster(list); return list;
-    } catch (e) { this._lastMeta = { error: String(e && e.message || e) }; return null; }
+      const json = await this.call("listReservations", { days: o.days || 0, fast: o.fast !== false });
+      meta = { ...(json.meta || {}) }; hosp = json.reservations || [];
+    } catch (e) { meta = { error: "Hospitable no respondió (" + String(e && e.message || e) + "). Se conserva la lista anterior." }; }
+    const m1 = this._mergeRoster(prev, hosp, false);
+    meta.hospRows = hosp.length; meta.notInSheet = m1.added; meta.sheetPending = true;
+    this._lastMeta = meta;
+    if (m1.list.length) this.saveRoster(m1.list);
+    // paso 2 · la hoja, sin bloquear
+    this.call("listCached").then((j2) => {
+      const sheet = j2.reservations || [];
+      const base = (this.cachedRoster() || {}).list || m1.list;
+      const m2 = this._mergeRoster(base, sheet, true);
+      const meta2 = { ...meta, sheetPending: false, sheetRows: sheet.length, notInSheet: Math.max(0, m2.list.length - sheet.length) };
+      this._lastMeta = meta2;
+      if (m2.list.length) this.saveRoster(m2.list);
+      if (onSheet) onSheet(m2.list.length ? m2.list : null, meta2);
+    }).catch((e2) => {
+      const meta2 = { ...meta, sheetPending: false, sheetError: String(e2 && e2.message || e2) };
+      this._lastMeta = meta2; if (onSheet) onSheet(null, meta2);
+    });
+    return m1.list.length ? m1.list : null;
   },
   async listCached() {
     if (this.isConnected()) {

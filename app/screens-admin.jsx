@@ -984,9 +984,8 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
       // deep = full 6-month sync (minutes) — only when explicitly asked.
       // si algo falla se conserva la lista anterior (antes se reemplazaba por vacío → "0 completos · 0 pendientes")
       setRefreshing(true);
-      Backend.refreshRoster(deep ? { days: 0, fast: false } : { days: 90, fast: true })
-        .then((list) => { if (Array.isArray(list) && list.length) setRoster(list); setMeta({ ...(Backend._lastMeta || {}), ...(!Array.isArray(list) && !(Backend._lastMeta || {}).error ? { error: "No llegaron reservas; se conserva la lista anterior." } : {}) });
-          if (!Array.isArray(list)) Backend.listCached().then((l2) => { if (Array.isArray(l2) && l2.length) setRoster(l2); }); setRefreshing(false); })
+      Backend.refreshRoster(deep ? { days: 0, fast: false } : { days: 90, fast: true }, (l2, m2) => { if (Array.isArray(l2) && l2.length) setRoster(l2); setMeta(m2); })
+        .then((list) => { if (Array.isArray(list) && list.length) setRoster(list); setMeta(Backend._lastMeta); setRefreshing(false); })
         .catch(() => { setMeta({ error: "network-error" }); setRefreshing(false); });
       return;
     }
@@ -1294,14 +1293,14 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
           </div>
           {connected && meta && (meta.error || meta.note) && (
             <span style={{ fontFamily: C.sans, fontSize: 10, letterSpacing: "0.02em", color: C.peach, textAlign: "center", maxWidth: 520 }}>
-              {meta.error ? ((/^hoja/.test(meta.error) ? "" : "Hospitable: ") + meta.error) :
+              {meta.error ? meta.error :
                meta.note === "no-properties" ? "El backend no encontró propiedades en tu cuenta de Hospitable." :
                meta.note === "no-token" ? "Falta el token de Hospitable en el backend." : String(meta.note)}
             </span>
           )}
           {connected && meta && !meta.error && !meta.note && typeof meta.reservationsRaw === "number" && (
             <span style={{ fontFamily: C.sans, fontSize: 10, letterSpacing: "0.02em", color: C.tierra }}>
-              {meta.syncedAt ? "Sincronizado " + new Date(meta.syncedAt).toLocaleTimeString("es-GT", { hour: "2-digit", minute: "2-digit" }) + " · " : ""}{meta.propertiesCount} propiedades · {meta.reservationsRaw} reservas leídas{typeof meta.added === "number" ? " · " + meta.added + " nuevas · " + meta.updated + " con cambios" : ""}{typeof meta.reservationsStatus === "string" ? " · " + meta.reservationsStatus : ""}{meta.notInSheet ? " · " + meta.notInSheet + " aún sin guardar en la hoja" : ""}{meta.truncated ? " · búsqueda cortada por tiempo" : ""}{meta.sheet && meta.sheet.name ? " · hoja \"" + meta.sheet.name + "\" " + meta.sheetRows + " filas" : ""}
+              {meta.syncedAt ? "Sincronizado " + new Date(meta.syncedAt).toLocaleTimeString("es-GT", { hour: "2-digit", minute: "2-digit" }) + " · " : ""}{meta.propertiesCount} propiedades · {meta.reservationsRaw} reservas leídas{typeof meta.added === "number" ? " · " + meta.added + " nuevas · " + meta.updated + " con cambios" : ""}{typeof meta.reservationsStatus === "string" ? " · " + meta.reservationsStatus : ""}{meta.notInSheet ? " · " + meta.notInSheet + " aún sin guardar en la hoja" : ""}{meta.truncated ? " · búsqueda cortada por tiempo" : ""}{meta.sheetPending ? " · leyendo la hoja…" : (typeof meta.sheetRows === "number" ? " · hoja " + meta.sheetRows + " filas" : "")}{meta.sheetError ? " · la hoja no respondió (" + meta.sheetError + ")" : ""}
             </span>
           )}
         </div>

@@ -996,12 +996,14 @@ const Backend = {
     if (action === "getRegistration") return 30000;
     if (action === "formCompleted") return 20000;
     if (action === "getDocImage") return 25000;
+    if (action === "ltUpload" || action === "ltSave") return 120000;
+    if (action === "ltList" || action === "ltGuest") return 60000;
     if (action === "findReservation") {
       if (p.sync === "deep") return 210000;   // 60 días
       if (p.sync === "quick") return 90000;   // 5 días
       return 12000;                            // solo caché
     }
-    if (action === "listReservations") return p.days === 0 || p.fast === false ? 600000 : 120000;
+    if (action === "listReservations") return p.days === 0 || p.fast === false ? 600000 : 180000;
     return 45000;
   },
   async call(action, payload) {
@@ -1053,10 +1055,21 @@ const Backend = {
   saveRoster(list) {
     try { if (list && list.length) localStorage.setItem(this.ROSTER_KEY, JSON.stringify({ at: Date.now(), list })); } catch (e) {}
   },
+  /* Actualizar: sync + hoja en UNA llamada. Devuelve null si falla (el panel conserva lo que ya mostraba). */
+  async refreshRoster(opts) {
+    const o = opts || { days: 90, fast: true };
+    if (!this.isConnected()) { this._lastMeta = null; return new Promise((r) => setTimeout(() => r(HOSPITABLE), 260)); }
+    try {
+      const json = await this.call("listReservations", { days: o.days || 0, fast: o.fast !== false, withCached: true });
+      this._lastMeta = json.meta || null;
+      if (!Array.isArray(json.cached)) return (await this.listCached()) || null;   // backend viejo
+      this.saveRoster(json.cached); return json.cached;
+    } catch (e) { this._lastMeta = { error: String(e && e.message || e) }; return null; }
+  },
   async listCached() {
     if (this.isConnected()) {
       try { const json = await this.call("listCached"); this._lastMeta = json.meta || null; const l = json.reservations || []; this.saveRoster(l); return l; }
-      catch (e) { this._lastMeta = { error: String(e && e.message || e) }; return []; }
+      catch (e) { this._lastMeta = { error: String(e && e.message || e) }; return null; }
     }
     this._lastMeta = null;
     return new Promise((resolve) => setTimeout(() => resolve(HOSPITABLE), 120));
@@ -1346,9 +1359,24 @@ const Backend = {
     if (!this.isConnected()) return null;
     try { return await this.call("listContacts"); } catch (e) { return null; }
   },
-  async storageStats() {
+  async storageStats(opts) {
     if (!this.isConnected()) return null;
-    try { return await this.call("storageStats"); } catch (e) { return null; }
+    try { return await this.call("storageStats", opts || {}); } catch (e) { return null; }
+  },
+  /* Seguimiento completo en UNA sola llamada: solicitudes + invitados +
+     streaming + facturas + almacenamiento. Cinco viajes a Apps Script eran la
+     razón por la que la pestaña tardaba tanto en pintar. */
+  async seguimientoAll() {
+    if (!this.isConnected()) return null;
+    try {
+      const j = await this.call("seguimientoAll");
+      if (!j || !j.ok) return null;
+      this._cacheList("reqs", j.requests || []);
+      this._cacheList("gacc", j.gacc || []);
+      this._cacheList("strm", j.streaming || []);
+      this._cacheList("invoices", j.invoices || []);
+      return j;
+    } catch (e) { return null; }
   },
   async hostRequestResolve(payload) {
     if (!this.isConnected()) return { ok: false, offline: true };
@@ -1394,7 +1422,18 @@ const Backend = {
   },
   async submitForm(reservation, form) {
     if (!this.isConnected()) return { ok: false, offline: true };
-    return this.call("submitForm", { reservation, form });
+    // Reintenta: si el envío se corta (red del huésped, Drive lento), el
+    // registro se perdía y la reserva quedaba marcada sin datos que leer.
+    let last = null;
+    for (let i = 0; i < 3; i++) {
+      try {
+        const r = await this.call("submitForm", { reservation, form });
+        if (r && r.ok !== false) return r;
+        last = r;
+      } catch (e) { last = { ok: false, error: String((e && e.message) || e) }; }
+      if (i < 2) await new Promise((res) => setTimeout(res, 2500 * (i + 1)));
+    }
+    return last || { ok: false };
   },
   async createAccount(payload) {
     if (!this.isConnected()) return { ok: false, offline: true };
@@ -1417,6 +1456,472 @@ const Backend = {
   },
 };
 /* backwards-compat alias for existing admin references */
+
+/* ── Long Term: textos, backend y datos demo ── */
+const LT_T_ES = {
+  tab: "Long Term", eyebrow: "Estancias largas", title: "Long Term", sub: "Reservas por periodo, sus pagos y la conversación con cada huésped.",
+  newRes: "Nueva reserva", search: "Buscar huésped, propiedad o código", all: "Todas", active: "Activas", ended: "Terminadas",
+  kActive: "Activas", kReview: "Por revisar", kOverdue: "Vencidos", kUnread: "Mensajes",
+  thNext: "Próximo pago", empty: "Sin reservas Long Term todavía.",
+  st: { pendiente: "Pendiente", revision: "En revisión", verificado: "Verificado", rechazado: "Rechazado", vencido: "Vencido", activa: "Activa", terminada: "Terminada", porDefinir: "Por definir" },
+  guest: "Huésped", name: "Nombre completo", phone: "Teléfono", email: "Correo", docType: "Tipo de documento", docNum: "Número de documento", docImg: "Foto del documento",
+  stay: "Estancia", prop: "Propiedad", entry: "Entrada", endType: "Fin", endDate: "Con fecha", endOpen: "Indefinido", exit: "Salida",
+  amount: "Monto por periodo", currency: "Moneda", payDay: "Día de cobro", notes: "Notas internas", save: "Guardar", cancel: "Cancelar", saving: "Guardando…",
+  freq: "Periodo de cobro", fMensual: "Mensual", fQuincenal: "Quincenal", fSemanal: "Semanal", fCustom: "Personalizado", everyDays: "Cada cuántos días",
+  luz: "Luz", luzToggle: "El huésped paga la luz", luzHint: "Cada periodo tendrá un cobro de luz sin monto fijo: el huésped sube su recibo pagado, aparte de la renta.",
+  luzSet: "Poner monto de luz", luzPending: "Luz sin monto", luzVar: "Según recibo",
+  payDayHint: (d) => "Se cobra el " + d + " de cada mes. Si el mes no tiene ese día (p. ej. febrero), se cobra el último día del mes.",
+  quickEdit: "Edición rápida", swipeHint: "Desliza a la izquierda para eliminar · a la derecha para editar rápido", undo: "Deshacer",
+  linkReady: "Enlace del huésped", copyAgain: "Copiar", copyFail: "Mantén presionado el enlace para copiarlo.",
+  rent: "Renta", adjust: "Ajustar", adjustTitle: "Ajustar periodo", apply: "Aplicar", adjusted: "Ajustado",
+  periods: "Periodos", messages: "Mensajes", log: "Envíos", noLog: "Sin envíos registrados.", noMsgs: "Sin mensajes.",
+  verify: "Verificar", reject: "Rechazar", reason: "Motivo del rechazo", viewProof: "Ver comprobante", reply: "Escribe una respuesta", send: "Enviar",
+  copyLink: "Copiar enlace", sendLink: "Enviar enlace", regen: "Regenerar enlace", regenWarn: "El enlace anterior dejará de funcionar.",
+  copied: "Enlace copiado", end: "Terminar estancia", reopen: "Reactivar", edit: "Editar",
+  del: "Eliminar", delConfirm: "Eliminar definitivamente", deleting: "Eliminando…", deleted: "Reserva eliminada",
+  delWarn: "Se borran la reserva, sus periodos, comprobantes, mensajes y envíos. El enlace del huésped deja de funcionar. No se puede deshacer.",
+  created: "Reserva creada", savedOk: "Cambios guardados", savingLong: "Guardando la reserva…",
+  savingHint: "Estamos creando los periodos de cobro. Puede tardar unos segundos; no cierres esta ventana.",
+  retrySafe: "Puedes volver a presionar Guardar: no se creará una reserva duplicada.",
+  sendTitle: "Enviar enlace", channel: "Canal", msgLabel: "Mensaje", sent: "Enviado",
+  linkMsg: (n, p, url) => (n ? "Hola " + n + ", este" : "Hola, este") + " es tu perfil de estancia en " + p + ". Ahí ves tus periodos pendientes, subes tus comprobantes y nos escribes: " + url,
+  missingData: "Datos por completar", due: "Vence", paidWith: "Comprobante", ref: "Referencia", payDate: "Fecha de pago", paid: "Monto pagado", comment: "Comentario",
+  /* huésped */
+  gEyebrow: "Tu estancia", gHello: (n) => n ? "Hola, " + n + "." : "Hola.", gSub: "Tus pagos, tus comprobantes y una línea directa con nosotros.",
+  gPending: "Pendientes", gAllClear: "Estás al día. Gracias.", gUpload: "Enviar comprobante", gSelect: "¿Qué periodos cubre este pago?",
+  gOverdue: "Vencidos", gNow: "Por pagar", gNext: "Próximos",
+  bOne: "Un comprobante", bMany: "Varios a la vez", bPick: "Elegir comprobantes", bPeriod: "Periodo", bAuto: "Automático",
+  bHint: "Sube todos tus comprobantes juntos. Los ordenamos por fecha de depósito y cubren primero el periodo pendiente más antiguo. Revisa la fecha y el monto de cada uno; si algo no cuadra, elige el periodo a mano.",
+  bNone: "Sin periodo pendiente para este comprobante", bSummary: (n, p) => n + (n === 1 ? " comprobante" : " comprobantes") + " · " + p + (p === 1 ? " periodo cubierto" : " periodos cubiertos"),
+  bSend: (n) => n === 1 ? "Enviar 1 comprobante" : "Enviar " + n + " comprobantes", bSending: (i, n) => "Enviando " + i + " de " + n + "…",
+  bFailed: (n) => (n === 1 ? "Un comprobante no se pudo enviar" : n + " comprobantes no se pudieron enviar") + ". Siguen en la lista: intenta de nuevo.",
+  gFiles: "Comprobante (foto o PDF, hasta 5 archivos)", gAddFile: "Agregar archivo", gSending: "Enviando…", gDone: "Recibimos tu comprobante. Te avisamos al verificarlo.",
+  gLuzWait: "Monto por confirmar", gLuzNote: "La luz va en un comprobante aparte. Sube tu recibo pagado y escribe cuánto pagaste.",
+  gHistory: "Historial", gMessages: "Mensajes", gWrite: "Escríbenos", gInvalid: "Este enlace ya no es válido. Pídenos uno nuevo.", gSince: "Desde", gUntil: "Hasta", gOpenEnd: "Sin fecha de salida",
+  gMissing: "Selecciona al menos un periodo y agrega tu comprobante.", perMonth: "mes", perPeriod: "periodo",
+  gAsk: {
+    intro: "Y de paso, para tenerte bien registrado:",
+    nombre: ["¿Cómo te llamas?", "Tu nombre completo"],
+    email: ["¿A qué correo te avisamos cuando verifiquemos tus pagos?", "tu@correo.com"],
+    telefono: ["¿Un número para escribirte si hace falta?", "+502 5555 5555"],
+    doc: ["Tu documento de identidad, para tu expediente.", "Número de DPI o pasaporte"],
+    docPhoto: "Foto del documento", optional: "Opcional",
+  },
+  rc: {
+    title: "Sube tu comprobante", sub: "Foto o PDF. Puedes subir varios a la vez: leemos cada uno y lo asignamos al periodo que corresponde según la fecha del depósito.",
+    pick: "Elegir archivos", drop: "Suelta aquí tus comprobantes", addMore: "Agregar otro", reading: "Leyendo comprobante…",
+    next: (l, m, d) => "Te toca " + l + " · " + m + " · vence " + d, overdue: (n, m) => (n === 1 ? "Tienes 1 periodo vencido" : "Tienes " + n + " periodos vencidos") + " · " + m, clear: "Estás al día. Si adelantas un pago, súbelo aquí.",
+    covers: "Cubre", partialTo: (l, f) => "Abono a " + l + " · faltan " + f, noAssign: "Sin periodo asignado", edit: "Corregir", done: "Listo", manualHint: "No pudimos leerlo bien. Escribe la fecha, el monto y la referencia tal como aparecen.",
+    concept: "Concepto", bank: "Banco", summary: (n, m) => (n === 1 ? "1 comprobante" : n + " comprobantes") + " · " + m, skipped: (n) => n === 1 ? "1 no se enviará: revisa el aviso." : n + " no se enviarán: revisa los avisos.",
+    send: (n) => n === 1 ? "Enviar comprobante" : "Enviar " + n + " comprobantes", sending: (i, n) => "Enviando " + i + " de " + n + "…",
+    sent: "Recibimos tus comprobantes. Te avisamos al verificarlos.", failed: (n) => (n === 1 ? "Uno no se pudo enviar" : n + " no se pudieron enviar") + ". Siguen en la lista: intenta de nuevo.",
+    statement: "Tu estado de cuenta", paidPart: (a, f) => "Abonado " + a + " · faltan " + f, max: "Máximo 12 comprobantes por envío.", tooBig: "Un archivo pesa más de 8 MB.",
+    flag: {
+      notReceipt: "Esto no parece un comprobante de pago.", dupBatch: "Este archivo ya está en la lista.", dupSent: "Ya recibimos este comprobante antes.",
+      future: "La fecha es posterior a hoy. Revísala.", pendingTx: "La transferencia aparece como pendiente o rechazada. Súbela cuando se acredite.",
+      missing: "Falta la fecha o el monto.", noPeriod: "No hay un periodo pendiente para esta fecha. Elige uno a mano o quítalo.",
+      partial: (f) => "El monto es menor al pactado: faltan " + f + ". Puedes subir otro comprobante para completarlo.", excess: (f) => "Sobran " + f + ". Lo revisamos como saldo a favor.",
+      currency: (c) => "El comprobante está en " + c + " y tu renta en otra moneda. Lo revisamos con el tipo de cambio.", old: "Es un depósito antiguo para tus periodos pendientes. ¿Es el comprobante correcto?",
+      edited: "Corregiste datos que leímos del comprobante. Lo revisamos con cuidado.", manual: "Datos escritos a mano.", refSeen: "Ya enviaste un comprobante con esta referencia.",
+      dateFixed: (x) => "Interpretamos la fecha como " + x + " (día/mes/año). Revísala.",
+      hintDiff: (x, y) => "El comprobante menciona " + x + "; lo aplicamos a " + y + ", el pendiente más antiguo. Si no es así, cámbialo en Corregir.",
+      resend: "Este comprobante fue rechazado antes. Lo revisamos de nuevo.", noLuz: "Parece un recibo de luz y tu estancia no incluye ese cobro.", tampered: "Algo en la imagen se ve alterado. Lo revisamos con cuidado.",
+    },
+    srvErr: { duplicado: "Ya recibimos este comprobante.", "ya-enviado": "Ese periodo ya tiene un comprobante en revisión.", "fecha-futura": "La fecha es posterior a hoy.", "sin-monto": "Falta el monto." },
+    aFlag: { parcial: "Monto menor al pactado", excedente: "Monto mayor al pactado", moneda: "Moneda distinta", editado: "Datos editados por el huésped", "sin-lectura": "Sin lectura IA", manual: "Escrito a mano",
+      "no-acreditado": "Transferencia pendiente o rechazada", manipulacion: "Posible alteración", "fecha-antigua": "Fecha antigua", "ref-repetida": "Referencia repetida", reenvio: "Reenvío tras rechazo", cuenta: "Cuenta destino no coincide", "no-comprobante": "No parece comprobante", "fecha-interpretada": "Fecha interpretada (día/mes/año)", "periodo-lejano": "Periodo lejano a la fecha", reasignado: "Reasignado por el equipo" },
+    applied: "Aplicado", read: "Lectura IA",
+    why: { due: (d, v) => "Depósito del " + d + " · cubre el pendiente más antiguo a esa fecha (vencía el " + v + ")", next: (d) => "Depósito del " + d + " · sin pendientes a esa fecha: cubre el siguiente periodo", manual: "Periodo elegido a mano", range: (r) => "periodo " + r },
+    reassign: "Reasignar", reassignTo: "Asignar a", delComp: "Eliminar comprobante", delCompWarn: "Se borra el comprobante y sus archivos. Los periodos que cubría vuelven a pendiente. No se puede deshacer.", delConfirm: "Eliminar", lockedVerified: "Verificado: para moverlo o borrarlo, primero recházalo.",
+    upcoming: (l, m, d) => "Próximo: " + l + " · " + m + " · vence " + d, noDue: "Aún no vence ningún periodo.",
+  },
+  ex: {
+    stay: "Tu estancia", entry: "Entrada", exit: "Salida", openEnd: "Sin fecha", rent: "Renta", payDay: "Día de cobro", payDayV: (d) => "El " + d + " de cada mes",
+    daysLeft: (n) => n === 1 ? "Falta 1 día para tu salida" : "Faltan " + n + " días para tu salida",
+    allClear: "Estás al día. Gracias.", overdue: (n, m) => (n === 1 ? "1 pago vencido" : n + " pagos vencidos") + " · " + m, next: (l, m, d) => "Próximo pago: " + l + " · " + m + " · vence " + d, inReview: (n) => n === 1 ? "1 pago en revisión" : n + " pagos en revisión",
+    pending: "Pendientes", noticeBtn: "Notificar mi salida", noticeTitle: "Notificar tu salida",
+    noticeHint: (n, d) => "Avísanos con al menos " + n + " días de anticipación. La fecha más próxima que puedes elegir es el " + d + ".",
+    date: "Fecha de salida", reason: "¿Algo que debamos saber? · Opcional", send: "Enviar aviso", sending: "Enviando…", cancel: "Cancelar",
+    earlier: (n) => "¿Necesitas salir en menos de " + n + " días? Escríbenos y lo vemos contigo.", earlierBtn: "Escribirnos",
+    earlierMsg: "Hola, necesito terminar mi estancia antes del plazo de aviso. Mi fecha de salida sería el ",
+    noticed: (d) => "Aviso de salida · " + d, noticedSub: "Lo recibimos. Te escribimos para coordinar la entrega y el cierre de cuenta.", cancelNotice: "Cancelar aviso",
+    err: { "aviso-corto": (n) => "La fecha debe ser al menos " + n + " días a partir de hoy.", "despues-salida": "La fecha es posterior al fin de tu contrato." },
+    history: "Historial de pagos", paidTotal: "Pagado en tu estancia", showAll: (n) => "Ver todo · " + n, showLess: "Ver menos",
+    admNotice: "Aviso de salida del huésped", admApply: "Aplicar como fecha de salida", admApplied: "Fecha aplicada", admSent: "Avisó",
+  },
+};
+const LT_T_EN = {
+  tab: "Long Term", eyebrow: "Long stays", title: "Long Term", sub: "Bookings by period, their payments and each guest's conversation.",
+  newRes: "New booking", search: "Search guest, property or code", all: "All", active: "Active", ended: "Ended",
+  kActive: "Active", kReview: "To review", kOverdue: "Overdue", kUnread: "Messages",
+  thNext: "Next payment", empty: "No Long Term bookings yet.",
+  st: { pendiente: "Pending", revision: "In review", verificado: "Verified", rechazado: "Rejected", vencido: "Overdue", activa: "Active", terminada: "Ended", porDefinir: "To be set" },
+  guest: "Guest", name: "Full name", phone: "Phone", email: "Email", docType: "Document type", docNum: "Document number", docImg: "Document photo",
+  stay: "Stay", prop: "Property", entry: "Check-in", endType: "End", endDate: "Fixed date", endOpen: "Open-ended", exit: "Check-out",
+  amount: "Amount per period", currency: "Currency", payDay: "Billing day", notes: "Internal notes", save: "Save", cancel: "Cancel", saving: "Saving…",
+  freq: "Billing period", fMensual: "Monthly", fQuincenal: "Every 15 days", fSemanal: "Weekly", fCustom: "Custom", everyDays: "Every how many days",
+  luz: "Electricity", luzToggle: "Guest pays electricity", luzHint: "Each period gets an electricity charge with no fixed amount: the guest uploads the paid bill, separate from rent.",
+  luzSet: "Set electricity amount", luzPending: "Electricity without amount", luzVar: "Per bill",
+  payDayHint: (d) => "Charged on day " + d + " of every month. If a month doesn't have that day (e.g. February), it's charged on the month's last day.",
+  quickEdit: "Quick edit", swipeHint: "Swipe left to delete · right to quick edit", undo: "Undo",
+  linkReady: "Guest link", copyAgain: "Copy", copyFail: "Long-press the link to copy it.",
+  rent: "Rent", adjust: "Adjust", adjustTitle: "Adjust period", apply: "Apply", adjusted: "Adjusted",
+  periods: "Periods", messages: "Messages", log: "Sends", noLog: "No sends yet.", noMsgs: "No messages.",
+  verify: "Verify", reject: "Reject", reason: "Rejection reason", viewProof: "View receipt", reply: "Write a reply", send: "Send",
+  copyLink: "Copy link", sendLink: "Send link", regen: "Regenerate link", regenWarn: "The previous link will stop working.",
+  copied: "Link copied", end: "End stay", reopen: "Reactivate", edit: "Edit",
+  del: "Delete", delConfirm: "Delete permanently", deleting: "Deleting…", deleted: "Reservation deleted",
+  delWarn: "This removes the reservation, its periods, receipts, messages and sends. The guest link stops working. It can't be undone.",
+  created: "Reservation created", savedOk: "Changes saved", savingLong: "Saving the reservation…",
+  savingHint: "We're creating the billing periods. It can take a few seconds; don't close this window.",
+  retrySafe: "You can press Save again: no duplicate reservation will be created.",
+  sendTitle: "Send link", channel: "Channel", msgLabel: "Message", sent: "Sent",
+  linkMsg: (n, p, url) => (n ? "Hi " + n + ", this" : "Hi, this") + " is your stay profile at " + p + ". See your pending periods, upload receipts and message us: " + url,
+  missingData: "Missing details", due: "Due", paidWith: "Receipt", ref: "Reference", payDate: "Payment date", paid: "Amount paid", comment: "Comment",
+  gEyebrow: "Your stay", gHello: (n) => n ? "Hi, " + n + "." : "Hi.", gSub: "Your payments, your receipts and a direct line to us.",
+  gPending: "Pending", gAllClear: "You're all caught up. Thank you.", gUpload: "Send receipt", gSelect: "Which periods does this payment cover?",
+  gOverdue: "Overdue", gNow: "Due now", gNext: "Upcoming",
+  bOne: "One receipt", bMany: "Several at once", bPick: "Choose receipts", bPeriod: "Period", bAuto: "Automatic",
+  bHint: "Upload all your receipts together. We sort them by deposit date and each one covers the oldest pending period first. Check each date and amount; if something's off, pick the period by hand.",
+  bNone: "No pending period for this receipt", bSummary: (n, p) => n + (n === 1 ? " receipt" : " receipts") + " · " + p + (p === 1 ? " period covered" : " periods covered"),
+  bSend: (n) => n === 1 ? "Send 1 receipt" : "Send " + n + " receipts", bSending: (i, n) => "Sending " + i + " of " + n + "…",
+  bFailed: (n) => (n === 1 ? "One receipt couldn't be sent" : n + " receipts couldn't be sent") + ". They're still listed: try again.",
+  gFiles: "Receipt (photo or PDF, up to 5 files)", gAddFile: "Add file", gSending: "Sending…", gDone: "We got your receipt. We'll let you know once verified.",
+  gLuzWait: "Amount to be confirmed", gLuzNote: "Electricity goes in a separate receipt. Upload your paid bill and enter how much you paid.",
+  gHistory: "History", gMessages: "Messages", gWrite: "Write to us", gInvalid: "This link is no longer valid. Ask us for a new one.", gSince: "From", gUntil: "Until", gOpenEnd: "No check-out date",
+  gMissing: "Pick at least one period and add your receipt.", perMonth: "month", perPeriod: "period",
+  gAsk: {
+    intro: "And while you're here, so we have you properly on file:",
+    nombre: ["What's your name?", "Your full name"],
+    email: ["Which email should we use to confirm your payments?", "you@email.com"],
+    telefono: ["A number to reach you if needed?", "+1 555 555 5555"],
+    doc: ["Your ID, for your file.", "ID or passport number"],
+    docPhoto: "Photo of your ID", optional: "Optional",
+  },
+  rc: {
+    title: "Upload your receipt", sub: "Photo or PDF. You can upload several at once: we read each one and match it to the right period by its deposit date.",
+    pick: "Choose files", drop: "Drop your receipts here", addMore: "Add another", reading: "Reading receipt…",
+    next: (l, m, d) => "Next up: " + l + " · " + m + " · due " + d, overdue: (n, m) => (n === 1 ? "You have 1 overdue period" : "You have " + n + " overdue periods") + " · " + m, clear: "You're all caught up. If you pay ahead, upload it here.",
+    covers: "Covers", partialTo: (l, f) => "Partial payment to " + l + " · " + f + " left", noAssign: "No period assigned", edit: "Fix", done: "Done", manualHint: "We couldn't read it clearly. Type the date, amount and reference as they appear.",
+    concept: "Concept", bank: "Bank", summary: (n, m) => (n === 1 ? "1 receipt" : n + " receipts") + " · " + m, skipped: (n) => n === 1 ? "1 won't be sent: check the note." : n + " won't be sent: check the notes.",
+    send: (n) => n === 1 ? "Send receipt" : "Send " + n + " receipts", sending: (i, n) => "Sending " + i + " of " + n + "…",
+    sent: "We got your receipts. We'll let you know once verified.", failed: (n) => (n === 1 ? "One couldn't be sent" : n + " couldn't be sent") + ". They're still listed: try again.",
+    statement: "Your statement", paidPart: (a, f) => "Paid " + a + " · " + f + " left", max: "Up to 12 receipts per send.", tooBig: "A file is over 8 MB.",
+    flag: {
+      notReceipt: "This doesn't look like a payment receipt.", dupBatch: "This file is already on the list.", dupSent: "We already received this receipt.",
+      future: "The date is after today. Please check it.", pendingTx: "The transfer shows as pending or rejected. Upload it once it clears.",
+      missing: "The date or amount is missing.", noPeriod: "There's no pending period for this date. Pick one by hand or remove it.",
+      partial: (f) => "The amount is below the agreed rent: " + f + " left. You can upload another receipt to complete it.", excess: (f) => f + " over. We'll review it as credit.",
+      currency: (c) => "The receipt is in " + c + " and your rent in another currency. We'll review it with the exchange rate.", old: "It's an old deposit for your pending periods. Is it the right receipt?",
+      edited: "You corrected details we read from the receipt. We'll review it carefully.", manual: "Details typed by hand.", refSeen: "You already sent a receipt with this reference.",
+      dateFixed: (x) => "We read the date as " + x + " (day/month/year). Please check it.",
+      hintDiff: (x, y) => "The receipt mentions " + x + "; we applied it to " + y + ", the oldest pending. If that's wrong, change it under Fix.",
+      resend: "This receipt was rejected before. We'll review it again.", noLuz: "This looks like an electricity bill and your stay doesn't include that charge.", tampered: "Something in the image looks altered. We'll review it carefully.",
+    },
+    srvErr: { duplicado: "We already received this receipt.", "ya-enviado": "That period already has a receipt in review.", "fecha-futura": "The date is after today.", "sin-monto": "The amount is missing." },
+    aFlag: { parcial: "Below agreed amount", excedente: "Above agreed amount", moneda: "Different currency", editado: "Edited by guest", "sin-lectura": "No AI read", manual: "Typed by hand",
+      "no-acreditado": "Transfer pending or rejected", manipulacion: "Possible tampering", "fecha-antigua": "Old date", "ref-repetida": "Repeated reference", reenvio: "Resent after rejection", cuenta: "Destination account mismatch", "no-comprobante": "Not a receipt", "fecha-interpretada": "Date interpreted (d/m/y)", "periodo-lejano": "Period far from date", reasignado: "Reassigned by team" },
+    applied: "Applied", read: "AI read",
+    why: { due: (d, v) => "Deposit of " + d + " · covers the oldest pending as of that date (due " + v + ")", next: (d) => "Deposit of " + d + " · nothing pending as of that date: covers the next period", manual: "Period picked by hand", range: (r) => "period " + r },
+    reassign: "Reassign", reassignTo: "Assign to", delComp: "Delete receipt", delCompWarn: "The receipt and its files are deleted. Periods it covered go back to pending. It can't be undone.", delConfirm: "Delete", lockedVerified: "Verified: reject it first to move or delete it.",
+    upcoming: (l, m, d) => "Next: " + l + " · " + m + " · due " + d, noDue: "No period is due yet.",
+  },
+  ex: {
+    stay: "Your stay", entry: "Check-in", exit: "Check-out", openEnd: "Open-ended", rent: "Rent", payDay: "Billing day", payDayV: (d) => "Day " + d + " of each month",
+    daysLeft: (n) => n === 1 ? "1 day until check-out" : n + " days until check-out",
+    allClear: "You're all caught up. Thank you.", overdue: (n, m) => (n === 1 ? "1 overdue payment" : n + " overdue payments") + " · " + m, next: (l, m, d) => "Next payment: " + l + " · " + m + " · due " + d, inReview: (n) => n === 1 ? "1 payment in review" : n + " payments in review",
+    pending: "Pending", noticeBtn: "Give notice", noticeTitle: "Give notice of check-out",
+    noticeHint: (n, d) => "Let us know at least " + n + " days ahead. The earliest date you can pick is " + d + ".",
+    date: "Check-out date", reason: "Anything we should know? · Optional", send: "Send notice", sending: "Sending…", cancel: "Cancel",
+    earlier: (n) => "Need to leave in less than " + n + " days? Write to us and we'll sort it out with you.", earlierBtn: "Write to us",
+    earlierMsg: "Hi, I need to end my stay before the notice period. My check-out date would be ",
+    noticed: (d) => "Check-out notice · " + d, noticedSub: "We got it. We'll write to coordinate the hand-over and final statement.", cancelNotice: "Cancel notice",
+    err: { "aviso-corto": (n) => "The date must be at least " + n + " days from today.", "despues-salida": "The date is after your contract ends." },
+    history: "Payment history", paidTotal: "Paid during your stay", showAll: (n) => "See all · " + n, showLess: "See less",
+    admNotice: "Guest check-out notice", admApply: "Apply as check-out date", admApplied: "Date applied", admSent: "Sent",
+  },
+};
+T.es.lt = LT_T_ES; T.en.lt = LT_T_EN;
+
+const LT_DEMO_KEY = "spacioam_lt_demo2";
+const LT_MES3 = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+const ltIsoAdd = (iso, n) => { const d = new Date(iso + "T12:00:00"); d.setDate(d.getDate() + n); return isoDay(d); };
+function ltPerLabelEs(p) {
+  if (/^\d{4}-\d{2}$/.test(p.periodo)) { const [y, m] = p.periodo.split("-"); return ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"][+m - 1] + " " + y; }
+  const a = new Date(p.inicio + "T12:00:00"), b = new Date(p.fin + "T12:00:00"), same = a.getMonth() === b.getMonth();
+  return a.getDate() + (same ? "" : " " + LT_MES3[a.getMonth()]) + " – " + b.getDate() + " " + LT_MES3[b.getMonth()] + " " + b.getFullYear();
+}
+const ltDemo = {
+  load() { try { const d = JSON.parse(localStorage.getItem(LT_DEMO_KEY)); if (d && d.list) return d; } catch (e) {} return this.seed(); },
+  save(d) { try { localStorage.setItem(LT_DEMO_KEY, JSON.stringify(d)); } catch (e) {} return d; },
+  id(p) { return p + Math.random().toString(36).slice(2, 10).toUpperCase(); },
+  now() { const d = new Date(); return isoDay(d) + "T" + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0") + ":00"; },
+  step(r) { return r.frecuencia === "mensual" || !r.frecuencia ? 0 : r.frecuencia === "quincenal" ? 15 : r.frecuencia === "semanal" ? 7 : Math.max(1, +r.cadaDias || 30); },
+  periods(r) {
+    if (r.estado === "terminada") return;
+    const have = {}; r.pagos.forEach((p) => { have[p.concepto + "|" + p.periodo] = 1; });
+    const salida = r.tipoFin === "fecha" ? r.salida : "", horizon = salida || ltIsoAdd(isoDay(todayDay()), 62), step = this.step(r), list = [];
+    if (!step) {
+      let [y, m, d0] = r.entrada.split("-").map(Number); m -= 1; const day = +r.diaCobro || d0;
+      for (let g = 0; g < 240; g++) {
+        const first = isoDay(new Date(y, m, 1)); if (first > horizon || (salida && first >= salida)) break;
+        const last = new Date(y, m + 1, 0).getDate(), lastIso = isoDay(new Date(y, m, last));
+        list.push({ periodo: y + "-" + String(m + 1).padStart(2, "0"), inicio: first < r.entrada ? r.entrada : first, fin: salida && salida <= lastIso ? ltIsoAdd(salida, -1) : lastIso, vence: (() => { const v = isoDay(new Date(y, m, Math.min(day, last))); return v < r.entrada ? r.entrada : v; })() });
+        m++; if (m > 11) { m = 0; y++; }
+      }
+    } else {
+      for (let ini = r.entrada, k = 0; ini <= horizon && k < 400; k++) {
+        if (salida && ini >= salida) break;
+        let fin = ltIsoAdd(ini, step - 1); if (salida && fin >= salida) fin = ltIsoAdd(salida, -1);
+        list.push({ periodo: ini, inicio: ini, fin, vence: ini }); ini = ltIsoAdd(ini, step);
+      }
+    }
+    list.forEach((x) => {
+      if (!have["renta|" + x.periodo]) r.pagos.push({ id: this.id("P"), concepto: "renta", ...x, monto: +r.monto, moneda: r.moneda, estado: "pendiente" });
+      if (r.cobraLuz && !have["luz|" + x.periodo]) r.pagos.push({ id: this.id("P"), concepto: "luz", ...x, vence: ltIsoAdd(x.fin, 10), monto: 0, moneda: r.moneda, estado: "pendiente" });
+    });
+    r.pagos.forEach((p) => { p.label = ltPerLabelEs(p); });
+    r.pagos.sort((a, b) => (a.inicio < b.inicio ? -1 : a.inicio > b.inicio ? 1 : a.concepto === "renta" ? -1 : 1));
+  },
+  reset(r) { r.pagos = r.pagos.filter((p) => !((p.estado === "pendiente" || p.estado === "vencido") && !p.compId && !p.ajustado)); },
+  overdue(d) { const t = isoDay(todayDay()); d.list.forEach((r) => r.pagos.forEach((p) => { if (p.concepto === "luz") { if (p.estado === "vencido") p.estado = "pendiente"; } else if (p.estado === "pendiente" && p.vence < t) p.estado = "vencido"; })); },
+  summary(r) {
+    const live = r.pagos, c = (s) => live.filter((p) => p.estado === s && (s === "revision" || s === "verificado" || p.concepto === "renta")).length;
+    const next = live.filter((p) => p.concepto === "renta" && ["pendiente", "vencido", "rechazado"].includes(p.estado)).sort((a, b) => (a.vence < b.vence ? -1 : 1))[0] || null;
+    const g = r.guest || {}, faltan = [];
+    if (!g.nombre) faltan.push("nombre"); if (!g.email) faltan.push("email"); if (!g.telefono) faltan.push("telefono"); if (!g.docNumero) faltan.push("doc");
+    const t = isoDay(todayDay());
+    return { ...r, tokenActivo: r.estado !== "terminada", faltan, avisoDias: 15,
+      counts: { pendiente: c("pendiente"), revision: c("revision"), verificado: c("verificado"), rechazado: c("rechazado"), vencido: c("vencido"),
+        luzSinMonto: 0, luzPend: r.pagos.filter((p) => p.concepto === "luz" && ["pendiente", "vencido", "rechazado"].includes(p.estado) && p.inicio <= t).length },
+      next: next && { id: next.id, periodo: next.periodo, label: next.label, vence: next.vence, estado: next.estado, monto: next.monto },
+      unread: r.mensajes.filter((m) => m.autor === "huesped" && !m.leido).length };
+  },
+  seed() {
+    const t = todayDay(), iso = (y, m, dd) => isoDay(new Date(y, m, dd));
+    const mk = (code, prop, guest, entrada, tipoFin, salida, monto, moneda, dia, extra) => ({ code, propertyCode: "", propertyName: prop, entrada, tipoFin, salida, monto, moneda, diaCobro: dia,
+      frecuencia: "mensual", cadaDias: 30, cobraLuz: false, notas: "", estado: "activa", token: "demo" + code.toLowerCase(), guest, pagos: [], comprobantes: [], mensajes: [], envios: [], actualizado: "", ...extra });
+    const a = mk("LT2609A1", "Casa Amberes 3", { nombre: "Lucía Herrera", telefono: "50255550101", email: "lucia@correo.com", docTipo: "DPI", docNumero: "2987 44120 0101", docFileId: "" },
+      iso(t.getFullYear(), t.getMonth() - 2, 5), "indefinido", "", 7800, "GTQ", 5, { cobraLuz: true });
+    const b = mk("LT2609B2", "Loft Zona 4 · 1402", { nombre: "", telefono: "15551230000", email: "", docTipo: "", docNumero: "", docFileId: "" },
+      iso(t.getFullYear(), t.getMonth() - 1, 15), "fecha", iso(t.getFullYear(), t.getMonth() + 3, 14), 1250, "USD", 15);
+    const d = { list: [a, b] }; d.list.forEach((r) => this.periods(r));
+    const ar = a.pagos.filter((p) => p.concepto === "renta"), al = a.pagos.filter((p) => p.concepto === "luz");
+    ar[0].estado = "verificado"; ar[0].verificadoAt = this.now(); al[0].monto = 412.5; al[0].estado = "verificado";
+    const c = { id: this.id("C"), concepto: "renta", periodos: [ar[1].id], files: [], referencia: "BI-448120", fecha: ar[1].vence, monto: 7800, comentario: "Transferencia Banco Industrial", creado: this.now() };
+    a.comprobantes.push(c); ar[1].estado = "revision"; ar[1].compId = c.id; al[1].monto = 386; al[1].ajustado = true;
+    a.mensajes.push({ id: this.id("M"), autor: "huesped", texto: "Hola, ¿el mantenimiento del aire acondicionado lo agendan ustedes?", creado: this.now(), leido: false });
+    this.overdue(d); return this.save(d);
+  },
+  find(d, code) { return d.list.find((r) => normCode(r.code) === normCode(code)); },
+  detail(r, forGuest) { const o = JSON.parse(JSON.stringify(this.summary(r))); if (!forGuest && r.token && r.estado !== "terminada") o.url = Backend._ltUrl(r.token); delete o.token; if (forGuest) { delete o.notas; delete o.envios; (o.comprobantes || []).forEach((c) => { c.alertas = []; c.lectura = null; }); } return JSON.parse(JSON.stringify(o)); },
+  log(r, tipo, canal, periodo) { r.envios.unshift({ id: this.id("E"), periodo: periodo || "", tipo, canal, destino: canal === "email" ? r.guest.email : r.guest.telefono, estado: canal === "email" ? (r.guest.email ? "enviado" : "fallido") : "abierto", creado: this.now() }); },
+};
+
+Object.assign(Backend, {
+  async _lt(action, payload) {
+    let j;
+    // lecturas: un reintento automático si hubo timeout o red caída
+    const read = /^(ltList|ltGet|ltGuest|ltLink)$/.test(action);
+    for (let i = 0; i < (read ? 2 : 1); i++) {
+      try { j = await this.call(action, payload); break; }
+      catch (e) { const m = (e && e.message) || "backend-error"; if (i === 0 && read && /timeout|network/.test(m)) { await new Promise((r) => setTimeout(r, 800)); continue; }
+        return { ok: false, error: m === "timeout" ? "La conexión tardó demasiado. Intenta de nuevo." : m }; }
+    }
+    // un backend sin el bloque Long Term responde ok:true sin datos ("skip: action …")
+    const need = { ltList: "list", ltGet: "lt", ltSave: "lt", ltSetPeriod: "lt", ltVerify: "lt", ltAdminMsg: "lt", ltEnd: "lt", ltDelete: "deleted", ltGuest: "lt", ltUpload: "lt", ltGuestMsg: "lt", ltToken: "url", ltLink: "url", ltReadReceipt: "text", ltGuestNotice: "lt", ltCompReassign: "lt", ltCompDelete: "lt" }[action];
+    if ((j && typeof j.result === "string" && /^skip/i.test(j.result)) || (need && !(j && j[need]))) {
+      return { ok: false, error: "El backend publicado no tiene Long Term. Publica una versión nueva del Apps Script." };
+    }
+    // el enlace del huésped siempre apunta a ESTA app (no depende de APP_URL en el backend)
+    if (j && j.url) j.url = this._ltFix(j.url);
+    if (j && j.lt && j.lt.url) j.lt.url = this._ltFix(j.lt.url);
+    if (j && Array.isArray(j.list)) j.list.forEach((x) => { if (x.url) x.url = this._ltFix(x.url); });
+    return j;
+  },
+  _ltUrl(tok) { return location.origin + location.pathname + "?lt=" + tok; },   // query (no #): sobrevive a WhatsApp, correo y Safari
+  _ltFix(u) { const m = /[#&?]lt=([A-Za-z0-9_-]+)/.exec(String(u || "")); return m ? this._ltUrl(m[1]) : u; },
+  async ltList() {
+    if (this.isConnected()) { const j = await this._lt("ltList"); if (j.ok) { try { localStorage.setItem("spacioam_cache_lt", JSON.stringify({ list: j.list })); } catch (e) { try { localStorage.removeItem("spacioam_cache_lt"); } catch (e2) {} } } return j; }
+    const d = ltDemo.load(); ltDemo.overdue(d); ltDemo.save(d); return { ok: true, list: d.list.map((r) => ltDemo.detail(r)) };
+  },
+  async ltGet(code) {
+    if (this.isConnected()) return this._lt("ltGet", { code });
+    const r = ltDemo.find(ltDemo.load(), code); return r ? { ok: true, lt: ltDemo.detail(r) } : { ok: false, error: "not-found" };
+  },
+  async ltSave(lt) {
+    if (this.isConnected()) return this._lt("ltSave", { lt });
+    const d = ltDemo.load(); let r = lt.code && ltDemo.find(d, lt.code), url = "";
+    const g = { ...lt.guest }; delete g.docImage;
+    const shape = (o) => [o.entrada, o.tipoFin, o.tipoFin === "indefinido" ? "" : o.salida, +o.diaCobro, o.frecuencia, +o.cadaDias].join("|");
+    if (r) {
+      const reshaped = shape(r) !== shape(lt), luzOff = r.cobraLuz && !lt.cobraLuz;
+      Object.assign(r, { ...lt, pagos: r.pagos, comprobantes: r.comprobantes, mensajes: r.mensajes, envios: r.envios, token: r.token, estado: r.estado, guest: { ...r.guest, ...g }, salida: lt.tipoFin === "indefinido" ? "" : lt.salida });
+      if (reshaped) ltDemo.reset(r);
+      if (luzOff) r.pagos = r.pagos.filter((p) => !(p.concepto === "luz" && !p.compId));
+    } else {
+      r = { ...lt, code: "LT" + String(new Date().getFullYear()).slice(2) + String(new Date().getMonth() + 1).padStart(2, "0") + ltDemo.id("").slice(0, 4), estado: "activa",
+        token: ltDemo.id("t").toLowerCase(), guest: g, pagos: [], comprobantes: [], mensajes: [], envios: [] };
+      d.list.push(r); url = this._ltUrl(r.token);
+    }
+    r.pagos.forEach((p) => { if (p.concepto === "renta" && (p.estado === "pendiente" || p.estado === "vencido") && !p.ajustado) { p.monto = +r.monto; p.moneda = r.moneda; } });
+    r.actualizado = ltDemo.now(); ltDemo.periods(r); ltDemo.overdue(d); ltDemo.save(d);
+    return { ok: true, lt: ltDemo.detail(r), url };
+  },
+  async ltSetPeriod(code, periodoId, monto, vence) {
+    if (this.isConnected()) return this._lt("ltSetPeriod", { periodoId, monto, vence });
+    const d = ltDemo.load(), r = ltDemo.find(d, code), p = r.pagos.find((x) => x.id === periodoId);
+    const wasZero = !(p.monto > 0);
+    if (monto !== "" && monto != null) p.monto = +monto || 0; if (vence) p.vence = vence; p.ajustado = true;
+    if (p.estado === "vencido" && p.vence >= isoDay(todayDay())) p.estado = "pendiente";
+    if (p.concepto === "luz" && wasZero && p.monto > 0) ltDemo.log(r, "luz", "email", p.id);
+    ltDemo.overdue(d); ltDemo.save(d); return { ok: true, lt: ltDemo.detail(r) };
+  },
+  async ltToken(code) {
+    if (this.isConnected()) return this._lt("ltToken", { code });
+    const d = ltDemo.load(), r = ltDemo.find(d, code); r.token = ltDemo.id("t").toLowerCase(); ltDemo.save(d);
+    return { ok: true, url: this._ltUrl(r.token) };
+  },
+  async ltLink(code) {
+    if (this.isConnected()) return this._lt("ltLink", { code });
+    const r = ltDemo.find(ltDemo.load(), code); return { ok: true, url: this._ltUrl(r.token) };
+  },
+  async ltVerify(code, periodoId, estado, motivo) {
+    if (this.isConnected()) return this._lt("ltVerify", { periodoId, estado, motivo });
+    const d = ltDemo.load(), r = ltDemo.find(d, code), p = r.pagos.find((x) => x.id === periodoId);
+    p.estado = estado === "verificado" ? "verificado" : "rechazado"; p.motivo = p.estado === "rechazado" ? motivo : ""; p.verificadoAt = p.estado === "verificado" ? ltDemo.now() : "";
+    ltDemo.log(r, p.estado, "email", periodoId); ltDemo.save(d); return { ok: true, lt: ltDemo.detail(r) };
+  },
+  _ltRelease(r, p, compId) {
+    if (!p || p.estado === "verificado" || (p.compId && p.compId !== compId)) return;
+    const other = r.comprobantes.find((x) => x.id !== compId && x.periodos.includes(p.id));
+    if (other && p.estado === "revision") p.compId = other.id; else { p.estado = "pendiente"; p.compId = ""; p.motivo = ""; }
+  },
+  _ltCompCtx(code, compId) {
+    const d = ltDemo.load(), r = ltDemo.find(d, code), c = r && r.comprobantes.find((x) => x.id === compId);
+    if (!c) return { error: "not-found" };
+    if (c.periodos.some((id) => { const p = r.pagos.find((x) => x.id === id); return p && p.estado === "verificado" && p.compId === c.id; })) return { error: "verificado" };
+    return { d, r, c };
+  },
+  async ltCompReassign(code, compId, periodoId) {
+    if (this.isConnected()) return this._lt("ltCompReassign", { code, compId, periodoId });
+    const x = this._ltCompCtx(code, compId); if (x.error) return { ok: false, error: x.error };
+    const { d, r, c } = x, t = r.pagos.find((p) => p.id === periodoId); if (!t || t.estado === "verificado") return { ok: false, error: "destino-verificado" };
+    c.periodos.forEach((id) => { if (id !== t.id) this._ltRelease(r, r.pagos.find((p) => p.id === id), c.id); });
+    c.periodos = [t.id]; c.asignacion = { [t.id]: +c.monto || 0 }; c.concepto = t.concepto;
+    const al = (c.alertas || []).filter((k) => !["parcial", "excedente", "periodo-lejano"].includes(k));
+    if (t.concepto === "renta" && t.monto > 0) { if (c.monto < t.monto - 1) al.push("parcial"); else if (c.monto > t.monto + 1) al.push("excedente"); }
+    c.alertas = [...new Set(al.concat("reasignado"))];
+    t.estado = "revision"; t.compId = c.id; t.motivo = "";
+    ltDemo.overdue(d); ltDemo.save(d); return { ok: true, lt: ltDemo.detail(r) };
+  },
+  async ltCompDelete(code, compId) {
+    if (this.isConnected()) return this._lt("ltCompDelete", { code, compId });
+    const x = this._ltCompCtx(code, compId); if (x.error) return { ok: false, error: x.error };
+    const { d, r, c } = x;
+    c.periodos.forEach((id) => this._ltRelease(r, r.pagos.find((p) => p.id === id), c.id));
+    r.comprobantes = r.comprobantes.filter((y) => y.id !== c.id);
+    ltDemo.overdue(d); ltDemo.save(d); return { ok: true, lt: ltDemo.detail(r) };
+  },
+  async ltAdminMsg(code, texto) {
+    if (this.isConnected()) return this._lt("ltAdminMsg", { code, texto });
+    const d = ltDemo.load(), r = ltDemo.find(d, code);
+    r.mensajes.forEach((m) => { m.leido = true; }); r.mensajes.push({ id: ltDemo.id("M"), autor: "admin", texto, creado: ltDemo.now() });
+    ltDemo.log(r, "mensaje", "email"); ltDemo.save(d); return { ok: true, lt: ltDemo.detail(r) };
+  },
+  async ltRead(code) {
+    if (this.isConnected()) return this._lt("ltRead", { code });
+    const d = ltDemo.load(), r = ltDemo.find(d, code); if (r) { r.mensajes.forEach((m) => { m.leido = true; }); ltDemo.save(d); } return { ok: true };
+  },
+  async ltSend(code, canal, texto) {
+    if (this.isConnected()) return this._lt("ltSend", { code, canal, texto });
+    const d = ltDemo.load(), r = ltDemo.find(d, code); ltDemo.log(r, "enlace", canal); ltDemo.save(d);
+    return { ok: true, to: canal === "email" ? r.guest.email : r.guest.telefono };
+  },
+  async ltEnd(code, reopen) {
+    if (this.isConnected()) return this._lt("ltEnd", { code, reopen: !!reopen });
+    const d = ltDemo.load(), r = ltDemo.find(d, code); r.estado = reopen ? "activa" : "terminada"; if (reopen) ltDemo.periods(r);
+    ltDemo.save(d); return { ok: true, lt: ltDemo.detail(r) };
+  },
+  async ltDelete(code) {
+    if (this.isConnected()) return this._lt("ltDelete", { code });
+    const d = ltDemo.load(); d.list = d.list.filter((x) => x.code !== code); ltDemo.save(d); return { ok: true, deleted: code };
+  },
+  async ltFile(fileId, token) {
+    if (!fileId) return "";
+    if (this.isConnected()) { const j = await this._lt(token ? "ltGuestFile" : "ltAdminFile", token ? { token, fileId } : { fileId }); return (j && j.image) || ""; }
+    return (ltDemo._files && ltDemo._files[fileId]) || "";
+  },
+  /* huésped */
+  ltGuestCached(token) { try { const o = JSON.parse(localStorage.getItem("spacioam_ltg_" + token)); return o && o.code ? o : null; } catch (e) { return null; } },
+  async ltGuest(token) {
+    if (this.isConnected()) { const j = await this._lt("ltGuest", { token }); if (j && j.ok && j.lt) { try { localStorage.setItem("spacioam_ltg_" + token, JSON.stringify(j.lt)); } catch (e) {} } return j; }
+    const d = ltDemo.load(), r = d.list.find((x) => x.token === token && x.estado !== "terminada");
+    if (!r) return { ok: false, error: "invalid" };
+    ltDemo.periods(r); ltDemo.overdue(d); ltDemo.save(d); return { ok: true, lt: ltDemo.detail(r, true) };
+  },
+  async ltReadReceipt(token, media_type, data) {
+    if (this.isConnected()) return this._lt("ltReadReceipt", { token, media_type, data });
+    return { ok: false, error: "demo" };
+  },
+  async ltUpload(token, data) {
+    if (this.isConnected()) return this._lt("ltUpload", { token, ...data });
+    const d = ltDemo.load(), r = d.list.find((x) => x.token === token); if (!r) return { ok: false, error: "invalid" };
+    const monto = Math.round((+data.monto || 0) * 100) / 100, ref = String(data.referencia || "").toUpperCase().replace(/[^A-Z0-9]/g, ""), alertas = [];
+    if (data.fecha && data.fecha > isoDay(todayDay())) return { ok: false, error: "fecha-futura" };
+    if (!(monto > 0)) return { ok: false, error: "sin-monto" };
+    const pagoById = {}; d.list.forEach((x) => x.pagos.forEach((p) => { pagoById[p.id] = p; }));
+    for (const x of d.list) for (const c of x.comprobantes) {
+      const sameHash = data.hash && c.hash === data.hash, sameRef = ref.length >= 4 && String(c.referencia || "").toUpperCase().replace(/[^A-Z0-9]/g, "") === ref;
+      if (!sameHash && !sameRef) continue;
+      if (c.periodos.length && c.periodos.every((id) => pagoById[id] && pagoById[id].estado === "rechazado")) { alertas.push("reenvio"); continue; }
+      if (sameHash || Math.abs((+c.monto || 0) - monto) < 0.01) return { ok: false, error: "duplicado" };
+      alertas.push("ref-repetida");
+    }
+    const paidOn = (id) => r.comprobantes.reduce((n, c) => n + (+((c.asignacion || {})[id]) || 0), 0);
+    const ids = data.periodoIds.filter((id) => { const p = r.pagos.find((x) => x.id === id); if (!p || p.estado === "verificado") return false;
+      return p.estado !== "revision" || (paidOn(id) > 0 && paidOn(id) < (+p.monto || 0) - 1); });
+    if (!ids.length) return { ok: false, error: "ya-enviado" };
+    const asig = {}; let rest = monto;
+    ids.forEach((id) => { const p = r.pagos.find((x) => x.id === id);
+      if (data.concepto === "luz") { asig[id] = monto; rest = 0; return; }
+      const need = (+p.monto || 0) - (p.estado === "revision" ? paidOn(id) : 0), a = Math.max(0, Math.min(rest, need)); asig[id] = Math.round(a * 100) / 100; rest -= a; if (a < need - 1) alertas.push("parcial"); });
+    if (data.concepto !== "luz" && rest > 1) alertas.push("excedente");
+    const lec = data.lectura;
+    if (lec) {
+      if ((lec.fecha && lec.fecha !== data.fecha) || (+lec.monto > 0 && Math.abs(+lec.monto - monto) > 0.01)) alertas.push("editado");
+      if (lec.estado === "pendiente" || lec.estado === "rechazada") alertas.push("no-acreditado");
+      if (lec.senales_edicion === true) alertas.push("manipulacion");
+      if (lec.moneda && lec.moneda !== r.moneda) alertas.push("moneda");
+    } else alertas.push(data.manual ? "manual" : "sin-lectura");
+    ltDemo._files = ltDemo._files || {};
+    const files = data.files.map((f) => { const id = ltDemo.id("F"); ltDemo._files[id] = f.dataUrl; return id; });
+    const c = { id: ltDemo.id("C"), concepto: data.concepto || "renta", periodos: ids, files, referencia: data.referencia, fecha: data.fecha, monto, comentario: data.comentario || "", creado: ltDemo.now(),
+      hash: data.hash || "", banco: data.banco || "", asignacion: asig, alertas: [...new Set(alertas)], lectura: lec || null };
+    r.comprobantes.push(c); r.pagos.forEach((p) => { if (ids.includes(p.id)) { if (p.estado !== "revision" || !p.compId) p.compId = c.id; p.estado = "revision"; p.motivo = ""; } });
+    const pf = data.perfil || {}, g = r.guest;
+    if (pf.nombre && !g.nombre) g.nombre = pf.nombre.trim(); if (pf.email && !g.email) g.email = pf.email.trim().toLowerCase();
+    if (pf.telefono && !g.telefono) g.telefono = pf.telefono; if (pf.docNumero && !g.docNumero) { g.docNumero = pf.docNumero; g.docTipo = pf.docTipo || g.docTipo; }
+    if (data.notify !== false) ltDemo.log(r, "recibido", "email");
+    ltDemo.save(d); return { ok: true, lt: ltDemo.detail(r, true), alertas: c.alertas };
+  },
+  async ltNotice(token, fecha, motivo, cancel) {
+    if (this.isConnected()) return this._lt("ltGuestNotice", { token, fecha, motivo, cancel: !!cancel });
+    const d = ltDemo.load(), r = d.list.find((x) => x.token === token); if (!r) return { ok: false, error: "invalid" };
+    const min = ltIsoAdd(isoDay(todayDay()), 15);
+    if (!cancel && (!fecha || fecha < min)) return { ok: false, error: "aviso-corto", min };
+    if (!cancel && r.tipoFin === "fecha" && r.salida && fecha > r.salida) return { ok: false, error: "despues-salida" };
+    Object.assign(r, cancel ? { avisoSalida: "", avisoCreado: "", avisoMotivo: "" } : { avisoSalida: fecha, avisoCreado: ltDemo.now(), avisoMotivo: motivo || "" });
+    r.mensajes.push({ id: ltDemo.id("M"), autor: "huesped", texto: cancel ? "Cancelé mi aviso de salida." : "Aviso de salida: " + fecha + (motivo ? "\n" + motivo : ""), creado: ltDemo.now(), leido: false });
+    ltDemo.save(d); return { ok: true, lt: ltDemo.detail(r, true) };
+  },
+  async ltGuestMsg(token, texto) {
+    if (this.isConnected()) return this._lt("ltGuestMsg", { token, texto });
+    const d = ltDemo.load(), r = d.list.find((x) => x.token === token); if (!r) return { ok: false, error: "invalid" };
+    r.mensajes.push({ id: ltDemo.id("M"), autor: "huesped", texto, creado: ltDemo.now(), leido: false }); ltDemo.save(d); return { ok: true, lt: ltDemo.detail(r, true) };
+  },
+});
+
 const HospitableAPI = {
   loadConfig: () => Backend.loadConfig(),
   saveConfig: (c) => Backend.saveConfig(c),
@@ -1701,7 +2206,7 @@ GENERAL
 Gracias por elegir Spacio AM, donde cada detalle tiene intención.
 ────────────────────────`;
 
-Object.assign(window, {
+Object.assign(window, { ltDemo,
   C, IMG, ADMIN_SETTINGS, money, DIAL_CODES, DIAL_CODES_SORTED, parsePhone,
   resPhoto, resName, resListingPhoto, titleCaseName,
   T, RESERVATIONS, groupReservations, findReservation, normCode, nightsBetween,

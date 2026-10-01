@@ -1185,7 +1185,7 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
           tabs={[
             { id: "registros", icon: "checkin", label: t.tabRegistros },
             { id: "seguimiento", icon: "activities", label: t.tabSeguimiento },
-            { id: "longterm", icon: "clock", label: t.lt.tab },
+            { id: "longterm", icon: "clock", label: (t.lt && t.lt.tab) || (es ? "Estadías largas" : "Long stays") },
             { id: "propiedades", icon: "amenities", label: t.tabPropiedades },
           ]} />
 

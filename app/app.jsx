@@ -90,6 +90,10 @@ function adminSession() { try { return localStorage.getItem("spacioam_admin_sess
    sesión del huésped > pantalla de código. */
 function bootState() {
   const hash = (typeof window !== "undefined" && window.location.hash) || "";
+  // enlace de Long Term: ?lt= o #lt= (o capturado por index.html antes de cargar la app). Entra directo, sin idioma ni código.
+  let ltTok = "";
+  try { const m = /[?&#]lt=([A-Za-z0-9_-]+)/.exec(window.location.search + "&" + hash); ltTok = (m && m[1]) || window.__SPACIO_LT__ || sessionStorage.getItem("spacioam_lt_token") || ""; } catch (e) {}
+  if (ltTok) { try { sessionStorage.setItem("spacioam_lt_token", ltTok); } catch (e) {} return { stage: "lt", res: null, ltToken: ltTok }; }
   if (/[#&]r=/.test(hash) || /invite=/.test(hash)) return { stage: loadStore().lang ? "code" : "lang", res: null };
   if (adminSession()) return { stage: "admin", res: null };
   const s = loadSession();
@@ -467,6 +471,7 @@ function App() {
     case "done":     view = <DoneScreen t={t} onEnter={onDoneEnter} />; break;
     case "bento":    view = <BentoScreen t={t} res={res} siblings={siblings} onSwitch={switchStay} firstName={firstName} emails={acctEmails()} onSwitchLang={switchLang} onLogout={onLogout} />; break;
     case "admin":    view = <AdminScreen t={t} adminEmail={adminEmail} onBack={leaveAdmin} onSwitchLang={switchLang} onPreviewGuest={previewGuest} onResetForm={resetGuestForm} onManualForm={manualForm} />; break;
+    case "lt":       view = <LtGuestScreen t={t} token={boot.ltToken} onSwitchLang={switchLang} />; break;
     case "tile":     view = <TileDetail t={t} tileKey={tile} res={res} onBack={() => { window.location.hash = ""; }} />; break;
     default:         view = <LangScreen onPick={pickLang} />;
   }

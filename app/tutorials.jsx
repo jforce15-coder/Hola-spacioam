@@ -114,9 +114,9 @@ function GuestTour({ t, onClose, onGoTile, mandatory, canSkip }) {
    Dos caminos reales: la pestaña Mensajes, o "Message your host" dentro del
    anuncio en My trips. Las capturas se colocan en assets/tutorial/. */
 const AIRBNB_SHOTS = {
-  m1: "assets/tutorial/airbnb-mensajes-w760.png",
-  m2a: "assets/tutorial/airbnb-trips-w760.png",
-  m2b: "assets/tutorial/airbnb-your-stay-w760.png",
+  m1: "assets/tutorial/airbnb-mensajes.jpg",
+  m2a: "assets/tutorial/airbnb-trips.jpg",
+  m2b: "assets/tutorial/airbnb-your-stay.jpg",
 };
 
 function AirbnbCodeHelp({ t }) {

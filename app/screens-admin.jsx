@@ -552,6 +552,18 @@ function ReservationSummary({ t, h, rec: localRec, onClose, onResend, autoPrint,
               <Icon name="clock" size={13} color={C.peach} /> {es ? "Formulario recibido" : "Form received"}: {fmtDateTime(rec.completedAt || rec.acceptedRulesAt)}
             </span>
           )}
+          {rec && rec.startedAt && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontFamily: C.sans, fontSize: 11, color: C.negro, letterSpacing: "0.02em",
+              background: C.beige, border: `1px solid ${C.grisCalido}`, borderRadius: 999, padding: "6px 13px" }}>
+              <Icon name="clock" size={13} color={C.tierra} /> {es ? "Formulario iniciado" : "Form started"}: {fmtDateTime(rec.startedAt)}
+            </span>
+          )}
+          {rec && rec.completedBy && rec.completedBy !== "huésped" && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontFamily: C.sans, fontSize: 11, color: C.negro, letterSpacing: "0.02em",
+              background: C.beige, border: `1px solid ${C.grisCalido}`, borderRadius: 999, padding: "6px 13px" }}>
+              {es ? "Finalizado por" : "Finished by"}: {rec.completedBy}
+            </span>
+          )}
         </div>
 
         {rec?.docsFolderUrl && (
@@ -990,6 +1002,7 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
       return;
     }
     setRefreshing(true);
+    if (Backend.listDrafts) Backend.listDrafts().then((d) => { if (d) setDrafts(d); }).catch(() => {});
     // cache-only by default: the stored DB (synced 5am/3pm) is the source of
     // truth. Si ya había datos en el dispositivo se siguen viendo mientras llega.
     Backend.listCached().then((list) => { if (Array.isArray(list)) setRoster((prev) => (list.length || !prev || !prev.length ? list : prev)); setMeta((m) => (m && m.syncedAt ? m : Backend._lastMeta)); setRefreshing(false); })
@@ -1034,11 +1047,13 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
     return null;
   };
 
+  const [drafts, setDrafts] = useStateAd({});
+  const draftOf = (h) => drafts[normCode(h.code)] || null;
   const isCancelled = (h) => /cancel/i.test(String(h.status || h.reservationStatus || h.estado || h.statusForm || ""));
   const stateOf = (h, rec) => {
     if (isDone(h, rec)) return "done";
     const s = String(h.statusForm || "").toLowerCase();
-    if (h.started || h.inProgress || /proceso|progress|parcial|iniciad/.test(s)) return "progress";
+    if (h.started || h.inProgress || /proceso|progress|parcial|iniciad/.test(s) || (draftOf(h) && draftOf(h).startedAt)) return "progress";
     return "pending";
   };
   const isDone = (h, rec) => (!!rec || h.statusForm === "completo") && !resetCodes.has(normCode(h.code));
@@ -1276,7 +1291,7 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
           <div style={{ border: `1px solid ${C.grisCalido}`, borderRadius: 16, overflow: "hidden", background: C.white }}>
             {rows.map(({ h, rec, bucket }, idx) => (
               <AdminRow key={(h.id || h.code) + "-" + idx} t={t} h={h} rec={rec} bucket={bucket} first={idx === 0} avail={availFor(h)}
-                done={isDone(h, rec)} state={stateOf(h, rec)}
+                done={isDone(h, rec)} state={stateOf(h, rec)} draft={draftOf(h)}
                 onPreview={onPreviewGuest ? () => onPreviewGuest(h) : null}
                 onOpenForm={onManualForm ? () => onManualForm(h) : null}
                 onView={() => setSummary({ h, rec, autoPrint: false })}
@@ -1389,7 +1404,7 @@ function ManualFormModal({ t, onClose, onOpen }) {
 }
 
 /* compact, image-free row */
-function AdminRow({ t, h, rec, bucket, first, avail, onView, onDownload, onResend, done: doneProp, state, onPreview, onOpenForm }) {
+function AdminRow({ t, h, rec, bucket, first, avail, onView, onDownload, onResend, done: doneProp, state, onPreview, onOpenForm, draft }) {
   const done = doneProp != null ? doneProp : (!!rec || h.statusForm === "completo");
   const es = t.code === "es";
   const st = state || (done ? "done" : "pending");
@@ -1403,6 +1418,18 @@ function AdminRow({ t, h, rec, bucket, first, avail, onView, onDownload, onResen
   const av = avail || { email: false, whatsapp: false };
   const bucketLabel = { yesterday: t.adminYesterday, today: t.adminToday, tomorrow: t.adminTomorrow, dayAfter: t.adminDayAfter }[bucket];
   const guestName = (rec?.guests?.[0]?.name) || h.guestName;
+  // hora de inicio y de envío (Borradores); hoy solo la hora, otro día con fecha
+  const hm = (v) => {
+    if (!v) return "";
+    const d = new Date(v); if (isNaN(d)) return "";
+    const tz = "America/Guatemala", loc = es ? "es-GT" : "en-US";
+    const sameDay = d.toLocaleDateString("en-CA", { timeZone: tz }) === new Date().toLocaleDateString("en-CA", { timeZone: tz });
+    return d.toLocaleString(loc, sameDay ? { timeZone: tz, hour: "2-digit", minute: "2-digit" } : { timeZone: tz, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  };
+  const startedTxt = hm((draft && draft.startedAt) || rec?.startedAt);
+  const sentTxt = done ? hm((draft && draft.submittedAt) || rec?.completedAt) : "";
+  const stepLbl = { booker: es ? "reserva" : "booking", docs: es ? "documentos" : "documents", contact: es ? "contacto" : "contact", rules: es ? "normas" : "rules" }[draft && draft.step];
+  const byAdmin = done && draft && draft.completedBy && draft.completedBy !== "huésped";
   const actionBtn = (icon, label, onClick, dark) => (
     <button onClick={onClick} className="sp-btn" title={label}
       style={{ background: dark ? C.negro : C.white, color: dark ? C.alabaster : C.negro, border: dark ? "none" : `1px solid ${C.grisCalido}`,
@@ -1450,6 +1477,14 @@ function AdminRow({ t, h, rec, bucket, first, avail, onView, onDownload, onResen
           <span style={{ width: 6, height: 6, borderRadius: "50%", background: ST.dot }} />
           {ST.label}
         </span>
+        {(startedTxt || sentTxt) && (
+          <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 2, fontFamily: C.sans, fontSize: 10, color: C.tierra, letterSpacing: "0.02em", lineHeight: 1.35 }}>
+            {startedTxt && <span>{es ? "Iniciado" : "Started"} · {startedTxt}</span>}
+            {sentTxt && <span style={{ color: C.negro }}>{es ? "Enviado" : "Sent"} · {sentTxt}</span>}
+            {!done && stepLbl && <span>{es ? "Se quedó en" : "Stopped at"}: {stepLbl}</span>}
+            {byAdmin && <span>{es ? "Finalizado por admin" : "Finished by admin"}</span>}
+          </div>
+        )}
       </div>
       {/* actions */}
       <div style={{ display: "flex", gap: 7, justifyContent: "flex-end", flexWrap: "wrap", alignItems: "center" }}>
@@ -1465,7 +1500,7 @@ function AdminRow({ t, h, rec, bucket, first, avail, onView, onDownload, onResen
             </div>
           </React.Fragment>
         ) : (
-          onOpenForm && actionBtn("checkin", es ? "Llenar formulario" : "Fill form", onOpenForm, true)
+          onOpenForm && actionBtn("checkin", draft && draft.hasForm ? (es ? "Finalizar formulario" : "Finish form") : (es ? "Llenar formulario" : "Fill form"), onOpenForm, true)
         )}
       </div>
     </div>

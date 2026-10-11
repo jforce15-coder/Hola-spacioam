@@ -995,6 +995,8 @@ const Backend = {
     const p = payload || {};
     if (action === "getRegistration") return 30000;
     if (action === "formCompleted") return 20000;
+    if (action === "saveDraft") return 90000;
+    if (action === "getDraft" || action === "listDrafts") return 30000;
     if (action === "getDocImage") return 25000;
     if (action === "ltUpload" || action === "ltSave") return 120000;
     if (action === "ltList" || action === "ltGuest") return 60000;
@@ -1325,9 +1327,26 @@ const Backend = {
     return { ok: true, offline: true };
   },
   /* el huésped validó su código → marca la reserva "en proceso" (no pisa completo) */
-  async formStarted(code) {
+  async formStarted(code, start) {
     if (!this.isConnected()) return { ok: true, offline: true };
-    try { return await this.call("formStarted", { code }); } catch (e) { return { ok: false }; }
+    try { return await this.call("formStarted", { code, start: !!start }); } catch (e) { return { ok: false }; }
+  },
+  /* borrador del formulario: se guarda al pasar cada paso (fotos solo la 1.ª vez) */
+  async saveDraft(payload) {
+    if (!this.isConnected()) return { ok: false, offline: true };
+    for (let i = 0; i < 2; i++) {
+      try { const r = await this.call("saveDraft", payload); if (r && r.ok) return r; } catch (e) {}
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+    return { ok: false };
+  },
+  async getDraft(code) {
+    if (!this.isConnected()) return null;
+    try { const r = await this.call("getDraft", { code }); return r && r.ok ? r.draft : null; } catch (e) { return null; }
+  },
+  async listDrafts() {
+    if (!this.isConnected()) return null;
+    try { const r = await this.call("listDrafts", {}); return r && r.ok ? r.drafts || {} : null; } catch (e) { return null; }
   },
   /* el huésped terminó: marca 'completo' de inmediato (llamada mínima), antes
      del envío grande. Reintenta: es lo que hace que el panel lo detecte ya. */

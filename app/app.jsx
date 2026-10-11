@@ -158,6 +158,53 @@ function App() {
   const [acctNudge, setAcctNudge] = useStateA(false);
   const [inviteEmail, setInviteEmail] = useStateA("");
   const acctTimer = useRefA(null);
+  /* ---- BORRADOR DEL FORMULARIO ----
+     Al pasar cada paso se guarda en el backend: queda la hora de inicio, el
+     huésped puede retomarlo en otro dispositivo y el administrador puede
+     abrir un formulario iniciado y finalizarlo. Las fotos suben una sola vez. */
+  const draftIds = useRefA({});       // firma de la foto → fileId en Drive
+  const draftFor = useRefA("");
+  const startedAtRef = useRefA("");
+  const sigOf = (u) => (u && /^data:/.test(u) ? u.length + ":" + u.slice(-48) : "");
+  const touched = (f) => !!(f && (f.booker?.type || (f.docs || []).some((d) => d && (d.name || d.dataUrl))));
+  const pushDraft = (step, f) => {
+    if (!res || !Backend.saveDraft) return;
+    const ids = draftIds.current;
+    const pack = (d) => {
+      if (!d) return d;
+      const { dataUrl, ...rest } = d;
+      const s = sigOf(dataUrl);
+      if (!s) return rest;
+      return ids[s] ? { ...rest, fileId: ids[s] } : { ...rest, dataUrl, _sig: s };
+    };
+    const src = f || form;
+    const payload = { ...src, docs: (src.docs || []).map(pack), booker: src.booker ? { ...src.booker, doc: pack(src.booker.doc) } : src.booker };
+    Backend.saveDraft({ code: res.code, step,
+      reservation: { code: res.code, propertyName: res.propertyName, apartment: res.apartment, checkin: res.checkin, checkout: res.checkout },
+      form: payload }).then((r) => { if (r && r.ok && r.ids) Object.assign(ids, r.ids); }).catch(() => {});
+  };
+  const restoreDraft = async (r, force) => {
+    if (!r || !Backend.getDraft) return null;
+    const d = await Backend.getDraft(r.code).catch(() => null);
+    if (!d) return null;
+    if (d.startedAt) startedAtRef.current = d.startedAt;
+    if (!d.form || d.status === "enviado") return d;
+    const img = async (x) => {
+      if (!x || !x.fileId) return x;
+      const u = await Backend.getDocImage(x.fileId).catch(() => "");
+      if (!u) return x;
+      draftIds.current[sigOf(u)] = x.fileId;
+      return { ...x, dataUrl: u };
+    };
+    const base = emptyForm(r), f = d.form;
+    const docs = await Promise.all((f.docs || []).map(img));
+    const bdoc = await img(f.booker && f.booker.doc);
+    const merged = { ...base, ...f, docs,
+      booker: { ...base.booker, ...(f.booker || {}), doc: bdoc || {} },
+      contact: { ...base.contact, ...(f.contact || {}) } };
+    setForm((cur) => (!force && touched(cur) ? cur : merged));
+    return d;
+  };
   const t = lang ? T[lang] : T.es;
 
   // purge expired documents once, on mount
@@ -261,6 +308,12 @@ function App() {
   }, [stage]);
 
   useEffectA(() => { window.scrollTo(0, 0); }, [stage, tile]);
+  // el huésped vuelve a un formulario sin terminar (otro dispositivo o recarga): se retoma lo que ya llenó
+  useEffectA(() => {
+    if (stage !== "overview" || !res || adminPreview || draftFor.current === res.code) return;
+    draftFor.current = res.code; draftIds.current = {}; startedAtRef.current = "";
+    restoreDraft(res, false);
+  }, [stage, res]);
 
   // aviso de cuenta — NUNCA en la primera visita. Solo a partir de la segunda
   // vez que el huésped entra a Mi espacio, y como banda discreta arriba.
@@ -344,8 +397,14 @@ function App() {
   const manualForm = (r) => {
     if (!r) return;
     window.location.hash = "";
+    const done = isCompleted(r) || r.statusForm === "completo";
+    draftIds.current = {}; startedAtRef.current = ""; draftFor.current = r.code;
     setTile(null); setRes(r); setSiblings([r]); setForm(emptyForm(r)); setAdminPreview(true);
-    setStage(isCompleted(r) || r.statusForm === "completo" ? "bento" : "overview");
+    setStage(done ? "bento" : "overview");
+    // formulario iniciado por el huésped → se abre con lo que ya llenó, en el paso donde se quedó
+    if (!done) restoreDraft(r, true).then((d) => {
+      if (d && d.form && d.status !== "enviado" && ["booker", "docs", "contact", "rules"].includes(d.step)) setStage(d.step);
+    });
   };
 
   /* el administrador reinicia un formulario mal enviado: la reserva vuelve a
@@ -366,13 +425,15 @@ function App() {
     const records = { ...(store.records || {}) };
     const emails = [form.contact?.email, form.booker?.type === "third" ? form.booker?.email : null].filter(Boolean);
     const completedAt = Date.now();
+    const startedAt = startedAtRef.current || "";
+    const completedBy = adminPreview ? (adminEmail || "admin") : "";
     // documents auto-delete 3 months after checkout
     const purgeAt = new Date(res.checkout + "T12:00:00").getTime() + ADMIN_SETTINGS.docRetentionMonths * MONTH_MS;
     const guests = (form.docs || []).slice(0, form.count).map((d, i) => ({
       name: d.name || "", id: d.id || "", docImage: d.dataUrl || null, manual: !!d.manual, main: i === 0,
     }));
     records[res.id] = {
-      completedAt, count: form.count, code: res.code, resId: res.id,
+      completedAt, startedAt, completedBy, count: form.count, code: res.code, resId: res.id,
       firstName: (form.docs?.[0]?.name || "").split(" ")[0] || "",
       booker: { type: form.booker?.type,
         doc: form.booker?.type === "third" ? { name: form.booker?.doc?.name || "", id: form.booker?.doc?.id || "", docImage: form.booker?.doc?.dataUrl || null } : null,
@@ -390,7 +451,7 @@ function App() {
     try {
       Backend.submitForm(
         { code: res.code, propertyName: res.propertyName, apartment: res.apartment, checkin: res.checkin, checkout: res.checkout, maxCapacity: res.maxCapacity },
-        { booker: records[res.id].booker, guests, contact: form.contact, count: form.count, acceptedRulesAt: completedAt }
+        { booker: records[res.id].booker, guests, contact: form.contact, count: form.count, acceptedRulesAt: completedAt, startedAt, completedBy }
       ).catch(() => {});
     } catch (e) { /* offline / no endpoint */ }
     // 3) el huésped entra directo a Mi espacio; el aviso es un lightbox que se
@@ -463,10 +524,10 @@ function App() {
   switch (stage) {
     case "lang":     view = <LangScreen onPick={pickLang} />; break;
     case "code":     view = <CodeScreen t={t} linkErr={linkErr} onClearLinkErr={() => setLinkErr("")} onResolved={onResolved} onAdmin={goAdmin} onSwitchLang={switchLang} />; break;
-    case "overview": view = <OverviewScreen t={t} res={res} onStart={() => setStage("booker")} onExit={exitToCode} onSwitchLang={switchLang} />; break;
-    case "booker":   view = <BookerScreen t={t} res={res} form={form} setForm={setForm} onBack={() => setStage("overview")} onNext={() => setStage("docs")} onSwitchLang={switchLang} />; break;
-    case "docs":     view = <DocsScreen t={t} res={res} form={form} setForm={setForm} onBack={() => setStage("booker")} onNext={() => setStage("contact")} onSwitchLang={switchLang} />; break;
-    case "contact":  view = <ContactScreen t={t} res={res} form={form} setForm={setForm} onBack={() => setStage("docs")} onNext={() => setStage("rules")} onSwitchLang={switchLang} />; break;
+    case "overview": view = <OverviewScreen t={t} res={res} onStart={() => { if (!startedAtRef.current) startedAtRef.current = new Date().toISOString(); if (!adminPreview) { try { Backend.formStarted && Backend.formStarted(res.code, true); } catch (e) {} } setStage("booker"); }} onExit={exitToCode} onSwitchLang={switchLang} />; break;
+    case "booker":   view = <BookerScreen t={t} res={res} form={form} setForm={setForm} onBack={() => setStage("overview")} onNext={() => { pushDraft("docs"); setStage("docs"); }} onSwitchLang={switchLang} />; break;
+    case "docs":     view = <DocsScreen t={t} res={res} form={form} setForm={setForm} onBack={() => setStage("booker")} onNext={() => { pushDraft("contact"); setStage("contact"); }} onSwitchLang={switchLang} />; break;
+    case "contact":  view = <ContactScreen t={t} res={res} form={form} setForm={setForm} onBack={() => setStage("docs")} onNext={() => { pushDraft("rules"); setStage("rules"); }} onSwitchLang={switchLang} />; break;
     case "rules":    view = <RulesScreen t={t} onBack={() => setStage("contact")} onAccept={finish} onSwitchLang={switchLang} />; break;
     case "done":     view = <DoneScreen t={t} onEnter={onDoneEnter} />; break;
     case "bento":    view = <BentoScreen t={t} res={res} siblings={siblings} onSwitch={switchStay} firstName={firstName} emails={acctEmails()} onSwitchLang={switchLang} onLogout={onLogout} />; break;

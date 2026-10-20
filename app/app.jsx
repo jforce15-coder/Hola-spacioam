@@ -383,15 +383,22 @@ function App() {
     const enlaceHuesped = /[#&]r=|invite=/.test(window.location.hash || "");
     if (!inicio || enlaceHuesped || !(window.SASesion && window.SASesion.leer())) return;
     let vivo = true;
-    window.SASesion.verificar().then((p) => {
-      if (!vivo || !p || !p.apps || !p.apps.hola) return;
+    const entrar = (p) => {
       try {
         const prev = adminProfile();
         saveAdminProfile({ ...prev, userId: p.user_id || prev.userId, name: p.nombre || prev.name || "",
           avatar: p.foto || prev.avatar || "", secondary: p.email_alterno || prev.secondary || "", role: p.apps.hola });
       } catch (_) {}
       goAdmin(String(p.email || "").toLowerCase());
-    });
+    };
+    // Entrada instantánea con el perfil de la sesión; la firma se comprueba en segundo plano.
+    const r = window.SASesion.perfilRapido && window.SASesion.perfilRapido();
+    if (r && r.apps && r.apps.hola) {
+      entrar(r);
+      window.SASesion.confirmar("hola", () => { try { localStorage.removeItem("spacioam_admin_session"); } catch (e) {} location.reload(); });
+      return;
+    }
+    window.SASesion.verificar().then((p) => { if (vivo && p && p.apps && p.apps.hola) entrar(p); });
     return () => { vivo = false; };
   }, []);
   const leaveAdmin = () => {

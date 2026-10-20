@@ -215,6 +215,8 @@ function route_(e, method) {
       body = JSON.parse(e.parameter.payload);
     }
     var action = body.action || (e && e.parameter && e.parameter.action) || 'ping';
+    var __diag = accesosDiag_(body); if (__diag) return __diag;   // fase 1b: resumen de accesos (robot)
+    var __ses = sesionDe_(body); registrarAcceso_(action, !!__ses);   // fase 1b: aún no bloquea
 
     switch (action) {
       case 'ping':             out = { ok: true, service: 'spacio-am-backend', time: new Date().toISOString() }; break;

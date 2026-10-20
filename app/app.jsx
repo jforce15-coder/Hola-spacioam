@@ -376,6 +376,24 @@ function App() {
   };
   // sesión de administrador activa → el panel abre solo al cargar la app
   useEffectA(() => { if (boot.stage === "admin") seedAdminRecord(); }, []);
+  /* Sesión única desde el Hub: en la pantalla inicial, si hay sesión firmada (hub.spacioam.com/js/sa-sesion.js)
+     de alguien con acceso a Hola, entra directo al panel. Los huéspedes (sin sesión) no ven ningún cambio. */
+  useEffectA(() => {
+    const inicio = boot.stage === "code" || boot.stage === "lang";
+    const enlaceHuesped = /[#&]r=|invite=/.test(window.location.hash || "");
+    if (!inicio || enlaceHuesped || !(window.SASesion && window.SASesion.leer())) return;
+    let vivo = true;
+    window.SASesion.verificar().then((p) => {
+      if (!vivo || !p || !p.apps || !p.apps.hola) return;
+      try {
+        const prev = adminProfile();
+        saveAdminProfile({ ...prev, userId: p.user_id || prev.userId, name: p.nombre || prev.name || "",
+          avatar: p.foto || prev.avatar || "", secondary: p.email_alterno || prev.secondary || "", role: p.apps.hola });
+      } catch (_) {}
+      goAdmin(String(p.email || "").toLowerCase());
+    });
+    return () => { vivo = false; };
+  }, []);
   const leaveAdmin = () => {
     try { localStorage.removeItem("spacioam_admin_session"); } catch (e) {}
     setAdminEmail(""); setStage("code");

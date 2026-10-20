@@ -539,6 +539,7 @@ function anthropicVision_(key, model, prompt, mediaType, data) {
     var code = res.getResponseCode();
     var json = {};
     try { json = JSON.parse(res.getContentText()); } catch (e) {}
+    registrarUsoIA_('Lectura de documento (check-in)', model, json.usage, code === 200 ? '' : 'HTTP ' + code);
     if (code !== 200) return { ok: false, error: 'anthropic HTTP ' + code + ': ' + shortMsg_(json) };
     var text = '';
     if (json.content && json.content.length) {
@@ -568,6 +569,7 @@ function anthropicText_(key, model, system, userText) {
     });
     var code = res.getResponseCode();
     var json = {}; try { json = JSON.parse(res.getContentText()); } catch (e) {}
+    registrarUsoIA_('Estándar de instrucciones', model, json.usage, code === 200 ? '' : 'HTTP ' + code);
     if (code !== 200) return { ok: false, error: 'anthropic HTTP ' + code + ': ' + shortMsg_(json) };
     var text = '';
     if (json.content && json.content.length) {
@@ -4809,6 +4811,7 @@ function ltVision_(key, model, prompt, mediaType, data) {
       headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' }, muteHttpExceptions: true,
       payload: JSON.stringify({ model: model, max_tokens: 600, messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, block] }] }) });
     var json = {}; try { json = JSON.parse(res.getContentText()); } catch (e) {}
+    registrarUsoIA_('Comprobante de pago (largo plazo)', model, json.usage, res.getResponseCode() === 200 ? '' : 'HTTP ' + res.getResponseCode());
     if (res.getResponseCode() !== 200) return { ok: false, error: 'anthropic HTTP ' + res.getResponseCode() + ': ' + shortMsg_(json) };
     var text = ''; (json.content || []).forEach(function (c) { if (c && c.type === 'text') text += c.text; });
     return { ok: true, text: text };
@@ -5007,3 +5010,30 @@ function ltRoute_(action, b) {
   }
   return null;
 }
+/* ══════════════════════════════════════════════════════════════════════
+   REGISTRO DE CONSUMO DE IA → hub (Consumo de IA, en Mi cuenta del admin principal)
+   Para: EPI (Apps Script) y el backend de Hola (Apps Script).
+
+   1. En el Apps Script de ALMA ejecuta UNA vez claveUsoIA(). El registro muestra USO_KEY y ALMA_URL.
+   2. En el Apps Script de esta app: ⚙️ Configuración del proyecto → Propiedades del script → agrega
+        ALMA_URL = (la URL /exec de ALMA)
+        USO_KEY  = (la clave del paso 1)
+        USO_APP  = EPI   (o Hola)
+   3. Pega la función registrarUsoIA_ al final del archivo.
+   4. Justo después de cada llamada a https://api.anthropic.com/v1/messages, agrega UNA línea:
+        registrarUsoIA_('Resumen IA', 'claude-sonnet-4-5', j.usage, 'detalle opcional');
+      (j = la respuesta ya parseada con JSON.parse)
+   ══════════════════════════════════════════════════════════════════════ */
+
+function registrarUsoIA_(funcion, modelo, usage, detalle, ref) {
+  try {
+    var p = PropertiesService.getScriptProperties(), url = p.getProperty('ALMA_URL') || 'https://script.google.com/macros/s/AKfycbzTdkEpRPgnwaUIHWbQmrysPEqGYqTqDKYwMaQlnun-OT7B2hIa6KdSNS-aedWN-I0cZQ/exec', k = p.getProperty('USO_KEY');
+    if (!url || !k) return;
+    UrlFetchApp.fetch(url, {
+      method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+      payload: JSON.stringify({ usoIA: 1, k: k, app: p.getProperty('USO_APP') || 'Hola', funcion: funcion || 'IA', modelo: modelo || '',
+        usage: usage || {}, detalle: detalle || '', ref: ref || '' })
+    });
+  } catch (e) { console.warn('registrarUsoIA_: ' + e); }
+}
+

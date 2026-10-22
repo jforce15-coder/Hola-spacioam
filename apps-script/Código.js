@@ -2214,7 +2214,7 @@ function regPdfRobot_(body) {
   var code = body.code || '';
   var reg = getRegistration_({ code: code });
   if (!reg || !reg.ok) return { ok: false, error: 'registro-no-encontrado' };
-  var rec = reg.record, meta = metaForCode_(code), guests = rec.guests || [];
+  var rec = reg.record, meta = metaForCode_(code), guests = conImagenesDoc_(rec.guests || []);
   /* La hoja guarda las fechas como fecha (no texto): se pasan a AAAA-MM-DD para el resumen y las noches. */
   var ymd = function (v) { return v instanceof Date ? Utilities.formatDate(v, 'America/Guatemala', 'yyyy-MM-dd') : String(v || '').slice(0, 10); };
   meta = Object.assign({}, meta, { checkin: ymd(meta.checkin), checkout: ymd(meta.checkout) });
@@ -3674,6 +3674,15 @@ function metaForCode_(code) {
 }
 /* Reenvía el formulario (PDF) de una reserva por el canal indicado
    (email | whatsapp). El WhatsApp incluye SIEMPRE al administrador. */
+/* Al rearmar el PDF desde lo guardado, los huéspedes solo traen el id del documento en Drive (la imagen se pide aparte):
+   aquí se trae cada imagen para que el PDF vuelva a llevar los documentos de identificación. */
+function conImagenesDoc_(guests) {
+  return (guests || []).map(function (g) {
+    if (!g || g.docImage || !g.docFileId) return g;
+    var img = ''; try { img = driveFileDataUrl_(g.docFileId); } catch (e) {}
+    return img ? Object.assign({}, g, { docImage: img }) : g;
+  });
+}
 function resendRegistration_(body) {
   var code = body.code || '';
   var channel = String(body.channel || 'email').toLowerCase();
@@ -3681,6 +3690,7 @@ function resendRegistration_(body) {
   if (!reg || !reg.ok) return { ok: false, error: 'registro-no-encontrado' };
   var rec = reg.record;
   var meta = metaForCode_(code);
+  rec.guests = conImagenesDoc_(rec.guests);
   var f = { booker: rec.booker, contact: rec.contact, guests: rec.guests, acceptedRulesAt: rec.acceptedRulesAt };
   var pdf = buildRegistrationPdf_(meta, f, rec.guests);
   var contacts = contactsFor_(meta.propertyName || '');

@@ -243,6 +243,7 @@ function route_(e, method) {
       case 'listPropertyInfo': out = listPropertyInfo_(); break;
       case 'notifyInvoiceReady': out = notifyInvoiceReady_(body); break;
       case 'resendRegistration': out = resendRegistration_(body); break;
+      case 'regPdfRobot':      out = regPdfRobot_(body); break;
       case 'hostRequestApprove': out = hostRequestResolve_({ code: body.code, kind: body.kind, apartment: body.apartment, decision: body.approved ? 'approved' : 'pending' }); break;
       case 'hostRequestResolve': out = hostRequestResolve_(body); break;
       case 'listRequests':     out = { ok: true, requests: listRequests_() }; break;
@@ -2191,8 +2192,45 @@ function waRecipients_() {
     .filter(function (s) { return s.length >= 8; });
 }
 
+/* Desde oct 2026 el WhatsApp a recepción lo manda ALMA (Hub), con su número y su token: aquí solo se le avisa el
+   código. ALMA pide el PDF con la llave del robot (regPdfRobot) y lo envía a los números de esta propiedad.
+   Para volver al envío anterior desde este script: propiedad WA_VIA_ALMA = 0. */
+var HUB_ALMA_URL_ = 'https://script.google.com/macros/s/AKfycbzTdkEpRPgnwaUIHWbQmrysPEqGYqTqDKYwMaQlnun-OT7B2hIa6KdSNS-aedWN-I0cZQ/exec';
+function avisarAlmaRecepcion_(meta, force) {
+  var code = (meta && meta.code) || '';
+  try {
+    var r = UrlFetchApp.fetch(PropertiesService.getScriptProperties().getProperty('HUB_ALMA_URL') || HUB_ALMA_URL_, { method: 'post', contentType: 'text/plain;charset=utf-8', muteHttpExceptions: true, followRedirects: true,
+      payload: JSON.stringify({ recepcion: 1, code: code, force: !!force }) });
+    var j = {}; try { j = JSON.parse(r.getContentText()); } catch (e) {}
+    var ok = !!j.ok;
+    logSend_('whatsapp', meta, 'ALMA', ok, ok ? (j.ya ? 'ALMA ya lo había enviado' : 'En cola de ALMA para enviar por WhatsApp a recepción') : ('ALMA no lo recibió · ' + (j.error || ('HTTP ' + r.getResponseCode()))));
+    return { ok: ok, viaAlma: true, error: ok ? '' : (j.error || 'alma') };
+  } catch (e) { logSend_('whatsapp', meta, 'ALMA', false, 'ALMA no respondió · ' + e); return { ok: false, viaAlma: true, error: String(e) }; }
+}
+/* ALMA pide el PDF del registro (solo con la llave del robot) y los números de recepción de la propiedad. */
+function regPdfRobot_(body) {
+  var t = String(body.robot || ''), h = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, t, Utilities.Charset.UTF_8).map(function (b) { return ('0' + (b & 0xff).toString(16)).slice(-2); }).join('');
+  if (!t || h !== SES_ROBOT_HASH_) return { ok: false, error: 'token' };
+  var code = body.code || '';
+  var reg = getRegistration_({ code: code });
+  if (!reg || !reg.ok) return { ok: false, error: 'registro-no-encontrado' };
+  var rec = reg.record, meta = metaForCode_(code), guests = rec.guests || [];
+  var pdf = buildRegistrationPdf_(meta, { booker: rec.booker, contact: rec.contact, guests: guests, acceptedRulesAt: rec.acceptedRulesAt }, guests);
+  if (!pdf) return { ok: false, error: 'sin-pdf' };
+  var blob = pdf.getAs ? pdf.getAs('application/pdf') : pdf;
+  var main = guests.filter(function (g) { return g && g.main; })[0] || guests[0] || {};
+  var principal = main.name || (rec.booker && rec.booker.doc && rec.booker.doc.name) || '';
+  var noches = '';
+  try { var a = String(meta.checkin || '').slice(0, 10), b = String(meta.checkout || '').slice(0, 10); if (a && b) noches = Math.round((new Date(b + 'T00:00:00Z') - new Date(a + 'T00:00:00Z')) / 86400000); } catch (e) {}
+  var nums = contactsFor_(meta.propertyName || '').whatsapps;
+  return { ok: true, pdfB64: Utilities.base64Encode(blob.getBytes()), filename: (pdf.getName && pdf.getName()) || ('Registro-' + code + '.pdf'), whatsapps: nums,
+    meta: { propiedad: meta.propertyName || meta.apartment || code, principal: principal, ingreso: fechaCortaEs_(meta.checkin) + ' · 3:00 PM', salida: fechaCortaEs_(meta.checkout) + ' · 11:00 AM',
+      noches: noches, huespedes: guests.length } };
+}
+
 /* Envía el PDF del formulario por WhatsApp a los números dados. */
-function notifyWhatsApp_(meta, guests, pdf, numbers) {
+function notifyWhatsApp_(meta, guests, pdf, numbers, force) {
+  if (PropertiesService.getScriptProperties().getProperty('WA_VIA_ALMA') !== '0') return avisarAlmaRecepcion_(meta, force);
   var cfg = CFG_();
   if (!cfg.WHATSAPP_TOKEN || !cfg.WHATSAPP_PHONE_ID) { logSend_('whatsapp', meta, '', false, 'WhatsApp no configurado (falta WHATSAPP_TOKEN / WHATSAPP_PHONE_ID)'); return { ok: false, error: 'wa-no-configurado' }; }
   var nums = uniq_((numbers || []).map(function (s) { return String(s).replace(/[^\d]/g, ''); }).filter(function (s) { return s.length >= 8; }));
@@ -3644,8 +3682,8 @@ function resendRegistration_(body) {
   var pdf = buildRegistrationPdf_(meta, f, rec.guests);
   var contacts = contactsFor_(meta.propertyName || '');
   if (channel === 'whatsapp') {
-    var r = notifyWhatsApp_(meta, rec.guests, pdf, contacts.whatsapps);
-    return { ok: !!(r && r.ok), to: contacts.whatsapps.join(', '), channel: 'whatsapp', error: (r && r.error) || '' };
+    var r = notifyWhatsApp_(meta, rec.guests, pdf, contacts.whatsapps, true);
+    return { ok: !!(r && r.ok), to: r && r.viaAlma ? 'recepción (ALMA)' : contacts.whatsapps.join(', '), channel: 'whatsapp', error: (r && r.error) || '' };
   }
   var er = notifyStation_(meta, rec.guests, pdf, contacts.emails);
   return { ok: !!(er && er.ok), to: (er && er.to) || contacts.emails.join(', '), channel: 'email', error: (er && er.error) || (contacts.emails.length ? '' : 'sin-correo') };

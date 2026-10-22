@@ -2215,6 +2215,9 @@ function regPdfRobot_(body) {
   var reg = getRegistration_({ code: code });
   if (!reg || !reg.ok) return { ok: false, error: 'registro-no-encontrado' };
   var rec = reg.record, meta = metaForCode_(code), guests = rec.guests || [];
+  /* La hoja guarda las fechas como fecha (no texto): se pasan a AAAA-MM-DD para el resumen y las noches. */
+  var ymd = function (v) { return v instanceof Date ? Utilities.formatDate(v, 'America/Guatemala', 'yyyy-MM-dd') : String(v || '').slice(0, 10); };
+  meta = Object.assign({}, meta, { checkin: ymd(meta.checkin), checkout: ymd(meta.checkout) });
   var pdf = buildRegistrationPdf_(meta, { booker: rec.booker, contact: rec.contact, guests: guests, acceptedRulesAt: rec.acceptedRulesAt }, guests);
   if (!pdf) return { ok: false, error: 'sin-pdf' };
   var blob = pdf.getAs ? pdf.getAs('application/pdf') : pdf;

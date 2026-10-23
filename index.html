@@ -120,6 +120,18 @@ button{ font-family:inherit; }
 
 .sp-btn{ transition:transform .12s var(--ease), box-shadow .18s var(--ease), background .18s var(--ease); }
 .sp-btn:active{ transform:scale(.98); }
+/* iPhone: los campos con letra menor a 16 px hacen zoom al tocarlos. En pantallas táctiles van a 16 px. */
+@media (pointer:coarse){ input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea{ font-size:16px!important; } }
+html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
+/* Pasos del registro en el teléfono: Atrás / Siguiente siempre a la vista, en una barra translúcida abajo */
+@media (max-width:760px){
+  .paso-acciones{ position:sticky; bottom:0; z-index:50; margin-left:-20px!important; margin-right:-20px!important; padding:12px 20px calc(12px + env(safe-area-inset-bottom));
+    background:rgba(250,250,250,.92); -webkit-backdrop-filter:blur(16px) saturate(140%); backdrop-filter:blur(16px) saturate(140%); border-top:1px solid var(--warm-grey); }
+  .paso-acciones > .sp-btn:last-child{ flex:1; }
+  .paso-acciones > div:not(.sp-btn){ display:none; }
+}
+button{ -webkit-tap-highlight-color:transparent; }
+@media (prefers-reduced-motion:reduce){ .reveal,.sp-float,.sp-ring{ animation:none!important; } .sp-btn:active{ transform:none; } }
 .sp-row,.sp-tile{ transition:transform .18s var(--ease), border-color .18s var(--ease), box-shadow .24s var(--ease); }
 .sp-row:hover{ border-color:var(--ink)!important; }
 .sp-tile:hover{ transform:translateY(-3px); box-shadow:0 16px 40px rgba(62,63,63,.12)!important; }
@@ -226,65 +238,40 @@ button{ font-family:inherit; }
 <script src="app/tz-guatemala.js?v=20261024pdf"></script>
 <script src="config.js?v=20261024pdf"></script>
 <script src="app/sa-auth-client.js?v=20261024pdf"></script>
-<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
-<script type="text/babel" src="app/data.jsx?v=20261024pdf"></script>
-<script type="text/babel" src="app/checkin-data.jsx?v=20261024pdf"></script>
-<script type="text/babel" src="app/primitives.jsx?v=20261024pdf"></script>
-<script type="text/babel" src="app/shell.jsx?v=20261024pdf"></script>
-<script type="text/babel" src="app/noti-center.jsx?v=20261024pdf"></script>
-<script type="text/babel" src="app/tutorials.jsx?v=20261024pdf"></script>
-<script type="text/babel" src="app/screens-onboarding.jsx?v=20261024pdf"></script>
-<script type="text/babel" src="app/screens-bento.jsx?v=20261024pdf"></script>
-<script src="app/std-seed.js?v=20261024pdf"></script>
-<script type="text/babel" src="app/screens-admin.jsx?v=20261024pdf"></script>
-<script type="text/babel" src="app/lt-ui.jsx?v=20261024pdf"></script>
-<script type="text/babel" src="app/screens-longterm.jsx?v=20261024pdf"></script>
-<script type="text/babel" src="app/lt-batch.jsx?v=20261024pdf"></script>
-<script type="text/babel" src="app/screens-ltguest.jsx?v=20261024pdf"></script>
-<script type="text/babel" src="app/app.jsx?v=20261024pdf"></script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" integrity="sha384-DGyLxAyjq0f9SPpVevD6IgztCFlnMF6oW/XQGmfe+IsZ8TqEiDrcHkMLKI6fiB/Z" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" integrity="sha384-gTGxhz21lVGYNMcdJOyq01Edg0jhn/c22nsx0kyqP0TxaV5WVdsSH1fSDUf5YJj1" crossorigin="anonymous"></script>
 <script>
-/* Red de seguridad del arranque: si un navegador dentro de una app (Airbnb,
-   Instagram) no logra traer React/ReactDOM/Babel de unpkg, los pedimos a un
-   segundo CDN y volvemos a compilar los archivos de la app. Así el huésped no
-   ve el aviso de "Script error." que lo dejaba sin poder llenar su formulario. */
+/* Respaldo: si build/app.js no carga, se compila en el teléfono como antes (más lento, pero abre). */
+window.__holaRespaldo = function () {
+  if (window.__holaRespaldoCorriendo) return; window.__holaRespaldoCorriendo = true;
+  var V = '?v=' + Date.now(), L = window.__HOLA_LISTA__;
+  function cargar(src, ok) { var s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = ok; document.head.appendChild(s); }
+  function seguir() {
+    if (!window.Babel) { if (window.__spacioShowBootError) window.__spacioShowBootError('No se pudo iniciar la app.', 'Revisa tu conexión y recarga.'); return; }
+    L.simples.forEach(function (p) { cargar(p + V, function () {}); });
+    L.jsx.forEach(function (p) { var s = document.createElement('script'); s.type = 'text/babel'; s.src = p + V; document.body.appendChild(s); });
+    try { window.Babel.transformScriptTags(); } catch (e) { console.error('[hola] babel', e); }
+  }
+  var cdns = ['https://unpkg.com/@babel/standalone@7.29.0/babel.min.js', 'https://cdn.jsdelivr.net/npm/@babel/standalone@7.29.0/babel.min.js'];
+  (function prueba(k) { if (window.Babel || k >= cdns.length) return seguir(); cargar(cdns[k], function () { prueba(k + 1); }); })(0);
+};
+window.__HOLA_LISTA__ = {"simples":["app/std-seed.js"],"jsx":["app/data.jsx","app/checkin-data.jsx","app/primitives.jsx","app/shell.jsx","app/noti-center.jsx","app/tutorials.jsx","app/screens-onboarding.jsx","app/screens-bento.jsx","app/screens-admin.jsx","app/lt-ui.jsx","app/screens-longterm.jsx","app/lt-batch.jsx","app/screens-ltguest.jsx","app/app.jsx"]};
+</script>
+<script src="build/app.js?v=0e695208a520" onerror="window.__holaRespaldo()"></script>
+<script>
+/* Red de seguridad: si React no llegó de unpkg (navegadores dentro de Airbnb o Instagram), se pide a otro CDN
+   y se vuelve a cargar build/app.js. */
 (function(){
-  var V='?v=20261024pdf';
-  var JSX=['app/data.jsx','app/checkin-data.jsx','app/primitives.jsx','app/shell.jsx','app/tutorials.jsx','app/noti-center.jsx','app/screens-onboarding.jsx','app/screens-bento.jsx','app/screens-admin.jsx','app/app.jsx'];
-  var FB=[['React','https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.development.js'],
-          ['ReactDOM','https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.development.js'],
-          ['Babel','https://cdn.jsdelivr.net/npm/@babel/standalone@7.29.0/babel.min.js']];
   function booted(){ var r=document.getElementById('root'); return !!(r && r.childNodes.length); }
-  function load(src, cb){ var s=document.createElement('script'); s.src=src; s.onload=function(){cb(true)}; s.onerror=function(){cb(false)}; document.head.appendChild(s); }
-  function ensure(i, done){
-    if(i>=FB.length) return done();
-    if(window[FB[i][0]]) return ensure(i+1, done);
-    load(FB[i][1], function(){ ensure(i+1, done); });
+  function cargar(src, cb){ var s=document.createElement('script'); s.src=src; s.onload=function(){cb(true)}; s.onerror=function(){cb(false)}; document.head.appendChild(s); }
+  var FB=[['React','https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js'],['ReactDOM','https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js']];
+  function asegurar(i, fin){ if(i>=FB.length) return fin(); if(window[FB[i][0]]) return asegurar(i+1, fin); cargar(FB[i][1], function(){ asegurar(i+1, fin); }); }
+  function revisar(){
+    if(booted() || (window.React && window.ReactDOM)) return;
+    asegurar(0, function(){ var v=(document.querySelector('script[src^="build/app.js"]')||{}).src||'build/app.js'; cargar(v.split('?')[0]+'?r='+Date.now(), function(ok){ if(!ok) window.__holaRespaldo(); }); });
   }
-  function recompile(){
-    if(!(window.React && window.ReactDOM && window.Babel)){
-      if(window.__spacioShowBootError) window.__spacioShowBootError('No se pudo iniciar la app.','No pudimos cargar las librerías base. Revisa tu conexión y recarga.');
-      return;
-    }
-    if(!document.querySelector('script[data-spacio-retry]')){
-      JSX.forEach(function(p){
-        var s=document.createElement('script'); s.type='text/babel'; s.setAttribute('data-spacio-retry','1'); s.src=p+V;
-        document.body.appendChild(s);
-      });
-    }
-    try { window.Babel.transformScriptTags(); } catch(e) { console.error('[spacio] babel', e); }
-  }
-  function missingDep(){ return !(window.React && window.ReactDOM && window.Babel); }
-  function check(){
-    // Solo actuamos si faltó una librería base: si ya están todas, los <script>
-    // originales son los que compilan (reinyectar duplicaría declaraciones).
-    if(booted() || !missingDep()) return;
-    ensure(0, recompile);
-  }
-  // margen para que la compilación normal termine antes de intentar el respaldo
-  setTimeout(check, 4500);
-  setTimeout(check, 11000);
+  setTimeout(revisar, 3500);
+  setTimeout(revisar, 9000);
 })();
 </script>
 </body>

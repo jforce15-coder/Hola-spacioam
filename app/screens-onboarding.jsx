@@ -347,7 +347,7 @@ function BookerScreen({ t, res, form, setForm, onBack, onNext, onSwitchLang }) {
       )}
 
       {err && <p style={{ color: C.peach, fontFamily: C.sans, fontSize: 12, margin: "16px 0 0", letterSpacing: "0.02em" }}>{err}</p>}
-      <div style={{ display: "flex", gap: 12, marginTop: 24 }}>
+      <div className="paso-acciones" style={{ display: "flex", gap: 12, marginTop: 24 }}>
         <Btn variant="outline" onClick={onBack}>{t.back}</Btn>
         <div style={{ flex: 1 }} />
         <Btn onClick={proceed} disabled={!b.type || (b.type === "third" && !managerReady())}>{t.next}</Btn>
@@ -454,7 +454,7 @@ function DocsScreen({ t, res, form, setForm, onBack, onNext, onSwitchLang }) {
         <p style={{ fontFamily: C.sans, fontSize: 11.5, color: C.tierra, lineHeight: 1.6, margin: 0, letterSpacing: "0.01em" }}>{t.encryption}</p>
       </div>
       {err && <p style={{ color: C.peach, fontFamily: C.sans, fontSize: 12, margin: "14px 0 0", letterSpacing: "0.02em" }}>{err}</p>}
-      <div style={{ display: "flex", gap: 12, marginTop: 24 }}>
+      <div className="paso-acciones" style={{ display: "flex", gap: 12, marginTop: 24 }}>
         <Btn variant="outline" onClick={onBack}>{t.back}</Btn>
         <div style={{ flex: 1 }} />
         <Btn onClick={proceed} disabled={!allDone}>{t.next}</Btn>
@@ -493,7 +493,7 @@ function ContactScreen({ t, res, form, setForm, onBack, onNext, onSwitchLang }) 
         </div>
       </div>
       {err && <p style={{ color: C.peach, fontFamily: C.sans, fontSize: 12, margin: "14px 0 0", letterSpacing: "0.02em" }}>{err}</p>}
-      <div style={{ display: "flex", gap: 12, marginTop: 24 }}>
+      <div className="paso-acciones" style={{ display: "flex", gap: 12, marginTop: 24 }}>
         <Btn variant="outline" onClick={onBack}>{t.back}</Btn>
         <div style={{ flex: 1 }} />
         <Btn onClick={proceed} disabled={!ready}>{t.next}</Btn>
@@ -520,97 +520,114 @@ function fineAmountLabel(f, t) {
 }
 
 function RulesScreen({ t, onBack, onAccept, onSwitchLang }) {
+  /* Antes los huéspedes se quedaban aquí: el botón final se perdía al fondo, entre bloques de color.
+     Ahora el botón de aceptar está arriba, en una barra fija abajo (siempre visible) y otra vez al final.
+     Las normas se leen como lista plegable y las sanciones en un bloque claro, sin ruido. */
+  const es = t.code !== "en";
   const [sending, setSending] = useStateO(false);
   const [finesOpen, setFinesOpen] = useStateO(false);
+  const [abierta, setAbierta] = useStateO(null);
   const rules = RULES[t.code];
-  // the 5 fines that occur most often and most easily become a problem
   const topFineIds = ["noise", "extraGuest", "smoking", "lateCheckout", "strangers"];
   const allFines = FINES.flatMap((g) => g.items);
   const topFines = topFineIds.map((id) => allFines.find((f) => f.id === id)).filter(Boolean);
   const go = () => {
+    if (sending) return;
     setSending(true);
-    setTimeout(() => { setSending(false); onAccept(); }, 1000);
+    setTimeout(() => { setSending(false); onAccept(); }, 700);
   };
+  const ctaLabel = sending ? <><Spinner /> {t.sending}</> : <>{t.acceptAndFinish} <Icon name="arrow" size={17} color={C.white} /></>;
   const fineRow = (f, i) => (
     <div key={f.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 14,
-      padding: "11px 0", borderTop: i === 0 ? "none" : "1px solid rgba(236,209,189,.16)" }}>
-      <span style={{ fontFamily: C.sans, fontSize: 12, color: "rgba(250,250,250,.86)", letterSpacing: "0.01em", lineHeight: 1.4 }}>{t.fineNames[f.id]}</span>
-      <span style={{ fontFamily: C.sans, fontSize: f.custom ? 11.5 : 15, fontWeight: 600, color: C.beigeDeep, flexShrink: 0, textAlign: "right", maxWidth: 150, letterSpacing: "0.01em" }}>{fineAmountLabel(f, t)}</span>
+      padding: "12px 0", borderTop: i === 0 ? "none" : `1px solid ${C.grisCalido}` }}>
+      <span style={{ fontFamily: C.sans, fontSize: 13, color: C.negro, letterSpacing: "0.01em", lineHeight: 1.4 }}>{t.fineNames[f.id]}</span>
+      <span style={{ fontFamily: C.sans, fontSize: f.custom ? 12 : 15, fontWeight: 600, color: C.negro, flexShrink: 0, textAlign: "right", maxWidth: 150, letterSpacing: "0.01em" }}>{fineAmountLabel(f, t)}</span>
     </div>
   );
   return (
     <Screen maxW={620}>
       <TopBar t={t} onSwitchLang={onSwitchLang} />
       <Steps step={3} t={t} />
-      <H sub={t.rulesSub}>{t.rulesTitle}</H>
+      <H sub={es ? "Un resumen corto. Puedes aceptar ahora o leerlas con calma abajo." : "A short summary. Accept now or read them calmly below."}>{t.rulesTitle}</H>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        {rules.map((sec) => (
-          <div key={sec.n} style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 18, padding: "20px 22px" }}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 14 }}>
-              <span style={{ fontFamily: C.serif, fontSize: 16, color: C.taupe }}>{sec.n}</span>
-              <span style={{ fontFamily: C.serif, fontSize: 21, color: C.negro, lineHeight: 1.15 }}>{sec.title}</span>
+      {/* 1 · aceptar sin bajar */}
+      <div className="rules-cta" style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 20, padding: "18px 18px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+          <span style={{ width: 28, height: 28, borderRadius: 9, background: "rgba(233,130,106,.14)", display: "grid", placeItems: "center", flexShrink: 0 }}><Icon name="check" size={15} color={C.peach} /></span>
+          <p style={{ fontFamily: C.sans, fontSize: 13, color: C.negro, lineHeight: 1.55, margin: 0, letterSpacing: "0.01em" }}>{t.acceptUnified}</p>
+        </div>
+        <Btn variant="peach" full onClick={go} disabled={sending} style={{ minHeight: 54, fontSize: 13.5, letterSpacing: "0.06em" }}>{ctaLabel}</Btn>
+      </div>
+
+      {/* 2 · las normas, plegadas: se abren de una en una */}
+      <div style={{ fontFamily: C.sans, fontSize: 10, letterSpacing: "0.22em", textTransform: "uppercase", color: C.tierra, fontWeight: 600, margin: "28px 4px 10px" }}>
+        {es ? "Lo que pedimos durante tu estadía" : "What we ask during your stay"}
+      </div>
+      <div style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 20, overflow: "hidden" }}>
+        {rules.map((sec, k) => {
+          const on = abierta === k;
+          return (
+            <div key={sec.n} style={{ borderTop: k === 0 ? "none" : `1px solid ${C.grisCalido}` }}>
+              <button onClick={() => setAbierta(on ? null : k)} aria-expanded={on} className="sp-btn rules-row"
+                style={{ width: "100%", display: "flex", alignItems: "center", gap: 14, padding: "16px 18px", background: "transparent", border: "none", cursor: "pointer", textAlign: "left", minHeight: 58 }}>
+                <span style={{ fontFamily: C.serif, fontSize: 15, color: C.taupe, width: 22, flexShrink: 0 }}>{sec.n}</span>
+                <span style={{ flex: 1, fontFamily: C.serif, fontSize: 19, color: C.negro, lineHeight: 1.2 }}>{sec.title}</span>
+                <span style={{ flexShrink: 0, transform: on ? "rotate(180deg)" : "none", transition: "transform .2s " + C.ease }}><Icon name="chevronDown" size={17} color={C.tierra} /></span>
+              </button>
+              {on && (
+                <ul style={{ margin: 0, padding: "0 18px 18px 54px", listStyle: "none", display: "flex", flexDirection: "column", gap: 10, animation: "rise .25s " + C.ease + " both" }}>
+                  {sec.items.map((it, i) => (
+                    <li key={i} style={{ fontFamily: C.sans, fontSize: 13, color: C.tierra, lineHeight: 1.6, letterSpacing: "0.01em", position: "relative" }}>
+                      <span style={{ position: "absolute", left: -14, top: 9, width: 5, height: 5, borderRadius: "50%", background: C.grisCalido }} />{it}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
-            <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
-              {sec.items.map((it, i) => (
-                <li key={i} style={{ display: "flex", gap: 10, fontFamily: C.sans, fontSize: 12.5, color: C.tierra, lineHeight: 1.55, letterSpacing: "0.01em" }}>
-                  <span style={{ color: C.peach, flexShrink: 0 }}>—</span><span>{it}</span>
-                </li>
-              ))}
-            </ul>
+          );
+        })}
+      </div>
+
+      {/* 3 · sanciones: bloque claro, las 5 más comunes */}
+      <div style={{ background: C.beige, borderRadius: 20, padding: "20px 20px 14px", marginTop: 14 }}>
+        <div style={{ fontFamily: C.serif, fontSize: 21, color: C.negro, marginBottom: 2 }}>{t.finesTitle}</div>
+        <p style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra, margin: "0 0 8px", letterSpacing: "0.01em", lineHeight: 1.5 }}>{finesOpen ? t.finesSub : t.finesTopSub}</p>
+        {!finesOpen && topFines.map((f, i) => fineRow(f, i))}
+        {finesOpen && FINES.map((grp) => (
+          <div key={grp.group} style={{ marginBottom: 12 }}>
+            <div style={{ fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.2em", textTransform: "uppercase", color: C.tierra, fontWeight: 600, margin: "8px 0 2px" }}>{t.fineGroupNames[grp.group]}</div>
+            {grp.items.map((f, i) => fineRow(f, i))}
           </div>
         ))}
-
-        {/* FINES — dark block, minimized to the 5 most common, expandable */}
-        <div style={{ background: C.negro, borderRadius: 18, padding: "24px 22px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-            <Sparkle size={13} color={C.peach} />
-            <span style={{ fontFamily: C.serif, fontSize: 23, color: C.alabaster }}>{t.finesTitle}</span>
-          </div>
-          <p style={{ fontFamily: C.sans, fontSize: 11.5, color: "rgba(250,250,250,.6)", margin: "0 0 16px", letterSpacing: "0.02em", lineHeight: 1.5 }}>
-            {finesOpen ? t.finesSub : t.finesTopSub}
-          </p>
-
-          {!finesOpen && topFines.map((f, i) => fineRow(f, i))}
-
-          {finesOpen && FINES.map((grp) => (
-            <div key={grp.group} style={{ marginBottom: 16 }}>
-              <div style={{ fontFamily: C.sans, fontSize: 9, letterSpacing: "0.22em", textTransform: "uppercase", color: C.beigeDeep, fontWeight: 600, marginBottom: 4 }}>{t.fineGroupNames[grp.group]}</div>
-              {grp.items.map((f, i) => fineRow(f, i))}
-            </div>
-          ))}
-
-          <button onClick={() => setFinesOpen((v) => !v)} className="sp-btn"
-            style={{ marginTop: 16, width: "100%", background: "transparent", color: C.beigeDeep, border: "1px solid rgba(236,209,189,.3)",
-              borderRadius: 11, padding: "11px 16px", fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase",
-              cursor: "pointer", fontWeight: 500, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-            {finesOpen ? t.finesCollapse : t.finesExpand}
-            <Icon name={finesOpen ? "chevronUp" : "chevronDown"} size={15} color={C.beigeDeep} />
-          </button>
-        </div>
-      </div>
-
-      {/* download the full house rules — at the very end */}
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginTop: 22 }}>
-        <button onClick={downloadRules} className="sp-btn" style={{ background: C.white, color: C.negro, border: `1px solid ${C.grisCalido}`,
-          borderRadius: 12, padding: "11px 18px", fontFamily: C.sans, fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase",
-          cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 500 }}>
-          <Icon name="download" size={15} color={C.negro} /> {t.downloadFull}
+        <button onClick={() => setFinesOpen((v) => !v)} className="sp-btn"
+          style={{ marginTop: 6, width: "100%", background: "transparent", color: C.negro, border: "none",
+            padding: "12px 0 4px", fontFamily: C.sans, fontSize: 11.5, letterSpacing: "0.04em", cursor: "pointer", fontWeight: 600,
+            display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+          {finesOpen ? t.finesCollapse : t.finesExpand}
+          <Icon name={finesOpen ? "chevronUp" : "chevronDown"} size={15} color={C.negro} />
         </button>
-        <p style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, textAlign: "center", margin: "10px 0 0", letterSpacing: "0.03em" }}>{t.downloadNote}</p>
       </div>
 
-      {/* UNIFIED ACCEPT — pressing the button IS the acceptance */}
-      <div style={{ background: C.beige, border: `1px solid ${C.grisCalido}`, borderRadius: 16, padding: "18px 20px", marginTop: 22 }}>
-        <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-          <span style={{ flexShrink: 0, marginTop: 1 }}><Icon name="check" size={16} color={C.peach} /></span>
-          <p style={{ fontFamily: C.sans, fontSize: 12.5, color: C.negro, lineHeight: 1.6, margin: 0, letterSpacing: "0.01em", fontWeight: 500 }}>{t.acceptUnified}</p>
-        </div>
+      <div style={{ display: "flex", justifyContent: "center", marginTop: 16 }}>
+        <button onClick={downloadRules} className="sp-btn" style={{ background: "transparent", color: C.tierra, border: "none",
+          padding: "10px 12px", fontFamily: C.sans, fontSize: 11.5, letterSpacing: "0.03em", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 7 }}>
+          <Icon name="download" size={14} color={C.tierra} /> {t.downloadFull}
+        </button>
       </div>
-      <div style={{ display: "flex", gap: 12, marginTop: 18 }}>
-        <Btn variant="outline" onClick={onBack}>{t.back}</Btn>
-        <div style={{ flex: 1 }} />
-        <Btn onClick={go} disabled={sending}>{sending ? <><Spinner /> {t.sending}</> : t.acceptAndFinish}</Btn>
+
+      {/* 4 · al final, otra vez */}
+      <div style={{ marginTop: 14 }}>
+        <Btn variant="peach" full onClick={go} disabled={sending} style={{ minHeight: 54, fontSize: 13.5, letterSpacing: "0.06em" }}>{ctaLabel}</Btn>
+      </div>
+      <div style={{ height: 96 }} />
+
+      {/* 5 · barra fija abajo: siempre a la mano */}
+      <div className="rules-bar" style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 60, padding: "12px 16px calc(12px + env(safe-area-inset-bottom))",
+        background: "rgba(250,250,250,.92)", backdropFilter: "blur(16px) saturate(140%)", WebkitBackdropFilter: "blur(16px) saturate(140%)", borderTop: `1px solid ${C.grisCalido}` }}>
+        <div style={{ maxWidth: 620, margin: "0 auto", display: "flex", gap: 10 }}>
+          <Btn variant="outline" onClick={onBack} style={{ minHeight: 52 }}>{t.back}</Btn>
+          <Btn variant="peach" onClick={go} disabled={sending} style={{ flex: 1, minHeight: 52, fontSize: 13, letterSpacing: "0.05em", padding: "14px 16px" }}>{sending ? <><Spinner /> {t.sending}</> : <>{es ? "Aceptar y finalizar" : "Accept & finish"} <Icon name="arrow" size={16} color={C.white} /></>}</Btn>
+        </div>
       </div>
     </Screen>
   );

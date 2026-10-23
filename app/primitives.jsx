@@ -507,7 +507,7 @@ function DocUploader({ t, roleLabel, badge, badgeColor, doc, update }) {
 /* ---------- LAYOUT WRAPPERS ---------- */
 function Screen({ children, maxW = 460, flowTop = true, pad }) {
   return (
-    <div className="sp-screen" style={{ position: "relative", background: C.alabaster, alignItems: "center", overflow: "hidden" }}>
+    <div className="sp-screen" style={{ position: "relative", background: C.alabaster, alignItems: "center", overflow: "clip" }}>
       {flowTop && (
         <div style={{ position: "absolute", top: -60, left: "50%", transform: "translateX(-50%)", width: "min(820px,150%)", height: 320, opacity: 0.4, pointerEvents: "none" }}>
           <FlowLine variant={2} width={64} />

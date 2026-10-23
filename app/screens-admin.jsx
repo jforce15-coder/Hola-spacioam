@@ -310,6 +310,47 @@ function printSummary() {
   setTimeout(cleanup, 60000);
 }
 
+
+/* ============================================================
+   DESCARGAR PDF DEL REGISTRO — archivo .pdf real, idéntico al del Hub.
+   Lo arma hub.spacioam.com/js/sa-registro-pdf.js (una sola fuente). Antes de armarlo
+   espera a TODOS los documentos de identidad y reintenta los que fallen.
+   ============================================================ */
+function holaAviso(texto, ms) {
+  let el = document.getElementById("hola-aviso");
+  if (!el) {
+    el = document.createElement("div"); el.id = "hola-aviso"; el.setAttribute("role", "status");
+    el.style.cssText = "position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:9999;background:#3E3F3F;color:#FAFAFA;" +
+      "font-family:Montserrat,system-ui,sans-serif;font-size:13px;letter-spacing:.02em;padding:12px 18px;border-radius:999px;box-shadow:0 10px 30px rgba(62,63,63,.25);max-width:90vw;text-align:center;transition:opacity .2s";
+    document.body.appendChild(el);
+  }
+  el.textContent = texto; el.style.opacity = "1";
+  clearTimeout(el._t);
+  if (ms) el._t = setTimeout(() => { el.style.opacity = "0"; setTimeout(() => el.remove(), 250); }, ms);
+}
+function cargarPdfLib() {
+  if (window.SARegistroPDF) return Promise.resolve();
+  return new Promise((ok, mal) => {
+    const s = document.createElement("script"); s.src = "https://hub.spacioam.com/js/sa-registro-pdf.js";
+    s.onload = () => ok(); s.onerror = () => mal(new Error("pdf-lib")); document.head.appendChild(s);
+  });
+}
+let _pdfOcupado = false;
+async function descargarRegistro(h, rec, docImgs) {
+  if (_pdfOcupado) return; _pdfOcupado = true;
+  try {
+    holaAviso("Preparando PDF…");
+    await cargarPdfLib();
+    let r = rec;
+    if (!r && Backend.isConnected && Backend.isConnected()) { holaAviso("Leyendo el registro…"); r = await Backend.getRegistration(h.code); }
+    if (r && docImgs) r = { ...r, guests: (r.guests || []).map((g) => (g && !g.docImage && g.docFileId && docImgs[g.docFileId]) ? { ...g, docImage: docImgs[g.docFileId] } : g) };
+    const res = await window.SARegistroPDF.descargar({ h, rec: r || null, imagen: (id) => Backend.getDocImage(id), alAvanzar: (t) => holaAviso(t) });
+    holaAviso(res.faltan ? "PDF descargado · " + res.faltan + " documento(s) no cargaron; vuelve a intentarlo en un momento" : "PDF descargado", res.faltan ? 6000 : 2500);
+  } catch (e) {
+    holaAviso("No se pudo generar el PDF. Revisa tu conexión e intenta de nuevo.", 5000);
+  } finally { _pdfOcupado = false; }
+}
+
 /* ============================================================
    ENLACE FIRMADO POR RESERVA
    Genera hola.spacioam.com/#r=CODIGO&s=FIRMA&t=seccion — el huésped entra
@@ -447,13 +488,22 @@ function ReservationSummary({ t, h, rec: localRec, onClose, onResend, autoPrint,
     }
   }, []);
   useEffectAd(() => {
-    if (!autoPrint) return;
-    if (loadingRec || docsLoading) return;            // espera a que el registro + documentos carguen
-    // buffer para que las imágenes (data URLs) pinten antes de clonar/imprimir
-    const id = setTimeout(() => printSummary(), 650);
-    return () => clearTimeout(id);
+    if (!autoPrint) return;   // (ya no se usa: Descargar genera el PDF directamente)
   }, [autoPrint, loadingRec, docsLoading]);
 
+  // Documentos que falten en el registro local (antes solo se pedían cuando el registro venía del
+  // servidor; con el registro local, las imágenes guardadas por id nunca se cargaban).
+  useEffectAd(() => {
+    if (!localRec || !Backend.isConnected || !Backend.isConnected()) return;
+    const ids = (localRec.guests || []).filter((g) => g && !g.docImage && g.docFileId).map((g) => g.docFileId);
+    if (!ids.length) return;
+    setDocsLoading(true);
+    let left = ids.length;
+    ids.forEach((id) => {
+      Backend.getDocImage(id).then((img) => { if (img) setDocImgs((prev) => ({ ...prev, [id]: img })); })
+        .catch(() => {}).finally(() => { if (--left === 0) setDocsLoading(false); });
+    });
+  }, []);
   // registro de envíos de ESTA reserva (solo admin) — para ver si hubo problema
   const [logRows, setLogRows] = useStateAd(null);
   const [logOpen, setLogOpen] = useStateAd(false);
@@ -472,7 +522,7 @@ function ReservationSummary({ t, h, rec: localRec, onClose, onResend, autoPrint,
         {/* toolbar */}
         <div className="sum-noprint" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 22, flexWrap: "wrap" }}>
           <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
-            <Btn variant="peach" onClick={printSummary} style={{ padding: "11px 18px" }}><Icon name="download" size={15} color={C.white} /> {t.sumPrint}</Btn>
+            <Btn variant="peach" onClick={() => descargarRegistro(h, rec, docImgs)} style={{ padding: "11px 18px" }}><Icon name="download" size={15} color={C.white} /> {t.sumPrint}</Btn>
             <Btn variant="ghost" onClick={av.email ? () => onResend("email") : undefined} disabled={!av.email} style={{ padding: "11px 16px", opacity: av.email ? 1 : 0.4, cursor: av.email ? "pointer" : "not-allowed" }} title={av.email ? "" : (es ? "Sin correo en esta propiedad" : "No email")}><Icon name="mail" size={15} color={C.negro} /> {es ? "Correo" : "Email"}</Btn>
             <Btn variant="ghost" onClick={av.whatsapp ? () => onResend("whatsapp") : undefined} disabled={!av.whatsapp} style={{ padding: "11px 16px", opacity: av.whatsapp ? 1 : 0.4, cursor: av.whatsapp ? "pointer" : "not-allowed" }} title={av.whatsapp ? (es ? "Incluye al administrador" : "") : (es ? "Sin WhatsApp en esta propiedad" : "No WhatsApp")}><Icon name="whatsapp" size={15} color={C.negro} /> WhatsApp</Btn>
             <GuestLinkButton t={t} h={h} />          </div>          <button onClick={onClose} className="sp-btn" style={{ width: 40, height: 40, borderRadius: 12, border: `1px solid ${C.grisCalido}`,
@@ -1295,7 +1345,7 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
                 onPreview={onPreviewGuest ? () => onPreviewGuest(h) : null}
                 onOpenForm={onManualForm ? () => onManualForm(h) : null}
                 onView={() => setSummary({ h, rec, autoPrint: false })}
-                onDownload={() => setSummary({ h, rec, autoPrint: true })}
+                onDownload={() => descargarRegistro(h, rec)}
                 onResend={(ch) => resend(h, ch)} />
             ))}
           </div>

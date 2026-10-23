@@ -365,7 +365,7 @@ const T = {
     sumContact: "Contacto", sumEmergency: "Emergencia", sumRules: "Normas de convivencia",
     sumRulesAccepted: "Aceptadas al finalizar el registro", sumDocs: "Documentos de identidad",
     sumWatermark: "Documentación de registro", sumGenerated: "Generado",
-    sumSendTo: "Enviar a", sumPrint: "Imprimir / PDF", sumClose: "Cerrar", sumNoImage: "Sin imagen (datos manuales)",
+    sumSendTo: "Enviar a", sumPrint: "Descargar PDF", sumClose: "Cerrar", sumNoImage: "Sin imagen (datos manuales)",
 
     requiredFields: "Completa los campos requeridos antes de continuar.",
     editManual: "Escribir datos manualmente",
@@ -710,7 +710,7 @@ const T = {
     sumContact: "Contact", sumEmergency: "Emergency", sumRules: "House rules",
     sumRulesAccepted: "Accepted upon completing check-in", sumDocs: "Identity documents",
     sumWatermark: "Registration documentation", sumGenerated: "Generated",
-    sumSendTo: "Send to", sumPrint: "Print / PDF", sumClose: "Close", sumNoImage: "No image (manual entry)",
+    sumSendTo: "Send to", sumPrint: "Download PDF", sumClose: "Close", sumNoImage: "No image (manual entry)",
 
     requiredFields: "Please complete the required fields before continuing.",
     editManual: "Enter data manually",

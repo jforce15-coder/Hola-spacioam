@@ -92,7 +92,7 @@ var SCHEMA_ = {
   'Reservas': [
     'code','property_name','apartment','checkin_date','checkout_date',
     'guest_first_name','guest_last_name','guest_count','max_capacity',
-    'assigned_email','status_form','synced_at','photo_url','amount','currency'
+    'assigned_email','status_form','synced_at','photo_url','amount','currency','reservation_status'
   ],
   'Formularios': [
     'submitted_at','code','property_name','apartment','checkin_date','checkout_date',
@@ -661,6 +661,11 @@ function shortMsg_(j) {
 /* Mapea una reserva de Hospitable → forma de la web app.
    Usa el mapa de propiedades para nombre/capacidad/apartamento.
    Rutas de campos defensivas: ajusta si tu cuenta difiere. */
+function estadoReserva_(r) {
+  var rs = r && r.reservation_status;
+  var cat = rs && (rs.current && (rs.current.category || rs.current.status) || rs.category || (typeof rs === 'string' ? rs : ''));
+  return String(cat || (r && (r.status || r.state)) || '').toLowerCase();
+}
 function normalizeHospitable_(r, propMap) {
   if (!r) return null;
   propMap = propMap || {};
@@ -722,7 +727,9 @@ function normalizeHospitable_(r, propMap) {
     platform: r.platform || r.channel || '',
     // lo que pagó el huésped (para la factura): monto + moneda
     amount: guestPaid_(r).amount,
-    currency: guestPaid_(r).currency
+    currency: guestPaid_(r).currency,
+    // estado de la reserva en Hospitable (accepted, cancelled, …): las canceladas no se muestran en Registros
+    status: estadoReserva_(r)
   };
 }
 
@@ -850,6 +857,7 @@ function syncReservasSheet_(list) {
     var ss = SpreadsheetApp.openById(CFG_().SHEET_ID);
     var sh = ss.getSheetByName('Reservas');
     var headers = SCHEMA_['Reservas'];
+    try { if (!sh.getRange(1, headers.length).getValue()) sh.getRange(1, headers.length).setValue(headers[headers.length - 1]).setFontWeight('bold').setBackground('#3E3F3F').setFontColor('#FAFAFA'); } catch (e) {}
     var existing = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, headers.length).getValues() : [];
     var byCode = {};
     existing.forEach(function (row, i) { if (row[0]) byCode[normCode_(row[0])] = i; });
@@ -861,7 +869,7 @@ function syncReservasSheet_(list) {
         r.code, r.propertyName, r.apartment, r.checkin, r.checkout,
         r.guestFirstName, r.guestLastName, r.reservedGuests, r.maxCapacity,
         r.assignedEmail, '', now, r.photo || '',
-        (r.amount || r.amount === 0) ? r.amount : '', r.currency || ''
+        (r.amount || r.amount === 0) ? r.amount : '', r.currency || '', r.status || ''
       ];
       if (byCode[key] !== undefined) {
         var i = byCode[key], prev = existing[i];
@@ -869,6 +877,7 @@ function syncReservasSheet_(list) {
         if (!row[12] && prev[12]) row[12] = prev[12];
         if (row[13] === '' && prev[13] !== '' && prev[13] != null) row[13] = prev[13];
         if (!row[14] && prev[14]) row[14] = prev[14];
+        if (!row[15] && prev[15]) row[15] = prev[15];
         var diff = false; for (var k = 1; k < row.length; k++) { if (k === 10 || k === 11) continue; if (!same(row[k], prev[k])) { diff = true; break; } }
         if (diff) { existing[i] = row; changed[i] = 1; }
       } else { byCode[key] = existing.length + adds.length; adds.push(row); }
@@ -903,7 +912,7 @@ function rowToReservation_(r) {
     reservedGuests: Number(r[7]) || 1, maxCapacity: Number(r[8]) || Number(r[7]) || 1,
     assignedEmail: r[9] || '', statusForm: r[10] || '', photo: r[12] || '',
     amount: (r[13] === '' || r[13] == null) ? null : Number(r[13]),
-    currency: r[14] || ''
+    currency: r[14] || '', status: r[15] || ''
   };
 }
 // puntaje para elegir la MEJOR fila de un código con duplicados

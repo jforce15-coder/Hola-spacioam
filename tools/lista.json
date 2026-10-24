@@ -1,0 +1,6 @@
+{
+  "simples": ["app/std-seed.js"],
+  "jsx": ["app/data.jsx", "app/checkin-data.jsx", "app/primitives.jsx", "app/shell.jsx", "app/noti-center.jsx", "app/tutorials.jsx",
+          "app/screens-onboarding.jsx", "app/screens-bento.jsx", "app/screens-admin.jsx", "app/lt-ui.jsx", "app/screens-longterm.jsx",
+          "app/lt-batch.jsx", "app/screens-ltguest.jsx", "app/app.jsx"]
+}

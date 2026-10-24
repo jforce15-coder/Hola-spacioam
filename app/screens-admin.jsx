@@ -1338,7 +1338,7 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
           <div style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 16, padding: "38px 20px", textAlign: "center",
             fontFamily: C.sans, fontSize: 13, color: C.tierra, letterSpacing: "0.02em" }}>{t.adminEmpty}</div>
         ) : (
-          <div style={{ border: `1px solid ${C.grisCalido}`, borderRadius: 16, overflow: "hidden", background: C.white }}>
+          <div className="reg-lista">
             {rows.map(({ h, rec, bucket }, idx) => (
               <AdminRow key={(h.id || h.code) + "-" + idx} t={t} h={h} rec={rec} bucket={bucket} first={idx === 0} avail={availFor(h)}
                 done={isDone(h, rec)} state={stateOf(h, rec)} draft={draftOf(h)}
@@ -1498,59 +1498,67 @@ function AdminRow({ t, h, rec, bucket, first, avail, onView, onDownload, onResen
       <Icon name={icon} size={14} color={on ? C.negro : C.tierra} />
     </button>
   );
+  const prop = h.propertyShort || h.propertyName || "";
+  const apto = h.apartment && !String(prop).includes(h.apartment) ? h.apartment : "";
+  const sub = h.propertyName && h.propertyName !== prop ? h.propertyName : "";
   return (
-    <div className="sp-adrow" style={{ borderTop: first ? "none" : `1px solid ${C.beige}`, padding: "13px 16px",
-      display: "grid", gridTemplateColumns: "minmax(180px,1.8fr) 96px 128px minmax(0,2fr)", alignItems: "center", columnGap: 14, rowGap: 10 }}>
-      {/* identity — 3 filas: nombre / código (+ copiar) / propiedad */}
-      <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
-        <span style={{ fontFamily: C.serif, fontSize: 17, color: C.negro, lineHeight: 1.1 }}>{guestName}</span>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
-          <span style={{ fontFamily: C.sans, fontSize: 11, letterSpacing: "0.14em", color: C.tierra, fontWeight: 600 }}>{h.code}</span>
-          <button onClick={copyCode} title={es ? "Copiar código" : "Copy code"} className="sp-btn"
-            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: 7,
+    <div className={"reg-card reg-" + st} style={{ position: "relative", background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 18,
+      padding: "14px 16px 14px 20px", display: "flex", flexDirection: "column", gap: 10, overflow: "hidden" }}>
+      {/* franja de estado a la izquierda: se lee de un vistazo */}
+      <span aria-hidden="true" style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 5, background: ST.dot }} />
+      {/* 1 · propiedad + estado */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontFamily: C.serif, fontSize: 19, color: C.negro, lineHeight: 1.1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{prop}{apto ? " · " + apto : ""}</div>
+          {sub && <div style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, letterSpacing: "0.02em", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</div>}
+        </div>
+        <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 6, background: ST.bg, border: `1px solid ${ST.bd}`, borderRadius: 999, padding: "5px 11px",
+          fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.08em", textTransform: "uppercase", color: ST.fg, fontWeight: 700 }}>
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: ST.dot }} />{ST.label}
+        </span>
+      </div>
+      {/* 2 · huésped, código y llegada */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 7, background: C.beige, borderRadius: 10, padding: "6px 10px" }}>
+          <Icon name="checkin" size={14} color={C.negro} />
+          <span style={{ fontFamily: C.sans, fontSize: 12.5, color: C.negro, fontWeight: 600 }}>{fmtDay(h.checkin, t.code)}</span>
+          {bucketLabel && <span style={{ fontFamily: C.sans, fontSize: 9, letterSpacing: "0.08em", color: C.peach, textTransform: "uppercase", fontWeight: 700 }}>{bucketLabel}</span>}
+        </span>
+        <span style={{ minWidth: 0, fontFamily: C.sans, fontSize: 12.5, color: C.negro, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: "1 1 120px" }}>{guestName}</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.12em", color: C.tierra, fontWeight: 600 }}>{h.code}</span>
+          <button onClick={copyCode} title={es ? "Copiar código" : "Copy code"} aria-label={es ? "Copiar código" : "Copy code"} className="sp-btn"
+            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 8,
               border: `1px solid ${C.grisCalido}`, background: copied ? "rgba(31,138,91,.12)" : C.white, cursor: "pointer", padding: 0 }}>
-            <Icon name={copied ? "check" : "copy"} size={12} color={copied ? "#1F8A5B" : C.tierra} />
+            <Icon name={copied ? "check" : "copy"} size={13} color={copied ? "#1F8A5B" : C.tierra} />
           </button>
         </span>
-        <span style={{ fontFamily: C.sans, fontSize: 11, color: C.tierra, letterSpacing: "0.02em" }}>{h.propertyName}{h.apartment && !String(h.propertyName).includes(h.apartment) ? " · " + h.apartment : ""}</span>
       </div>
-      {/* checkin */}
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontFamily: C.sans, fontSize: 14, color: C.negro }}>{fmtDay(h.checkin, t.code)}</div>
-        {bucketLabel && <div style={{ fontFamily: C.sans, fontSize: 9, letterSpacing: "0.06em", color: C.peach, marginTop: 1, textTransform: "uppercase", fontWeight: 700 }}>{bucketLabel}</div>}
-      </div>
-      {/* status — pendiente / en proceso / completo */}
-      <div style={{ minWidth: 0 }}>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: ST.bg,
-          border: `1px solid ${ST.bd}`, borderRadius: 999, padding: "5px 11px",
-          fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.08em", textTransform: "uppercase", color: ST.fg, fontWeight: 700 }}>
-          <span style={{ width: 6, height: 6, borderRadius: "50%", background: ST.dot }} />
-          {ST.label}
-        </span>
-        {(startedTxt || sentTxt) && (
-          <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 2, fontFamily: C.sans, fontSize: 10, color: C.tierra, letterSpacing: "0.02em", lineHeight: 1.35 }}>
-            {startedTxt && <span>{es ? "Iniciado" : "Started"} · {startedTxt}</span>}
-            {sentTxt && <span style={{ color: C.negro }}>{es ? "Enviado" : "Sent"} · {sentTxt}</span>}
-            {!done && stepLbl && <span>{es ? "Se quedó en" : "Stopped at"}: {stepLbl}</span>}
-            {byAdmin && <span>{es ? "Finalizado por admin" : "Finished by admin"}</span>}
-          </div>
-        )}
-      </div>
-      {/* actions */}
-      <div style={{ display: "flex", gap: 7, justifyContent: "flex-end", flexWrap: "wrap", alignItems: "center" }}>
+      {(startedTxt || sentTxt || (!done && stepLbl) || byAdmin) && (
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontFamily: C.sans, fontSize: 10.5, color: C.tierra, letterSpacing: "0.02em" }}>
+          {startedTxt && <span>{es ? "Iniciado" : "Started"} · {startedTxt}</span>}
+          {sentTxt && <span style={{ color: C.negro }}>{es ? "Enviado" : "Sent"} · {sentTxt}</span>}
+          {!done && stepLbl && <span>{es ? "Se quedó en" : "Stopped at"}: {stepLbl}</span>}
+          {byAdmin && <span>{es ? "Finalizado por admin" : "Finished by admin"}</span>}
+        </div>
+      )}
+      {/* 3 · acciones */}
+      <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap", borderTop: `1px solid ${C.beige}`, paddingTop: 10 }}>
         {done ? (
           <React.Fragment>
             {actionBtn("review", t.adminView, onView, true)}
             {actionBtn("download", t.adminDownload, onDownload, false)}
             {onPreview && actionBtn("eye", es ? "Mi espacio" : "Guest space", onPreview, false)}
-            <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "nowrap" }}>
+            <span style={{ flex: 1 }} />
+            <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
               <span style={{ fontFamily: C.sans, fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: C.tierra }}>{es ? "Reenviar" : "Resend"}</span>
               {resendBtn("mail", av.email, "email", es ? "Reenviar por correo" : "Resend by email")}
               {resendBtn("whatsapp", av.whatsapp, "whatsapp", es ? "Reenviar por WhatsApp (incluye al administrador)" : "Resend by WhatsApp")}
-            </div>
+            </span>
           </React.Fragment>
         ) : (
-          onOpenForm && actionBtn("checkin", draft && draft.hasForm ? (es ? "Finalizar formulario" : "Finish form") : (es ? "Llenar formulario" : "Fill form"), onOpenForm, true)
+          onOpenForm ? actionBtn("checkin", draft && draft.hasForm ? (es ? "Finalizar formulario" : "Finish form") : (es ? "Llenar formulario" : "Fill form"), onOpenForm, true)
+            : <span style={{ fontFamily: C.sans, fontSize: 11, color: C.tierra }}>{es ? "Esperando el registro del huésped" : "Waiting for the guest"}</span>
         )}
       </div>
     </div>
@@ -2194,16 +2202,31 @@ function PropertyInfoScreen({ t, roster, focusProp, onToast }) {
     const s = new Set(); visibleProps.forEach((n) => { const { zone, building } = splitPropName(n); if (building && (zonaSel.length === 0 || zonaSel.indexOf(zone) >= 0)) s.add(building); });
     return [{ value: "all", label: es ? "Todos los edificios" : "All buildings" }].concat([...s].sort((a, b) => a.localeCompare(b, "es")).map((b) => ({ value: b, label: b })));
   }, [visibleProps.join("|"), zonaSel.join("|")]);
+  /* BUSCADOR INTELIGENTE: separa lo que es un TEMA (parqueo, wifi, cerradura…) de lo que es la
+     PROPIEDAD (edificio, número de apto, zona). «Brunelo parqueo» → todos los Brunelo, solo parqueo.
+     «Brunelo 705» → la ficha completa. «Brunelo 705 parqueo» → solo el parqueo del 705. */
+  const busqueda = useMemoAd(() => analizarBusquedaProp(propQuery), [propQuery]);
   const filteredProps = useMemoAd(() => {
-    const q = propQuery.trim().toLowerCase();
+    const pal = busqueda.palabras;
     return visibleProps.filter((n) => {
       const { zone, building } = splitPropName(n);
       if (zonaSel.length && zonaSel.indexOf(zone) < 0) return false;
       if (edSel.length && edSel.indexOf(building) < 0) return false;
-      if (q && !n.toLowerCase().includes(q)) return false;
+      if (pal.length && !coincidePropiedad(n, pal)) return false;
       return true;
     }).sort((a, b) => a.localeCompare(b, "es", { numeric: true }));
-  }, [visibleProps.join("|"), zonaSel.join("|"), edSel.join("|"), propQuery]);
+  }, [visibleProps.join("|"), zonaSel.join("|"), edSel.join("|"), busqueda]);
+  // una sola propiedad (sin tema) → su ficha se abre sola
+  useEffectAd(() => {
+    if (busqueda.palabras.length && !busqueda.temas.length && filteredProps.length === 1) setOpenKey(filteredProps[0]);
+  }, [busqueda, filteredProps.join("|")]);
+  const toggleTema = (k) => {
+    const tema = TEMAS_PROP.find((x) => x.k === k); if (!tema) return;
+    const on = busqueda.temas.indexOf(k) >= 0;
+    const base = busqueda.palabras.join(" ");
+    const temas = on ? busqueda.temas.filter((x) => x !== k) : busqueda.temas.concat(k);
+    setPropQuery([base].concat(temas.map((x) => TEMAS_PROP.find((y) => y.k === x).palabra)).filter(Boolean).join(" ") + (temas.length ? "" : (base ? " " : "")));
+  };
 
   const seg = (name, field, options) => (
     <div style={{ display: "inline-flex", gap: 4, background: C.beige, border: `1px solid ${C.grisCalido}`, borderRadius: 10, padding: 3, flexWrap: "wrap" }}>
@@ -2371,25 +2394,172 @@ function PropertyInfoScreen({ t, roster, focusProp, onToast }) {
             </div>
           )}
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 4, alignItems: "center" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 200px", minWidth: 180, background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 999, padding: "9px 14px" }}>
-              <Icon name="search" size={15} color={C.tierra} />
-              <input value={propQuery} onChange={(e) => setPropQuery(e.target.value)} placeholder={es ? "Buscar propiedad…" : "Search property…"}
-                style={{ border: "none", outline: "none", background: "transparent", width: "100%", fontFamily: C.sans, fontSize: 13, color: C.negro, letterSpacing: "0.01em" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flex: "1 1 100%", minWidth: 220, background: C.white, border: `1.5px solid ${propQuery ? C.negro : C.grisCalido}`, borderRadius: 16, padding: "13px 16px", boxShadow: "0 4px 18px rgba(62,63,63,.06)" }}>
+              <Icon name="search" size={18} color={C.negro} />
+              <input value={propQuery} onChange={(e) => setPropQuery(e.target.value)} placeholder={es ? "Ej.: Brunelo parqueo · Brunelo 705 · 705 wifi" : "e.g. Brunelo parking · Brunelo 705 · 705 wifi"} enterKeyHint="search"
+                style={{ border: "none", outline: "none", background: "transparent", width: "100%", fontFamily: C.sans, fontSize: 15, color: C.negro, letterSpacing: "0.01em" }} />
               {propQuery && <button onClick={() => setPropQuery("")} style={{ border: "none", background: "transparent", cursor: "pointer", display: "inline-flex", color: C.tierra }}><Icon name="x" size={14} color={C.tierra} /></button>}
             </div>
             <PillSelect multi searchable value={zonaSel} onChange={(v) => { setZonaSel(v); setEdSel([]); }} options={zonaOpts} icon="pin" placeholder={es ? "zonas" : "zones"} minWidth={180} />
             <PillSelect multi searchable value={edSel} onChange={setEdSel} options={edOpts} icon="folder" placeholder={es ? "edificios" : "buildings"} minWidth={190} />
           </div>
+          <div className="prop-temas" style={{ display: "flex", gap: 7, overflowX: "auto", padding: "8px 2px 6px", scrollbarWidth: "none" }}>
+            {TEMAS_PROP.map((tm) => {
+              const on = busqueda.temas.indexOf(tm.k) >= 0;
+              return (
+                <button key={tm.k} onClick={() => toggleTema(tm.k)} className="sp-btn" aria-pressed={on}
+                  style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 6, borderRadius: 999, padding: "8px 13px", cursor: "pointer",
+                    fontFamily: C.sans, fontSize: 11.5, letterSpacing: "0.02em", fontWeight: on ? 600 : 500,
+                    background: on ? C.negro : C.white, color: on ? C.alabaster : C.negro, border: `1px solid ${on ? C.negro : C.grisCalido}` }}>
+                  {on && <Icon name="check" size={12} color={C.alabaster} />}{es ? tm.es : tm.en}
+                </button>
+              );
+            })}
+          </div>
           <div style={{ fontFamily: C.sans, fontSize: 11, color: C.tierra, letterSpacing: "0.04em", margin: "2px 2px 8px" }}>
             {filteredProps.length} {es ? (filteredProps.length === 1 ? "propiedad" : "propiedades") : (filteredProps.length === 1 ? "property" : "properties")}
+            {busqueda.temas.length > 0 && <span> · {es ? "mostrando solo" : "showing only"} {busqueda.temas.map((k) => { const tm = TEMAS_PROP.find((x) => x.k === k); return es ? tm.es : tm.en; }).join(", ").toLowerCase()}</span>}
           </div>
-          {filteredProps.length ? filteredProps.map((n) => renderProp(n)) : (
+          {filteredProps.length ? (busqueda.temas.length ? filteredProps.map((n) => renderTemas(n, busqueda.temas)) : filteredProps.map((n) => renderProp(n))) : (
             <div style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 16, padding: "30px 20px", textAlign: "center", fontFamily: C.sans, fontSize: 12.5, color: C.tierra }}>{es ? "Sin resultados con estos filtros." : "No results with these filters."}</div>
           )}
         </div>
       )}
     </div>
   );
+
+  /* Cada bloque del editor de una propiedad. El buscador inteligente muestra solo los que se piden
+     («Brunelo parqueo»); la ficha completa los muestra todos. */
+  function seccion(name, key) {
+    const info = get(name);
+    switch (key) {
+      case "parqueo": return (<React.Fragment>
+{/* PARQUEO */}
+                    {label(t.piParking)}
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                      <span style={{ fontFamily: C.sans, fontSize: 12, color: C.negro }}>{t.piHasParking}</span>
+                      {seg(name, "hasParking", [["yes", t.piYes], ["no", t.piNo]])}
+                    </div>
+                    {info.hasParking === "yes" && <input value={info.parkNumber || ""} onChange={(e) => set(name, { parkNumber: e.target.value })} placeholder={t.piParkNumber} style={fieldStyle} />}
+                    {info.hasParking === "no" && <>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginTop: 12 }}>
+                        <span style={{ fontFamily: C.sans, fontSize: 12, color: C.negro }}>{t.piParkOption}</span>
+                        {seg(name, "parkOption", [["yes", t.piYes], ["no", t.piNo]])}
+                      </div>
+                      {info.parkOption === "yes" && <>
+                        <div style={{ marginTop: 12 }}>{seg(name, "parkOwnership", [["own", t.piParkOwn], ["third", t.piParkThird]])}</div>
+                        {info.parkOwnership === "own" && <input value={info.parkLink || ""} onChange={(e) => set(name, { parkLink: e.target.value })} placeholder={t.piParkLink} style={fieldStyle} />}
+                        {info.parkOwnership === "third" && <textarea value={info.parkExtInfo || ""} onChange={(e) => set(name, { parkExtInfo: e.target.value })} placeholder={t.piParkExtInfo} rows={2} style={{ ...fieldStyle, resize: "vertical" }} />}
+                      </>}
+                    </>}
+
+                    <textarea value={info.parkNote || ""} onChange={(e) => set(name, { parkNote: e.target.value })} placeholder={es ? "Nota de parqueo (texto libre que verá el huésped)" : "Parking note (free text shown to guest)"} rows={2} style={{ ...fieldStyle, resize: "vertical" }} />
+      </React.Fragment>);
+      case "wifi": return (<React.Fragment>
+{/* WIFI */}
+                    {label(t.piWifi)}
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                      <input value={info.wifiNet || ""} onChange={(e) => set(name, { wifiNet: e.target.value })} placeholder={t.piWifiNet} style={{ ...fieldStyle, marginTop: 0, flex: "1 1 160px" }} />
+                      <input value={info.wifiPass || ""} onChange={(e) => set(name, { wifiPass: e.target.value })} placeholder={t.piWifiPass} style={{ ...fieldStyle, marginTop: 0, flex: "1 1 160px" }} />
+                    </div>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+                      <input value={info.wifiNetBk || ""} onChange={(e) => set(name, { wifiNetBk: e.target.value })} placeholder={`${t.piWifiBackup} — ${t.piWifiNet}`} style={{ ...fieldStyle, marginTop: 0, flex: "1 1 160px" }} />
+                      <input value={info.wifiPassBk || ""} onChange={(e) => set(name, { wifiPassBk: e.target.value })} placeholder={`${t.piWifiBackup} — ${t.piWifiPass}`} style={{ ...fieldStyle, marginTop: 0, flex: "1 1 160px" }} />
+                    </div>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+                      <input value={info.wifiNetBk2 || ""} onChange={(e) => set(name, { wifiNetBk2: e.target.value })} placeholder={`${t.piWifiBackup} 2 — ${t.piWifiNet}`} style={{ ...fieldStyle, marginTop: 0, flex: "1 1 160px" }} />
+                      <input value={info.wifiPassBk2 || ""} onChange={(e) => set(name, { wifiPassBk2: e.target.value })} placeholder={`${t.piWifiBackup} 2 — ${t.piWifiPass}`} style={{ ...fieldStyle, marginTop: 0, flex: "1 1 160px" }} />
+                    </div>
+                    <p style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, margin: "8px 0 0", letterSpacing: "0.02em" }}>{t.piWifiBackupNote}</p>
+      </React.Fragment>);
+      case "cerradura": return (<React.Fragment>
+{/* CERRADURA */}
+                    {label(t.piLock)}
+                    {seg(name, "lock", [["smart", t.piLockSmart], ["box", t.piLockBox], ["key", t.piLockKey], ["other", t.piLockOther]])}
+                    {info.lock === "smart" && (
+                      <div style={{ marginTop: 10 }}>{seg(name, "smartBrand", [["Igloohome", "Igloohome"], ["Nuki", "Nuki"], ["Smart Life", "Smart Life"], ["Kwikset", "Kwikset"], ["other", t.piLockOther]])}</div>
+                    )}
+      </React.Fragment>);
+      case "tipo": return (<React.Fragment>
+{/* TIPO */}
+                    {label(t.piType)}
+                    {seg(name, "propType", [["apt", t.piTypeApt], ["condo", t.piTypeCondo], ["off", t.piTypeOff]])}
+      </React.Fragment>);
+      case "contacto": return (<React.Fragment>
+{/* CONTACTO (recibe el formulario completado) */}
+                    {label(t.piContact)}
+                    <p style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, margin: "-2px 0 10px", letterSpacing: "0.02em", lineHeight: 1.5 }}>{t.piContactNote}</p>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                      <input value={getC(name).email1 || ""} onChange={(e) => setC(name, { email1: e.target.value })} placeholder={t.stEmail1} type="email" style={{ ...fieldStyle, marginTop: 0, flex: "1 1 160px" }} />
+                      <input value={getC(name).email2 || ""} onChange={(e) => setC(name, { email2: e.target.value })} placeholder={t.stEmail2} type="email" style={{ ...fieldStyle, marginTop: 0, flex: "1 1 160px" }} />
+                    </div>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+                      <input value={getC(name).phone1 || ""} onChange={(e) => setC(name, { phone1: e.target.value })} placeholder={t.stPhone1} type="tel" style={{ ...fieldStyle, marginTop: 0, flex: "1 1 160px" }} />
+                      <input value={getC(name).phone2 || ""} onChange={(e) => setC(name, { phone2: e.target.value })} placeholder={t.stPhone2} type="tel" style={{ ...fieldStyle, marginTop: 0, flex: "1 1 160px" }} />
+                    </div>
+      </React.Fragment>);
+      case "instrucciones": return (<React.Fragment>
+{/* INSTRUCCIONES GENERALES (edificio / condominio / región) */}
+                    {label(t.piInstructions)}
+                    <p style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, margin: "-2px 0 10px", letterSpacing: "0.02em", lineHeight: 1.5 }}>{t.piInstructionsNote}</p>
+                    <input value={info.address != null ? info.address : (buildingOf(name)?.address || "")} onChange={(e) => setInstr(name, { address: e.target.value })} placeholder={t.ckAddress} style={{ ...fieldStyle, marginTop: 0 }} />
+                    <textarea value={info.arrival != null ? info.arrival : (buildingOf(name)?.arrival || "")} onChange={(e) => setInstr(name, { arrival: e.target.value })} placeholder={t.ckArrival} rows={4} style={{ ...fieldStyle, resize: "vertical" }} />
+                    <textarea value={info.tip != null ? info.tip : (buildingOf(name)?.tip || "")} onChange={(e) => setInstr(name, { tip: e.target.value })} placeholder={t.piCheckinNote} rows={2} style={{ ...fieldStyle, resize: "vertical" }} />
+                    <input value={info.maps != null ? info.maps : (buildingOf(name)?.maps || "")} onChange={(e) => setInstr(name, { maps: e.target.value })} placeholder={t.ckMaps + " URL"} style={{ ...fieldStyle }} />
+                    <input value={info.waze != null ? info.waze : (buildingOf(name)?.waze || "")} onChange={(e) => setInstr(name, { waze: e.target.value })} placeholder={t.ckWaze + " URL"} style={{ ...fieldStyle }} />
+                    {/* Aplica estas instrucciones a otras propiedades (compartidas y sincronizadas) */}
+                    <div style={{ fontFamily: C.sans, fontSize: 9, letterSpacing: "0.16em", textTransform: "uppercase", color: C.tierra, fontWeight: 600, margin: "14px 0 4px" }}>{es ? "Aplica estas instrucciones a" : "Apply these instructions to"}</div>
+                    <p style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, margin: "0 0 9px", letterSpacing: "0.02em", lineHeight: 1.5 }}>{es ? "Las propiedades marcadas comparten estas mismas instrucciones; al editar una se actualizan todas." : "Selected properties share these instructions; editing one updates them all."}</p>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                      {props.filter((pn) => pn !== name).map((pn) => {
+                        const on = (info.instrApply || []).includes(pn);
+                        return <button key={pn} onClick={() => toggleInstrApply(name, pn)} className="sp-btn" style={{ background: on ? C.negro : C.white, color: on ? C.alabaster : C.negro,
+                          border: `1px solid ${on ? C.negro : C.grisCalido}`, borderRadius: 999, padding: "7px 13px", fontFamily: C.sans, fontSize: 11, letterSpacing: "0.02em", cursor: "pointer", fontWeight: on ? 600 : 500, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                          {on && <Icon name="check" size={12} color={C.alabaster} />}{pn}</button>;
+                      })}
+                    </div>
+                    <input value={info.photoUrl || ""} onChange={(e) => set(name, { photoUrl: e.target.value })} placeholder={t.piPhotoUrl} style={{ ...fieldStyle, marginTop: 12 }} />
+                    <p style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, margin: "6px 0 0", letterSpacing: "0.02em", lineHeight: 1.5 }}>{t.piPhotoNote}</p>
+      </React.Fragment>);
+      case "sitio": return (<React.Fragment>
+{/* EN SITIO */}
+                    {label(es ? "En sitio (piso, unidad, contacto)" : "On site (floor, unit, contact)")}
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                      <input value={info.floor || ""} onChange={(e) => set(name, { floor: e.target.value })} placeholder={es ? "Piso / nivel" : "Floor / level"} style={{ ...fieldStyle, marginTop: 0, flex: "1 1 120px" }} />
+                      <input value={info.unit || ""} onChange={(e) => set(name, { unit: e.target.value })} placeholder={es ? "Unidad / apto" : "Unit / apt"} style={{ ...fieldStyle, marginTop: 0, flex: "1 1 120px" }} />
+                    </div>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+                      <input value={info.contactName || ""} onChange={(e) => set(name, { contactName: e.target.value })} placeholder={es ? "Contacto en sitio (nombre)" : "On-site contact (name)"} style={{ ...fieldStyle, marginTop: 0, flex: "1 1 160px" }} />
+                      <input value={info.contactPhone || ""} onChange={(e) => set(name, { contactPhone: e.target.value })} placeholder={es ? "Teléfono del contacto" : "Contact phone"} type="tel" style={{ ...fieldStyle, marginTop: 0, flex: "1 1 160px" }} />
+                    </div>
+      </React.Fragment>);
+      case "amenidades": return (<React.Fragment>
+{/* AMENIDADES */}
+                    {label(es ? "Amenidades (una por línea)" : "Amenities (one per line)")}
+                    <textarea value={(info.amenities || []).join("\n")} onChange={(e) => set(name, { amenities: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean) })} placeholder={es ? "Piscina\nGimnasio\nRooftop" : "Pool\nGym\nRooftop"} rows={4} style={{ ...fieldStyle, marginTop: 8, resize: "vertical" }} />
+                    <p style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, margin: "6px 0 0", letterSpacing: "0.02em", lineHeight: 1.5 }}>{es ? "Si dejas esto vacío, se usan las amenidades de Hospitable." : "If left empty, Hospitable amenities are used."}</p>
+      </React.Fragment>);
+      default: return null;
+    }
+  }
+
+  /* Tarjeta del buscador: la propiedad con SOLO los temas pedidos, editables ahí mismo (se guardan solos). */
+  function renderTemas(name, temas) {
+    const miss = missingFields(name);
+    return (
+      <div key={name} style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 16, padding: "14px 18px 18px", marginBottom: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ flexShrink: 0, width: 9, height: 9, borderRadius: "50%", background: miss.length ? C.peach : "#1F8A5B" }} />
+          <span style={{ flex: 1, minWidth: 0, fontFamily: C.serif, fontSize: 19, color: C.negro, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName(name)}</span>
+          <button onClick={() => { setPropQuery(""); setOpenKey(name); setTimeout(() => setPropQuery(displayName(name)), 0); }} className="sp-btn"
+            style={{ flexShrink: 0, background: "transparent", border: `1px solid ${C.grisCalido}`, borderRadius: 999, padding: "6px 12px", fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.04em", color: C.negro, cursor: "pointer" }}>
+            {es ? "Ficha completa" : "Full sheet"}
+          </button>
+        </div>
+        {temas.map((k) => <React.Fragment key={k}>{seccion(name, k)}</React.Fragment>)}
+      </div>
+    );
+  }
 
   function renderProp(name) {
             const info = get(name);
@@ -2453,103 +2623,7 @@ function PropertyInfoScreen({ t, roster, focusProp, onToast }) {
                         </div>
                       );
                     })()}
-                    {/* PARQUEO */}
-                    {label(t.piParking)}
-                    <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                      <span style={{ fontFamily: C.sans, fontSize: 12, color: C.negro }}>{t.piHasParking}</span>
-                      {seg(name, "hasParking", [["yes", t.piYes], ["no", t.piNo]])}
-                    </div>
-                    {info.hasParking === "yes" && <input value={info.parkNumber || ""} onChange={(e) => set(name, { parkNumber: e.target.value })} placeholder={t.piParkNumber} style={fieldStyle} />}
-                    {info.hasParking === "no" && <>
-                      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginTop: 12 }}>
-                        <span style={{ fontFamily: C.sans, fontSize: 12, color: C.negro }}>{t.piParkOption}</span>
-                        {seg(name, "parkOption", [["yes", t.piYes], ["no", t.piNo]])}
-                      </div>
-                      {info.parkOption === "yes" && <>
-                        <div style={{ marginTop: 12 }}>{seg(name, "parkOwnership", [["own", t.piParkOwn], ["third", t.piParkThird]])}</div>
-                        {info.parkOwnership === "own" && <input value={info.parkLink || ""} onChange={(e) => set(name, { parkLink: e.target.value })} placeholder={t.piParkLink} style={fieldStyle} />}
-                        {info.parkOwnership === "third" && <textarea value={info.parkExtInfo || ""} onChange={(e) => set(name, { parkExtInfo: e.target.value })} placeholder={t.piParkExtInfo} rows={2} style={{ ...fieldStyle, resize: "vertical" }} />}
-                      </>}
-                    </>}
-
-                    <textarea value={info.parkNote || ""} onChange={(e) => set(name, { parkNote: e.target.value })} placeholder={es ? "Nota de parqueo (texto libre que verá el huésped)" : "Parking note (free text shown to guest)"} rows={2} style={{ ...fieldStyle, resize: "vertical" }} />
-
-                    {/* WIFI */}
-                    {label(t.piWifi)}
-                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                      <input value={info.wifiNet || ""} onChange={(e) => set(name, { wifiNet: e.target.value })} placeholder={t.piWifiNet} style={{ ...fieldStyle, marginTop: 0, flex: "1 1 160px" }} />
-                      <input value={info.wifiPass || ""} onChange={(e) => set(name, { wifiPass: e.target.value })} placeholder={t.piWifiPass} style={{ ...fieldStyle, marginTop: 0, flex: "1 1 160px" }} />
-                    </div>
-                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-                      <input value={info.wifiNetBk || ""} onChange={(e) => set(name, { wifiNetBk: e.target.value })} placeholder={`${t.piWifiBackup} — ${t.piWifiNet}`} style={{ ...fieldStyle, marginTop: 0, flex: "1 1 160px" }} />
-                      <input value={info.wifiPassBk || ""} onChange={(e) => set(name, { wifiPassBk: e.target.value })} placeholder={`${t.piWifiBackup} — ${t.piWifiPass}`} style={{ ...fieldStyle, marginTop: 0, flex: "1 1 160px" }} />
-                    </div>
-                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-                      <input value={info.wifiNetBk2 || ""} onChange={(e) => set(name, { wifiNetBk2: e.target.value })} placeholder={`${t.piWifiBackup} 2 — ${t.piWifiNet}`} style={{ ...fieldStyle, marginTop: 0, flex: "1 1 160px" }} />
-                      <input value={info.wifiPassBk2 || ""} onChange={(e) => set(name, { wifiPassBk2: e.target.value })} placeholder={`${t.piWifiBackup} 2 — ${t.piWifiPass}`} style={{ ...fieldStyle, marginTop: 0, flex: "1 1 160px" }} />
-                    </div>
-                    <p style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, margin: "8px 0 0", letterSpacing: "0.02em" }}>{t.piWifiBackupNote}</p>
-
-                    {/* CERRADURA */}
-                    {label(t.piLock)}
-                    {seg(name, "lock", [["smart", t.piLockSmart], ["box", t.piLockBox], ["key", t.piLockKey], ["other", t.piLockOther]])}
-                    {info.lock === "smart" && (
-                      <div style={{ marginTop: 10 }}>{seg(name, "smartBrand", [["Igloohome", "Igloohome"], ["Nuki", "Nuki"], ["Smart Life", "Smart Life"], ["Kwikset", "Kwikset"], ["other", t.piLockOther]])}</div>
-                    )}
-
-                    {/* TIPO */}
-                    {label(t.piType)}
-                    {seg(name, "propType", [["apt", t.piTypeApt], ["condo", t.piTypeCondo], ["off", t.piTypeOff]])}
-
-                    {/* CONTACTO (recibe el formulario completado) */}
-                    {label(t.piContact)}
-                    <p style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, margin: "-2px 0 10px", letterSpacing: "0.02em", lineHeight: 1.5 }}>{t.piContactNote}</p>
-                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                      <input value={getC(name).email1 || ""} onChange={(e) => setC(name, { email1: e.target.value })} placeholder={t.stEmail1} type="email" style={{ ...fieldStyle, marginTop: 0, flex: "1 1 160px" }} />
-                      <input value={getC(name).email2 || ""} onChange={(e) => setC(name, { email2: e.target.value })} placeholder={t.stEmail2} type="email" style={{ ...fieldStyle, marginTop: 0, flex: "1 1 160px" }} />
-                    </div>
-                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-                      <input value={getC(name).phone1 || ""} onChange={(e) => setC(name, { phone1: e.target.value })} placeholder={t.stPhone1} type="tel" style={{ ...fieldStyle, marginTop: 0, flex: "1 1 160px" }} />
-                      <input value={getC(name).phone2 || ""} onChange={(e) => setC(name, { phone2: e.target.value })} placeholder={t.stPhone2} type="tel" style={{ ...fieldStyle, marginTop: 0, flex: "1 1 160px" }} />
-                    </div>
-
-                    {/* INSTRUCCIONES GENERALES (edificio / condominio / región) */}
-                    {label(t.piInstructions)}
-                    <p style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, margin: "-2px 0 10px", letterSpacing: "0.02em", lineHeight: 1.5 }}>{t.piInstructionsNote}</p>
-                    <input value={info.address != null ? info.address : (buildingOf(name)?.address || "")} onChange={(e) => setInstr(name, { address: e.target.value })} placeholder={t.ckAddress} style={{ ...fieldStyle, marginTop: 0 }} />
-                    <textarea value={info.arrival != null ? info.arrival : (buildingOf(name)?.arrival || "")} onChange={(e) => setInstr(name, { arrival: e.target.value })} placeholder={t.ckArrival} rows={4} style={{ ...fieldStyle, resize: "vertical" }} />
-                    <textarea value={info.tip != null ? info.tip : (buildingOf(name)?.tip || "")} onChange={(e) => setInstr(name, { tip: e.target.value })} placeholder={t.piCheckinNote} rows={2} style={{ ...fieldStyle, resize: "vertical" }} />
-                    <input value={info.maps != null ? info.maps : (buildingOf(name)?.maps || "")} onChange={(e) => setInstr(name, { maps: e.target.value })} placeholder={t.ckMaps + " URL"} style={{ ...fieldStyle }} />
-                    <input value={info.waze != null ? info.waze : (buildingOf(name)?.waze || "")} onChange={(e) => setInstr(name, { waze: e.target.value })} placeholder={t.ckWaze + " URL"} style={{ ...fieldStyle }} />
-                    {/* Aplica estas instrucciones a otras propiedades (compartidas y sincronizadas) */}
-                    <div style={{ fontFamily: C.sans, fontSize: 9, letterSpacing: "0.16em", textTransform: "uppercase", color: C.tierra, fontWeight: 600, margin: "14px 0 4px" }}>{es ? "Aplica estas instrucciones a" : "Apply these instructions to"}</div>
-                    <p style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, margin: "0 0 9px", letterSpacing: "0.02em", lineHeight: 1.5 }}>{es ? "Las propiedades marcadas comparten estas mismas instrucciones; al editar una se actualizan todas." : "Selected properties share these instructions; editing one updates them all."}</p>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-                      {props.filter((pn) => pn !== name).map((pn) => {
-                        const on = (info.instrApply || []).includes(pn);
-                        return <button key={pn} onClick={() => toggleInstrApply(name, pn)} className="sp-btn" style={{ background: on ? C.negro : C.white, color: on ? C.alabaster : C.negro,
-                          border: `1px solid ${on ? C.negro : C.grisCalido}`, borderRadius: 999, padding: "7px 13px", fontFamily: C.sans, fontSize: 11, letterSpacing: "0.02em", cursor: "pointer", fontWeight: on ? 600 : 500, display: "inline-flex", alignItems: "center", gap: 6 }}>
-                          {on && <Icon name="check" size={12} color={C.alabaster} />}{pn}</button>;
-                      })}
-                    </div>
-                    <input value={info.photoUrl || ""} onChange={(e) => set(name, { photoUrl: e.target.value })} placeholder={t.piPhotoUrl} style={{ ...fieldStyle, marginTop: 12 }} />
-                    <p style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, margin: "6px 0 0", letterSpacing: "0.02em", lineHeight: 1.5 }}>{t.piPhotoNote}</p>
-
-                    {/* EN SITIO */}
-                    {label(es ? "En sitio (piso, unidad, contacto)" : "On site (floor, unit, contact)")}
-                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                      <input value={info.floor || ""} onChange={(e) => set(name, { floor: e.target.value })} placeholder={es ? "Piso / nivel" : "Floor / level"} style={{ ...fieldStyle, marginTop: 0, flex: "1 1 120px" }} />
-                      <input value={info.unit || ""} onChange={(e) => set(name, { unit: e.target.value })} placeholder={es ? "Unidad / apto" : "Unit / apt"} style={{ ...fieldStyle, marginTop: 0, flex: "1 1 120px" }} />
-                    </div>
-                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-                      <input value={info.contactName || ""} onChange={(e) => set(name, { contactName: e.target.value })} placeholder={es ? "Contacto en sitio (nombre)" : "On-site contact (name)"} style={{ ...fieldStyle, marginTop: 0, flex: "1 1 160px" }} />
-                      <input value={info.contactPhone || ""} onChange={(e) => set(name, { contactPhone: e.target.value })} placeholder={es ? "Teléfono del contacto" : "Contact phone"} type="tel" style={{ ...fieldStyle, marginTop: 0, flex: "1 1 160px" }} />
-                    </div>
-
-                    {/* AMENIDADES */}
-                    {label(es ? "Amenidades (una por línea)" : "Amenities (one per line)")}
-                    <textarea value={(info.amenities || []).join("\n")} onChange={(e) => set(name, { amenities: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean) })} placeholder={es ? "Piscina\nGimnasio\nRooftop" : "Pool\nGym\nRooftop"} rows={4} style={{ ...fieldStyle, marginTop: 8, resize: "vertical" }} />
-                    <p style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, margin: "6px 0 0", letterSpacing: "0.02em", lineHeight: 1.5 }}>{es ? "Si dejas esto vacío, se usan las amenidades de Hospitable." : "If left empty, Hospitable amenities are used."}</p>
+                    {SECCIONES_PROP.map((k) => <React.Fragment key={k}>{seccion(name, k)}</React.Fragment>)}
 
                     <div style={{ marginTop: 20 }}>
                       <button onClick={() => save(name)} className="sp-btn" style={{ background: C.negro, color: C.alabaster, border: "none", borderRadius: 10, padding: "10px 20px",
@@ -2571,6 +2645,39 @@ function PropertyInfoScreen({ t, roster, focusProp, onToast }) {
    guiones queda suelto al final. La carpeta se abre sola si contiene la
    propiedad que está expandida.
    ============================================================ */
+const SECCIONES_PROP = ["parqueo", "wifi", "cerradura", "tipo", "contacto", "instrucciones", "sitio", "amenidades"];
+/* Temas del buscador de propiedades y las palabras (con y sin acento, español e inglés) que los activan. */
+const TEMAS_PROP = [
+  { k: "parqueo", es: "Parqueo", en: "Parking", palabra: "parqueo", claves: ["parqueo", "parqueos", "parking", "estacionamiento", "estacionar", "garage", "garaje", "sotano"] },
+  { k: "wifi", es: "WiFi", en: "WiFi", palabra: "wifi", claves: ["wifi", "wi-fi", "internet", "red", "clave", "contrasena", "password"] },
+  { k: "cerradura", es: "Cerradura", en: "Lock", palabra: "cerradura", claves: ["cerradura", "chapa", "lock", "candado", "llave", "caja", "smart", "igloohome", "nuki"] },
+  { k: "instrucciones", es: "Llegada y dirección", en: "Arrival & address", palabra: "llegada", claves: ["llegada", "llegar", "direccion", "address", "arrival", "instrucciones", "ingreso", "maps", "waze", "ubicacion"] },
+  { k: "contacto", es: "Recepción", en: "Front desk", palabra: "recepcion", claves: ["contacto", "contactos", "recepcion", "garita", "correo", "email", "telefono", "whatsapp", "administracion"] },
+  { k: "sitio", es: "Piso y unidad", en: "Floor & unit", palabra: "piso", claves: ["piso", "nivel", "unidad", "encargado", "sitio"] },
+  { k: "tipo", es: "Tipo", en: "Type", palabra: "tipo", claves: ["tipo", "type", "condominio", "oficina"] },
+  { k: "amenidades", es: "Amenidades", en: "Amenities", palabra: "amenidades", claves: ["amenidades", "amenities", "piscina", "gimnasio", "rooftop", "gym"] },
+];
+const _nkBusq = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+function analizarBusquedaProp(q) {
+  const palabras = [], temas = [];
+  _nkBusq(q).split(/[\s,;·]+/).filter(Boolean).forEach((w) => {
+    const tm = TEMAS_PROP.find((x) => x.claves.indexOf(w) >= 0 || (w.length >= 5 && x.claves.some((c) => c.indexOf(w) === 0)));
+    if (tm) { if (temas.indexOf(tm.k) < 0) temas.push(tm.k); }
+    else palabras.push(w);
+  });
+  return { palabras, temas };
+}
+/* Cada palabra tiene que aparecer en el nombre. Los números se comparan como número de apto
+   («705» no encuentra «1705»), y las palabras toleran una letra de más o de menos (Brunelo/Brunello). */
+function coincidePropiedad(nombre, palabras) {
+  const n = _nkBusq(nombre), trozos = n.split(/[^a-z0-9]+/).filter(Boolean);
+  return palabras.every((w) => {
+    if (/^\d+$/.test(w)) return trozos.some((t) => t === w || t.replace(/^0+/, "") === w.replace(/^0+/, ""));
+    if (n.indexOf(w) >= 0) return true;
+    const sinDobles = (x) => x.replace(/(.)\1+/g, "$1");
+    return trozos.some((t) => sinDobles(t).indexOf(sinDobles(w)) === 0);
+  });
+}
 function splitPropName(name) {
   const parts = String(name || "").split(/\s*[-–—]\s*/).map((p) => p.trim()).filter(Boolean);
   if (parts.length >= 3) return { zone: parts[0], building: parts[1], leaf: parts.slice(2).join(" - ") };

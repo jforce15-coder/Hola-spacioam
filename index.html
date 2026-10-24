@@ -181,7 +181,11 @@ button{ -webkit-tap-highlight-color:transparent; }
   #print-portal img{ max-width:100%!important; max-height:190mm!important; height:auto!important; display:block; }
 }
 .sp-menu-item:hover{ background:var(--beige-soft,#F5F3F0); }
-@media (max-width:640px){ .sp-adrow{ grid-template-columns:1fr 1fr!important; } .sp-adrow>div:nth-child(4){ grid-column:1/-1; justify-content:flex-start!important; } }
+/* Registros: una tarjeta por reserva, franja de color por estado; 2 columnas en pantallas anchas */
+.reg-lista{ display:grid; grid-template-columns:1fr; gap:10px; }
+@media (min-width:980px){ .reg-lista{ grid-template-columns:1fr 1fr; gap:12px; } }
+.reg-card{ transition:box-shadow .2s var(--ease), border-color .2s var(--ease); animation:rise .4s var(--ease) both; }
+@media (hover:hover){ .reg-card:hover{ border-color:var(--ink)!important; box-shadow:0 10px 28px rgba(62,63,63,.08); } }
 @keyframes sa-fade{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:none;} }
 @keyframes noti-in{ from{opacity:0;} to{opacity:1;} }
 </style>
@@ -257,7 +261,7 @@ window.__holaRespaldo = function () {
 };
 window.__HOLA_LISTA__ = {"simples":["app/std-seed.js"],"jsx":["app/data.jsx","app/checkin-data.jsx","app/primitives.jsx","app/shell.jsx","app/noti-center.jsx","app/tutorials.jsx","app/screens-onboarding.jsx","app/screens-bento.jsx","app/screens-admin.jsx","app/lt-ui.jsx","app/screens-longterm.jsx","app/lt-batch.jsx","app/screens-ltguest.jsx","app/app.jsx"]};
 </script>
-<script src="build/app.js?v=0e695208a520" onerror="window.__holaRespaldo()"></script>
+<script src="build/app.js?v=37c309ffd4c9" onerror="window.__holaRespaldo()"></script>
 <script>
 /* Red de seguridad: si React no llegó de unpkg (navegadores dentro de Airbnb o Instagram), se pide a otro CDN
    y se vuelve a cargar build/app.js. */

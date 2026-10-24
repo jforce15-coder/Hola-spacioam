@@ -1,8 +1,8 @@
 /* ============================================================
    SPACIO AM — tutoriales del huésped
    · TutorialFab: botón flotante (FAB peach, estilo EPI) en Mi espacio
-   · GuestTour: recorrido de 3 pasos (check-in · parqueo · wifi)
-     obligatorio las 2 primeras sesiones (la 2a permite saltar)
+   · GuestTour: recorrido de 3 pasos (check-in · parqueo · wifi) que marca cada bloque
+     con un anillo y una tarjeta pequeña, sin tapar el bento
    · AirbnbCodeHelp: "¿Dónde encuentro el código en Airbnb?"
    Exporta a window.
    ============================================================ */
@@ -44,69 +44,91 @@ function TutorialFab({ t, onOpen }) {
   );
 }
 
-/* ---- recorrido de 3 pasos ---- */
+/* ---- recorrido de 3 pasos: marca el bloque del que habla, sin tapar la pantalla ----
+   Un anillo peach rodea el bloque y una tarjeta pequeña (pegada a él) lo explica. El resto del
+   bento se sigue viendo y se puede tocar; la tarjeta se reacomoda al hacer scroll o girar el teléfono. */
 function GuestTour({ t, onClose, onGoTile, mandatory, canSkip }) {
   const es = t.code === "es";
-  const steps = tourSteps(es);
+  const steps = tourSteps(es).filter((s) => document.querySelector('[data-tile="' + s.tile + '"]'));
   const [i, setI] = uS2(0);
+  const [rect, setRect] = uS2(null);
   const [show, setShow] = uS2(false);
-  uE2(() => { const a = requestAnimationFrame(() => setShow(true)); return () => cancelAnimationFrame(a); }, []);
-  const finish = () => { setShow(false); setTimeout(onClose, 340); };
   const s = steps[i];
-  const last = i === steps.length - 1;
+  const last = i >= steps.length - 1;
+  const reduce = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const medir = () => {
+    const el = s && document.querySelector('[data-tile="' + s.tile + '"]');
+    if (!el) { setRect(null); return; }
+    const r = el.getBoundingClientRect();
+    setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
+  };
+  uE2(() => {
+    if (!s) { onClose(); return; }
+    setShow(false);
+    const el = document.querySelector('[data-tile="' + s.tile + '"]');
+    if (el) el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
+    const t1 = setTimeout(() => { medir(); setShow(true); }, reduce ? 30 : 420);
+    const on = () => medir();
+    window.addEventListener("scroll", on, { passive: true }); window.addEventListener("resize", on);
+    return () => { clearTimeout(t1); window.removeEventListener("scroll", on); window.removeEventListener("resize", on); };
+  }, [i]);
+  if (!s) return null;
+  const finish = () => { setShow(false); setTimeout(onClose, 220); };
+  const vw = window.innerWidth, vh = window.innerHeight, PAD = 8, CW = Math.min(320, vw - 32);
+  let card = { left: 16, top: vh - 220 }, flecha = null;
+  if (rect) {
+    const abajo = vh - (rect.top + rect.height), arriba = rect.top;
+    const left = Math.max(16, Math.min(vw - CW - 16, rect.left + rect.width / 2 - CW / 2));
+    const ax = Math.max(left + 22, Math.min(left + CW - 22, rect.left + rect.width / 2));
+    if (abajo >= 200 || abajo >= arriba) { card = { left, top: rect.top + rect.height + PAD + 12 }; flecha = { x: ax - left, lado: "arriba" }; }
+    else { card = { left, bottom: vh - rect.top + PAD + 12 }; flecha = { x: ax - left, lado: "abajo" }; }
+  }
+  const tr = "opacity .22s var(--ease), transform .22s var(--ease)";
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 430, display: "grid", placeItems: "end center", padding: "20px 18px max(20px,env(safe-area-inset-bottom))",
-      background: "rgba(62,63,63,.55)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)",
-      opacity: show ? 1 : 0, transition: "opacity .36s var(--ease)" }}
-      onClick={mandatory ? undefined : finish}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(430px,100%)", background: "var(--surface,#fff)", borderRadius: 28,
-        padding: "clamp(22px,5vw,28px)", boxShadow: "0 28px 80px rgba(62,63,63,.10)",
-        transform: show ? "none" : "translateY(14px)", transition: "transform .36s var(--ease)" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontFamily: "var(--sans)", fontSize: 9.5, letterSpacing: "0.22em",
+    <React.Fragment>
+      {rect && (
+        <div aria-hidden="true" style={{ position: "fixed", zIndex: 429, pointerEvents: "none", borderRadius: 22,
+          top: rect.top - PAD, left: rect.left - PAD, width: rect.width + PAD * 2, height: rect.height + PAD * 2,
+          border: "2px solid var(--accent,#E9826A)", boxShadow: "0 0 0 6px rgba(233,130,106,.16), 0 10px 30px rgba(233,130,106,.18)",
+          opacity: show ? 1 : 0, transition: reduce ? "none" : "opacity .22s var(--ease), top .3s var(--ease), left .3s var(--ease), width .3s var(--ease), height .3s var(--ease)" }} />
+      )}
+      <div role="dialog" aria-live="polite" aria-label={s.title}
+        style={{ position: "fixed", zIndex: 431, width: CW, ...card, background: "var(--surface,#fff)", borderRadius: 18,
+          padding: "16px 16px 14px", boxShadow: "0 18px 50px rgba(62,63,63,.18), 0 0 0 1px rgba(62,63,63,.06)",
+          opacity: show ? 1 : 0, transform: show ? "none" : "translateY(6px)", transition: reduce ? "none" : tr }}>
+        {flecha && (
+          <span aria-hidden="true" style={{ position: "absolute", left: flecha.x - 7, width: 14, height: 14, background: "var(--surface,#fff)",
+            transform: "rotate(45deg)", borderRadius: 3, ...(flecha.lado === "arriba" ? { top: -6, boxShadow: "-1px -1px 0 rgba(62,63,63,.06)" } : { bottom: -6, boxShadow: "1px 1px 0 rgba(62,63,63,.06)" }) }} />
+        )}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "var(--sans)", fontSize: 9.5, letterSpacing: "0.2em",
             textTransform: "uppercase", color: "var(--fg-muted,#6F6867)", fontWeight: 600 }}>
-            <Sparkle size={11} color="var(--accent,#E9826A)" /> {s.eyebrow}
+            <Sparkle size={10} color="var(--accent,#E9826A)" /> {i + 1} / {steps.length}
           </span>
-          <div style={{ display: "flex", gap: 5 }}>
-            {steps.map((_, k) => (
-              <span key={k} style={{ width: k === i ? 18 : 6, height: 6, borderRadius: 999, background: k === i ? "var(--accent,#E9826A)" : "var(--warm-grey,#D8D4CE)", transition: "width .24s var(--ease)" }} />
-            ))}
-          </div>
-        </div>
-
-        <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
-          <span style={{ flexShrink: 0, width: 44, height: 44, borderRadius: 14, background: "var(--beige-soft,#F5F3F0)", display: "grid", placeItems: "center" }}>
-            <Icon name={s.icon} size={21} color="var(--accent,#E9826A)" />
-          </span>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontFamily: "var(--serif)", fontSize: 23, color: "var(--fg,#3E3F3F)", lineHeight: 1.12, letterSpacing: "-0.01em" }}>{s.title}</div>
-            <p style={{ fontFamily: "var(--sans)", fontSize: 13, color: "var(--fg-muted,#6F6867)", lineHeight: 1.7, letterSpacing: "0.02em", margin: "8px 0 0", textWrap: "pretty" }}>{s.body}</p>
-          </div>
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 22, flexWrap: "wrap" }}>
-          <button onClick={() => { if (last) finish(); else setI(i + 1); }} className="sp-btn"
-            style={{ flex: "1 1 auto", background: "var(--fg,#3E3F3F)", color: "var(--bg,#FAFAFA)", border: "none", borderRadius: 999,
-              padding: "14px 22px", fontFamily: "var(--sans)", fontSize: 11.5, letterSpacing: "0.14em", textTransform: "uppercase", cursor: "pointer", fontWeight: 500 }}>
-            {last ? (es ? "Entendido" : "Got it") : (es ? "Siguiente" : "Next")}
-          </button>
-          {onGoTile && (
-            <button onClick={() => { finish(); setTimeout(() => onGoTile(s.tile), 360); }} className="sp-btn"
-              style={{ background: "var(--surface,#fff)", color: "var(--fg,#3E3F3F)", border: "1px solid var(--warm-grey,#D8D4CE)", borderRadius: 999,
-                padding: "13px 18px", fontFamily: "var(--sans)", fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer" }}>
-              {es ? "Verlo" : "Show me"}
-            </button>
+          {/* ya no bloquea la pantalla: siempre se puede saltar */}
+          {true && (
+            <button onClick={finish} style={{ background: "transparent", border: "none", cursor: "pointer", padding: "4px 2px",
+              fontFamily: "var(--sans)", fontSize: 11, letterSpacing: "0.04em", color: "var(--fg-muted,#6F6867)" }}>{es ? "Saltar" : "Skip"}</button>
           )}
         </div>
-        {(canSkip || !mandatory) && (
-          <button onClick={finish} className="sp-link"
-            style={{ display: "block", margin: "12px auto 0", background: "transparent", border: "none", cursor: "pointer",
-              fontFamily: "var(--sans)", fontSize: 10.5, letterSpacing: "0.1em", color: "var(--fg-muted,#6F6867)", textDecoration: "underline", textUnderlineOffset: 3 }}>
-            {es ? "Saltar tutorial" : "Skip tutorial"}
+        <div style={{ fontFamily: "var(--serif)", fontSize: 20, color: "var(--fg,#3E3F3F)", lineHeight: 1.12, letterSpacing: "-0.01em" }}>{s.title}</div>
+        <p style={{ fontFamily: "var(--sans)", fontSize: 12.5, color: "var(--fg-muted,#6F6867)", lineHeight: 1.6, letterSpacing: "0.01em", margin: "6px 0 12px", textWrap: "pretty" }}>{s.body}</p>
+        <div style={{ display: "flex", gap: 8 }}>
+          {onGoTile && (
+            <button onClick={() => { finish(); setTimeout(() => onGoTile(s.tile), 240); }} className="sp-btn"
+              style={{ background: "var(--surface,#fff)", color: "var(--fg,#3E3F3F)", border: "1px solid var(--warm-grey,#D8D4CE)", borderRadius: 999,
+                padding: "10px 14px", fontFamily: "var(--sans)", fontSize: 11, letterSpacing: "0.06em", cursor: "pointer", fontWeight: 500 }}>
+              {es ? "Abrirlo" : "Open it"}
+            </button>
+          )}
+          <button onClick={() => { if (last) finish(); else setI(i + 1); }} className="sp-btn"
+            style={{ flex: 1, background: "var(--fg,#3E3F3F)", color: "var(--bg,#FAFAFA)", border: "none", borderRadius: 999,
+              padding: "11px 16px", fontFamily: "var(--sans)", fontSize: 11.5, letterSpacing: "0.08em", cursor: "pointer", fontWeight: 600 }}>
+            {last ? (es ? "Entendido" : "Got it") : (es ? "Siguiente" : "Next")}
           </button>
-        )}
+        </div>
       </div>
-    </div>
+    </React.Fragment>
   );
 }
 

@@ -163,7 +163,7 @@ function BentoTile({ tile, t, res, nights, idx, onOpen, pulse }) {
   const bg = isDark ? C.negro : isPeach ? C.peach : C.white;
   const big = tile.span === "hero";
   return (
-    <button className={`tile sp-tile reveal ${isPhoto ? "sp-imgwrap" : ""}`} onClick={() => onOpen(tile.key)}
+    <button data-tile={tile.key} className={`tile sp-tile reveal ${isPhoto ? "sp-imgwrap" : ""}`} onClick={() => onOpen(tile.key)}
       style={{ ...spanStyle[tile.span], animationDelay: `${idx * 0.04}s`, background: bg,
         border: `1px solid ${isPhoto || isDark || isPeach ? "transparent" : C.grisCalido}`,
         borderRadius: 18, padding: big ? 20 : 15, position: "relative", overflow: "hidden", cursor: "pointer",

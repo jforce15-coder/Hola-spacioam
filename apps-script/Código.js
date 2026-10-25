@@ -243,6 +243,7 @@ function route_(e, method) {
       case 'listPropertyInfo': out = listPropertyInfo_(); break;
       case 'notifyInvoiceReady': out = notifyInvoiceReady_(body); break;
       case 'resendRegistration': out = resendRegistration_(body); break;
+      case 'sendStatus':       out = sendStatus_(body); break;
       case 'regPdfRobot':      out = regPdfRobot_(body); break;
       case 'hostRequestApprove': out = hostRequestResolve_({ code: body.code, kind: body.kind, apartment: body.apartment, decision: body.approved ? 'approved' : 'pending' }); break;
       case 'hostRequestResolve': out = hostRequestResolve_(body); break;
@@ -3666,6 +3667,37 @@ function listSendLog_(b) {
   if (wantCode) log = log.filter(function (r) { return normCode_(r.code) === wantCode; });
   var n = (b && b.limit) || 80;
   return { ok: true, log: log.reverse().slice(0, n) };
+}
+/* Estado del último envío a la propiedad por código y canal, para pintar los botones de reenvío del panel:
+   correo según el registro de envíos de aquí; WhatsApp según ALMA (entrega real que confirma Meta) y, si ALMA no
+   sabe, según lo que se anotó aquí. e: ok | entregado | leido | cola | error | no_entregado. */
+function sendStatus_(b) {
+  var codes = ((b && b.codes) || []).map(function (c) { return normCode_(c); }).filter(Boolean).slice(0, 200), want = {};
+  codes.forEach(function (c) { want[c] = 1; });
+  var out = {};
+  codes.forEach(function (c) { out[c] = { email: null, whatsapp: null }; });
+  try {
+    var sh = ensureLogSheet_();
+    if (sh.getLastRow() > 1) {
+      var n = Math.min(4000, sh.getLastRow() - 1), rows = sh.getRange(sh.getLastRow() - n + 1, 1, n, 7).getValues();
+      rows.forEach(function (r) {
+        var c = normCode_(r[2]); if (!want[c]) return;
+        var ch = String(r[1]) === 'whatsapp' ? 'whatsapp' : String(r[1]) === 'email' ? 'email' : ''; if (!ch) return;
+        var ok = String(r[5]) === 'OK', det = String(r[6] || '');
+        out[c][ch] = { e: ok ? (ch === 'whatsapp' && String(r[4]) === 'ALMA' ? 'cola' : 'ok') : 'error', at: r[0] instanceof Date ? r[0].toISOString() : String(r[0]), det: ok ? '' : det.slice(0, 160) };
+      });
+    }
+  } catch (e) {}
+  try {
+    var hr = UrlFetchApp.fetch(PropertiesService.getScriptProperties().getProperty('HUB_ALMA_URL') || HUB_ALMA_URL_, { method: 'post', contentType: 'text/plain;charset=utf-8', muteHttpExceptions: true, followRedirects: true,
+      payload: JSON.stringify({ recepcionEstado: 1, codes: codes }) });
+    var j = JSON.parse(hr.getContentText() || '{}');
+    Object.keys((j && j.estados) || {}).forEach(function (k) {
+      var c = normCode_(k), x = j.estados[k]; if (!out[c] || !x) return;
+      out[c].whatsapp = { e: x.e, at: new Date(x.ts).toISOString(), det: x.det || '' };
+    });
+  } catch (e) {}
+  return { ok: true, status: out };
 }
 /* meta (propiedad/fechas) de la fila más reciente de Formularios por código. */
 function metaForCode_(code) {

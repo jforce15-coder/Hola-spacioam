@@ -1199,6 +1199,20 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
   const doneCount = rows ? rows.filter((r) => isDone(r.h, r.rec)).length : 0;
   const pendingCount = rows ? rows.length - doneCount : 0;
 
+  /* Estado del último envío a la propiedad (correo y WhatsApp a recepción) para pintar los botones de reenvío. */
+  const [envios, setEnvios] = useStateAd({});
+  const cargarEnvios = useCallbackAd((codes) => {
+    if (!codes || !codes.length) return;
+    try { if (!(Backend.isConnected && Backend.isConnected() && Backend.call)) return; } catch (e) { return; }
+    Backend.call("sendStatus", { codes }).then((r) => { if (r && r.ok && r.status) setEnvios((prev) => Object.assign({}, prev, r.status)); }).catch(() => {});
+  }, []);
+  const codigosHechos = (rows || []).filter(({ h, rec }) => isDone(h, rec)).map(({ h }) => normCode(h.code)).filter(Boolean).join(",");
+  useEffectAd(() => {
+    const c = codigosHechos ? codigosHechos.split(",") : [];
+    cargarEnvios(c);
+    const iv = setInterval(() => cargarEnvios(c), 60000);
+    return () => clearInterval(iv);
+  }, [codigosHechos]);
   const resend = (h, channel) => {
     const ch = channel || "email";
     setToast(t.adminResending || "Enviando…");
@@ -1206,6 +1220,7 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
     try {
       if (Backend.isConnected && Backend.isConnected() && Backend.call) {
         Backend.call("resendRegistration", { code: h.code, channel: ch })
+          .then((r) => { setTimeout(() => cargarEnvios([normCode(h.code)]), 2500); setTimeout(() => cargarEnvios([normCode(h.code)]), 75000); return r; })
           .then((r) => done(r && r.ok
             ? `${ch === "whatsapp" ? "WhatsApp" : t.adminResent} ${r.to || ""}`
             : ((t.adminResendFail || "No se pudo enviar") + (r && r.error ? " · " + r.error : ""))))
@@ -1341,7 +1356,7 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
           <div className="reg-lista">
             {rows.map(({ h, rec, bucket }, idx) => (
               <AdminRow key={(h.id || h.code) + "-" + idx} t={t} h={h} rec={rec} bucket={bucket} first={idx === 0} avail={availFor(h)}
-                done={isDone(h, rec)} state={stateOf(h, rec)} draft={draftOf(h)}
+                done={isDone(h, rec)} state={stateOf(h, rec)} draft={draftOf(h)} envio={envios[normCode(h.code)]}
                 onPreview={onPreviewGuest ? () => onPreviewGuest(h) : null}
                 onOpenForm={onManualForm ? () => onManualForm(h) : null}
                 onView={() => setSummary({ h, rec, autoPrint: false })}
@@ -1454,7 +1469,17 @@ function ManualFormModal({ t, onClose, onOpen }) {
 }
 
 /* compact, image-free row */
-function AdminRow({ t, h, rec, bucket, first, avail, onView, onDownload, onResend, done: doneProp, state, onPreview, onOpenForm, draft }) {
+/* Color de un botón de reenvío según el último envío: verde llegó, ámbar en camino, rojo no llegó, neutro nunca se envió. */
+function envioTono(x, es) {
+  if (!x) return { bg: C.white, bd: C.grisCalido, fg: C.negro, txt: es ? "Aún no se ha enviado" : "Not sent yet" };
+  const f = (() => { try { return new Date(x.at).toLocaleString(es ? "es-GT" : "en-US", { timeZone: "America/Guatemala", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } })();
+  if (x.e === "error" || x.e === "no_entregado") return { bg: "rgba(192,57,43,.08)", bd: "rgba(192,57,43,.55)", fg: "#B03A2E", txt: (es ? (x.e === "no_entregado" ? "No le llegó" : "No se envió") : "Not delivered") + (f ? " · " + f : "") + (x.det ? " · " + x.det : "") };
+  if (x.e === "cola") return { bg: "rgba(233,130,106,.12)", bd: "rgba(233,130,106,.55)", fg: "#8a5020", txt: (es ? "En camino (ALMA lo está enviando)" : "On its way") + (f ? " · " + f : "") };
+  const leido = x.e === "leido", entregado = leido || x.e === "entregado";
+  return { bg: "rgba(31,138,91,.10)", bd: "rgba(31,138,91,.5)", fg: "#177A4F", txt: (es ? (leido ? "Leído" : entregado ? "Entregado" : "Enviado") : (leido ? "Read" : entregado ? "Delivered" : "Sent")) + (f ? " · " + f : "") };
+}
+function AdminRow({ t, h, rec, bucket, first, avail, onView, onDownload, onResend, done: doneProp, state, onPreview, onOpenForm, draft, envio }) {
+  const [abierta, setAbierta] = useStateAd(false);
   const done = doneProp != null ? doneProp : (!!rec || h.statusForm === "completo");
   const es = t.code === "es";
   const st = state || (done ? "done" : "pending");
@@ -1489,34 +1514,49 @@ function AdminRow({ t, h, rec, bucket, first, avail, onView, onDownload, onResen
     </button>
   );
   // reenvío por canal — inactivo si la propiedad no tiene ese contacto
-  const resendBtn = (icon, on, channel, title) => (
-    <button onClick={on ? () => onResend(channel) : undefined} className="sp-btn" disabled={!on}
-      title={on ? title : (es ? "Sin " + (channel === "whatsapp" ? "WhatsApp" : "correo") + " en esta propiedad" : "No " + channel + " for this property")}
-      style={{ background: C.white, color: on ? C.negro : C.warmGrey || C.grisCalido, border: `1px solid ${C.grisCalido}`,
-        borderRadius: 999, width: 34, height: 32, cursor: on ? "pointer" : "not-allowed", opacity: on ? 1 : 0.4,
-        display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-      <Icon name={icon} size={14} color={on ? C.negro : C.tierra} />
-    </button>
-  );
+  const resendBtn = (icon, on, channel, title) => {
+    const tn = envioTono(envio && envio[channel], es);
+    return (
+      <button onClick={on ? () => onResend(channel) : undefined} className="sp-btn" disabled={!on}
+        title={on ? title + " · " + tn.txt : (es ? "Sin " + (channel === "whatsapp" ? "WhatsApp" : "correo") + " en esta propiedad" : "No " + channel + " for this property")}
+        aria-label={on ? title + " · " + tn.txt : undefined}
+        style={{ background: on ? tn.bg : C.white, color: on ? tn.fg : C.warmGrey || C.grisCalido, border: `1px solid ${on ? tn.bd : C.grisCalido}`,
+          borderRadius: 999, width: 34, height: 32, cursor: on ? "pointer" : "not-allowed", opacity: on ? 1 : 0.4,
+          display: "inline-flex", alignItems: "center", justifyContent: "center", transition: "background .3s, border-color .3s" }}>
+        <Icon name={icon} size={14} color={on ? tn.fg : C.tierra} />
+      </button>
+    );
+  };
+  /* Estado de los envíos en una línea (tarjeta abierta): qué le llegó a la propiedad y qué no. */
+  const envioLinea = (ch, nombre) => { const x = envio && envio[ch]; if (!x || !av[ch]) return null; const tn = envioTono(x, es); return <span style={{ color: tn.fg }}>{nombre} · {tn.txt}</span>; };
   const prop = h.propertyShort || h.propertyName || "";
   const apto = h.apartment && !String(prop).includes(h.apartment) ? h.apartment : "";
   const sub = h.propertyName && h.propertyName !== prop ? h.propertyName : "";
   return (
-    <div className={"reg-card reg-" + st} style={{ position: "relative", background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 18,
-      padding: "14px 16px 14px 20px", display: "flex", flexDirection: "column", gap: 10, overflow: "hidden" }}>
+    <div className={"reg-card reg-" + st + (abierta ? " abierta" : "")} style={{ position: "relative", background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 16,
+      padding: abierta ? "12px 14px 14px 18px" : "0", display: "flex", flexDirection: "column", gap: 10, overflow: "hidden" }}>
       {/* franja de estado a la izquierda: se lee de un vistazo */}
       <span aria-hidden="true" style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 5, background: ST.dot }} />
-      {/* 1 · propiedad + estado */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontFamily: C.serif, fontSize: 19, color: C.negro, lineHeight: 1.1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{prop}{apto ? " · " + apto : ""}</div>
-          {sub && <div style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, letterSpacing: "0.02em", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</div>}
-        </div>
-        <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 6, background: ST.bg, border: `1px solid ${ST.bd}`, borderRadius: 999, padding: "5px 11px",
-          fontFamily: C.sans, fontSize: 9.5, letterSpacing: "0.08em", textTransform: "uppercase", color: ST.fg, fontWeight: 700 }}>
-          <span style={{ width: 6, height: 6, borderRadius: "50%", background: ST.dot }} />{ST.label}
+      {/* 1 · propiedad + estado (cerrada: solo esto, en una línea; toca para ver todo) */}
+      <button type="button" onClick={() => setAbierta(!abierta)} aria-expanded={abierta}
+        style={{ all: "unset", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+          padding: abierta ? "0" : "11px 14px 11px 18px", minHeight: 24 }}>
+        <span style={{ minWidth: 0, display: "flex", alignItems: "baseline", gap: 8 }}>
+          <span style={{ fontFamily: C.serif, fontSize: abierta ? 19 : 16.5, color: C.negro, lineHeight: 1.1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{prop}{apto ? " · " + apto : ""}</span>
+          {!abierta && <span style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, whiteSpace: "nowrap" }}>{fmtDay(h.checkin, t.code)}</span>}
         </span>
-      </div>
+        <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: ST.bg, border: `1px solid ${ST.bd}`, borderRadius: 999, padding: abierta ? "5px 11px" : "3px 9px",
+            fontFamily: C.sans, fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: ST.fg, fontWeight: 700 }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: ST.dot }} />{ST.label}
+          </span>
+          <span aria-hidden="true" style={{ display: "inline-flex", transform: abierta ? "rotate(180deg)" : "none", transition: "transform .3s " + C.ease }}>
+            <Icon name="chevron" size={14} color={C.tierra} />
+          </span>
+        </span>
+      </button>
+      {abierta && sub && <div style={{ fontFamily: C.sans, fontSize: 10.5, color: C.tierra, letterSpacing: "0.02em", marginTop: -6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</div>}
+      {abierta && <React.Fragment>
       {/* 2 · huésped, código y llegada */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 7, background: C.beige, borderRadius: 10, padding: "6px 10px" }}>
@@ -1542,6 +1582,11 @@ function AdminRow({ t, h, rec, bucket, first, avail, onView, onDownload, onResen
           {byAdmin && <span>{es ? "Finalizado por admin" : "Finished by admin"}</span>}
         </div>
       )}
+      {done && (envioLinea("email", es ? "Correo" : "Email") || envioLinea("whatsapp", "WhatsApp")) && (
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.02em" }}>
+          {envioLinea("email", es ? "Correo" : "Email")}{envioLinea("whatsapp", "WhatsApp")}
+        </div>
+      )}
       {/* 3 · acciones */}
       <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap", borderTop: `1px solid ${C.beige}`, paddingTop: 10 }}>
         {done ? (
@@ -1561,6 +1606,7 @@ function AdminRow({ t, h, rec, bucket, first, avail, onView, onDownload, onResen
             : <span style={{ fontFamily: C.sans, fontSize: 11, color: C.tierra }}>{es ? "Esperando el registro del huésped" : "Waiting for the guest"}</span>
         )}
       </div>
+      </React.Fragment>}
     </div>
   );
 }

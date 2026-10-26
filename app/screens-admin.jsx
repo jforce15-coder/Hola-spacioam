@@ -1002,8 +1002,10 @@ function AdminAccountModal({ t, profile, email, onSave, onClose }) {
 /* ---------- MENÚ COMPARTIDO DE SPACIO AM (botón roca) ----------
    El mismo menú del Hub, Epi y GSP: se carga desde hub.spacioam.com, así cada mejora (y el anillo) llega sola.
    Solo lo pide el panel de administración: las pantallas de huéspedes ni siquiera descargan el archivo.
-   Se carga en segundo plano (no frena la primera pintura) y después alma-voz.js. Si algo falla, se queda
-   la navegación propia de Hola (NavTabs). */
+   Se carga en segundo plano (no frena la primera pintura). Después del menú van alma-client.js (window.ALMA,
+   la ficha de voz del Apps Script de ALMA; sa-sesion.js le agrega la sesión firmada del equipo) y alma-voz.js
+   (Alma por voz al deslizar el botón hacia el centro), igual que en Mi. Si algo falla, se queda la navegación
+   propia de Hola (NavTabs) y, sin Alma, el menú funciona igual. */
 const SA_MENU_HUB = "https://hub.spacioam.com/js/";
 let saMenuCarga = null;
 function saMenuCargar() {
@@ -1013,7 +1015,7 @@ function saMenuCargar() {
     const s = document.createElement("script"); s.src = src; s.async = false; s.onload = ok; s.onerror = ko; document.head.appendChild(s);
   });
   saMenuCarga = ld(SA_MENU_HUB + "sa-nav.js")
-    .then(() => ld(SA_MENU_HUB + "alma-voz.js").catch(() => {}))
+    .then(() => ld(SA_MENU_HUB + "alma-client.js").then(() => ld(SA_MENU_HUB + "alma-voz.js")).catch(() => {}))
     .then(() => !!window.SANav)
     .catch(() => { saMenuCarga = null; return false; });
   return saMenuCarga;
@@ -1063,9 +1065,8 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
   useEffectAd(() => {
     if (!menuOk || !window.SANav) return;
     const es = t.code === "es";
-    /* Alma por voz: el proveedor por defecto de alma-voz.js necesita window.ALMA.vozWeb (alma-client.js del Hub).
-       Si no está, no se pasa: el gesto de Alma queda apagado en vez de fallar. */
-    const alma = window.SAAlmaVoz && window.ALMA && window.ALMA.vozWeb ? window.SAAlmaVoz : null;
+    /* Alma por voz (js/alma-voz.js con la ficha de alma-client.js): deslizar el botón hacia el centro. */
+    const alma = window.SAAlmaVoz || null;
     try {
       window.SANav.update({
         app: "hola", home: { k: "registros", l: t.tabRegistros }, current: tab, hidden: false,

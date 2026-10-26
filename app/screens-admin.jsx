@@ -999,6 +999,28 @@ function AdminAccountModal({ t, profile, email, onSave, onClose }) {
   );
 }
 
+/* ---------- MENÚ COMPARTIDO DE SPACIO AM (botón roca) ----------
+   El mismo menú del Hub, Epi y GSP: se carga desde hub.spacioam.com, así cada mejora (y el anillo) llega sola.
+   Solo lo pide el panel de administración: las pantallas de huéspedes ni siquiera descargan el archivo.
+   Se carga en segundo plano (no frena la primera pintura). Después del menú van alma-client.js (window.ALMA,
+   la ficha de voz del Apps Script de ALMA; sa-sesion.js le agrega la sesión firmada del equipo) y alma-voz.js
+   (Alma por voz al deslizar el botón hacia el centro), igual que en Mi. Si algo falla, se queda la navegación
+   propia de Hola (NavTabs) y, sin Alma, el menú funciona igual. */
+const SA_MENU_HUB = "https://hub.spacioam.com/js/";
+let saMenuCarga = null;
+function saMenuCargar() {
+  if (window.SANav) return Promise.resolve(true);
+  if (saMenuCarga) return saMenuCarga;
+  const ld = (src) => new Promise((ok, ko) => {
+    const s = document.createElement("script"); s.src = src; s.async = false; s.onload = ok; s.onerror = ko; document.head.appendChild(s);
+  });
+  saMenuCarga = ld(SA_MENU_HUB + "sa-nav.js")
+    .then(() => ld(SA_MENU_HUB + "alma-client.js").then(() => ld(SA_MENU_HUB + "alma-voz.js")).catch(() => {}))
+    .then(() => !!window.SANav)
+    .catch(() => { saMenuCarga = null; return false; });
+  return saMenuCarga;
+}
+
 /* ============================================================
    ADMIN SCREEN — roster with dropdown filters + actions
    ============================================================ */
@@ -1032,6 +1054,33 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
   });
   const [meta, setMeta] = useStateAd(null);
   const [tab, setTab] = useStateAd("registros");
+  /* Menú compartido: true cuando sa-nav.js cargó; entonces se esconde la navegación propia (igual que en Epi). */
+  const [menuOk, setMenuOk] = useStateAd(() => !!window.SANav);
+  useEffectAd(() => {
+    let vivo = true;
+    saMenuCargar().then((ok) => { if (vivo && ok) setMenuOk(true); });
+    // al salir del panel (cerrar sesión o vista del huésped) el menú se esconde: los huéspedes no lo ven.
+    return () => { vivo = false; try { if (window.SANav) window.SANav.hide(true); } catch (e) {} };
+  }, []);
+  useEffectAd(() => {
+    if (!menuOk || !window.SANav) return;
+    const es = t.code === "es";
+    /* Alma por voz (js/alma-voz.js con la ficha de alma-client.js): deslizar el botón hacia el centro. */
+    const alma = window.SAAlmaVoz || null;
+    try {
+      window.SANav.update({
+        app: "hola", home: { k: "registros", l: t.tabRegistros }, current: tab, hidden: false,
+        items: [
+          { k: "seguimiento", l: t.tabSeguimiento, icon: "list" },
+          { k: "longterm", l: (t.lt && t.lt.tab) || (es ? "Estadías largas" : "Long stays"), icon: "calendar" },
+          { k: "propiedades", l: t.tabPropiedades, icon: "door" },
+        ],
+        apps: null,   // las apps permitidas se leen de la sesión (sa-sesion.js)
+        alma,
+        onNavigate: (k) => { setTab(k); try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (e) {} },
+      });
+    } catch (e) { setMenuOk(false); }
+  });
   const [focusProp, setFocusProp] = useStateAd("");
   const [connected, setConnected] = useStateAd(HospitableAPI.isConnected());
   const [refreshing, setRefreshing] = useStateAd(false);
@@ -1260,14 +1309,15 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
     <div style={{ minHeight: "100vh", background: C.alabaster, position: "relative", overflow: "hidden" }}>
       <div style={{ maxWidth: 1040, margin: "0 auto", padding: "clamp(18px,3vh,28px) clamp(16px,4vw,30px) 64px", position: "relative", zIndex: 2 }}>
 
-        {/* tabs · estilo mi-spacioam (subrayado peach + barra inferior en móvil) */}
-        <NavTabs t={t} active={tab} onSelect={setTab}
+        {/* tabs · estilo mi-spacioam (subrayado peach + barra inferior en móvil).
+            Con el menú compartido activo se esconden; si sa-nav.js no cargó, siguen siendo la navegación. */}
+        {!menuOk && <NavTabs t={t} active={tab} onSelect={setTab}
           tabs={[
             { id: "registros", icon: "checkin", label: t.tabRegistros },
             { id: "seguimiento", icon: "activities", label: t.tabSeguimiento },
             { id: "longterm", icon: "clock", label: (t.lt && t.lt.tab) || (es ? "Estadías largas" : "Long stays") },
             { id: "propiedades", icon: "amenities", label: t.tabPropiedades },
-          ]} />
+          ]} />}
 
         {tab === "longterm" && <LongTermScreen t={t} roster={roster} openCode={ltOpen} onOpened={() => setLtOpen("")}
           onToast={(m) => { setToast(m); setTimeout(() => setToast(""), 2600); }} />}

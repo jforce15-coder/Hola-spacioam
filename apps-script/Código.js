@@ -225,7 +225,8 @@ function route_(e, method) {
       case 'listCached':       out = { ok: true, reservations: listCached_(), meta: { cached: true } }; break;
       case 'findReservation':  out = findReservation_(body); break;
       case 'getRegistration':  out = getRegistration_(body); break;
-      case 'getDocImage':      out = { ok: true, image: driveFileDataUrl_(body.fileId || '') }; break;
+      case 'getDocImage':      out = (__ses || esRobot_(body) || fotoDeSuBorrador_(body))   // sin sesión: solo fotos del borrador de ESA reserva
+                                 ? { ok: true, image: driveFileDataUrl_(body.fileId || '') } : { ok: false, error: 'forbidden' }; break;
       case 'listStations':     out = { ok: true, stations: listStations_() }; break;
       case 'saveStation':      out = saveStation_(body); break;
       case 'submitForm':       out = submitForm_(body); break;
@@ -1623,6 +1624,18 @@ function getDraft_(b) {
   var form = null; try { form = d.form_json ? JSON.parse(d.form_json) : null; } catch (e) {}
   return { ok: true, draft: { code: code, startedAt: d.started_at, updatedAt: d.updated_at, step: d.step, status: d.status,
     submittedAt: d.submitted_at, completedBy: d.completed_by, form: form } };
+}
+/* Fase 1c: sin sesión, el huésped solo puede pedir las fotos que guardó saveDraft_ en el borrador de SU
+   código de reserva (al retomar el registro). Antes getDocImage devolvía cualquier archivo de Drive por su ID. */
+function fotoDeSuBorrador_(b) {
+  var code = normCode_(b.code || ''), id = String(b.fileId || '');
+  if (!code || !id) return false;
+  var d = draftInfo_(code), f = null;
+  try { f = d && d.form_json ? JSON.parse(d.form_json) : null; } catch (e) {}
+  if (!f) return false;
+  var ids = (f.docs || []).map(function (x) { return x && x.fileId; });
+  if (f.booker && f.booker.doc) ids.push(f.booker.doc.fileId);
+  return ids.indexOf(id) >= 0;
 }
 /* Resumen ligero para el panel (sin el formulario): últimos 120 días. */
 function listDrafts_() {

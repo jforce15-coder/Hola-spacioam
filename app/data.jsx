@@ -1393,14 +1393,14 @@ const Backend = {
       localStorage.setItem(this.DOC_KEY, JSON.stringify(trimmed));
     } catch (e) { try { localStorage.removeItem(this.DOC_KEY); } catch (e2) {} }
   },
-  async getDocImage(fileId) {
+  async getDocImage(fileId, code) {   // code: el huésped sin sesión solo ve las fotos de su borrador
     if (!fileId) return "";
     const hit = this.cachedDocImage(fileId);
     if (hit) return hit;
     if (!this.isConnected()) return "";
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const json = await this.call("getDocImage", { fileId });
+        const json = await this.call("getDocImage", code ? { fileId, code } : { fileId });
         const img = json.image || "";
         if (img) { this._saveDocImage(fileId, img); return img; }
         return "";

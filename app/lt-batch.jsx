@@ -5,6 +5,8 @@
    3 · Cada comprobante lleva avisos (bloqueantes o de atención). El servidor repite los controles contra su propia lectura:
        el navegador solo anticipa. Nada se verifica solo. */
 const LT_TOL = 1, LT_MAX_FILES = 12, LT_WINDOW = 20;
+/* Diferencia pequeña con lo pactado (tipo de cambio, comisión del banco): manda el monto del comprobante. Igual en el servidor (LT_MARGEN). */
+const LT_MARGEN = 0.10;
 const ltPad = (n) => String(n).padStart(2, "0");
 /* "25/08/26" es día/mes/año en Guatemala. Si la lectura quedó fuera de la estancia, prueba la interpretación año↔día y un año de desfase. */
 function ltFixDate(f, entrada, today) {
@@ -60,13 +62,17 @@ function ltAllocate(rows, open, today) {
     else first = renta.find((p) => open1(p) && p.vence <= f) || renta.find((p) => open1(p) && p.vence > f) || null;
     if (first) {
       res.why = r.pick !== "auto" ? "manual" : first.vence <= f ? "due" : "next";
-      const a = Math.min(rest, need[first.id]); need[first.id] -= a; rest -= a;
-      res.alloc.push({ id: first.id, amt: a, full: need[first.id] <= LT_TOL, faltan: Math.max(0, need[first.id]) });
+      const corto = need[first.id] - rest, cerca = corto > LT_TOL && corto <= (+first.monto || 0) * LT_MARGEN;
+      const a = Math.min(rest, need[first.id]); need[first.id] = cerca ? 0 : need[first.id] - a; rest -= a;
+      res.alloc.push({ id: first.id, amt: a, full: need[first.id] <= LT_TOL, faltan: Math.max(0, need[first.id]), ajuste: cerca });
       if (r.pick === "auto" && need[first.id] <= LT_TOL) for (const p of renta) {
-        if (rest <= LT_TOL) break; if (p.vence <= first.vence || need[p.id] <= LT_TOL) continue; if (rest + LT_TOL < need[p.id]) break;
-        const a2 = need[p.id]; need[p.id] = 0; rest -= a2; res.alloc.push({ id: p.id, amt: a2, full: true });
+        if (rest <= LT_TOL) break; if (p.vence <= first.vence || need[p.id] <= LT_TOL) continue; if (rest + LT_TOL < need[p.id] - (+p.monto || 0) * LT_MARGEN) break;
+        const a2 = Math.min(rest, need[p.id]), aj = need[p.id] - rest > LT_TOL; need[p.id] = 0; rest -= a2; res.alloc.push({ id: p.id, amt: a2, full: true, ajuste: aj });
       }
     }
+    /* lo que sobra, si es poco, se queda en el último periodo: el comprobante manda */
+    const ult = res.alloc[res.alloc.length - 1], pu = ult && renta.find((p) => p.id === ult.id);
+    if (ult && rest > LT_TOL && rest <= (+(pu && pu.monto) || 0) * LT_MARGEN) { ult.amt += rest; ult.ajuste = true; rest = 0; }
     res.sobrante = rest > LT_TOL ? rest : 0;
     out[r.key] = res;
   });

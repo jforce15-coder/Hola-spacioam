@@ -1,3 +1,4 @@
+/* app/*.jsx y este archivo se compilan solos a build/app.js dentro de cada PR (robot Compilar app). */
 /* Estándar de instrucciones precargado — estandarización editorial por Claude (cero tokens del web app).
    Voz Spacio AM, bilingüe es/en, sin código de ingreso (se envía por la plataforma).
    Generado desde la info guardada de cada propiedad. sig="v1" — sube el sig para forzar re-aplicación. */

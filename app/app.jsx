@@ -191,7 +191,7 @@ function App() {
     if (!d.form || d.status === "enviado") return d;
     const img = async (x) => {
       if (!x || !x.fileId) return x;
-      const u = await Backend.getDocImage(x.fileId).catch(() => "");
+      const u = await Backend.getDocImage(x.fileId, r.code).catch(() => "");
       if (!u) return x;
       draftIds.current[sigOf(u)] = x.fileId;
       return { ...x, dataUrl: u };

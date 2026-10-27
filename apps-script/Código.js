@@ -4910,6 +4910,8 @@ function ltJson_(s) { try { return s ? JSON.parse(s) : null; } catch (e) { retur
 function ltAsig_(c) { var o = ltJson_(c && c.asignacion); return o && typeof o === 'object' ? o : {}; }
 function ltNormRef_(s) { return String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
 function ltStamp_(v) { return v instanceof Date ? Utilities.formatDate(v, LT_TZ_, "yyyy-MM-dd'T'HH:mm:ss") : String(v || ''); }
+/* Diferencia pequeña con lo pactado (tipo de cambio, comisión): manda el monto del comprobante. 0.10 = 10 %. */
+function ltMargen_() { var m = parseFloat(PropertiesService.getScriptProperties().getProperty('LT_MARGEN') || '0.10'); return isNaN(m) || m < 0 ? 0.10 : m; }
 function ltTol_() { var t = parseFloat(PropertiesService.getScriptProperties().getProperty('LT_TOL') || '1'); return isNaN(t) ? 1 : t; }
 function ltVision_(key, model, prompt, mediaType, data) {
   var block = mediaType === 'application/pdf' ? { type: 'document', source: { type: 'base64', media_type: mediaType, data: data } }
@@ -4992,11 +4994,16 @@ function ltUpload_(b) {
     ids.sort(function (a, b2) { return ltIso_(own[a].inicio) < ltIso_(own[b2].inicio) ? -1 : 1; });
     labels = ids.map(function (id) { return ltPerLabel_(own[id]); });
     // 3 · asignación del dinero (el servidor la recalcula; no confía en el navegador)
-    var asig = {}, rest = monto;
-    ids.forEach(function (id) { var p = own[id];
+    var asig = {}, rest = monto, margen = ltMargen_(), ajuste = {};
+    ids.forEach(function (id, k) { var p = own[id];
       if (concepto === 'luz') { asig[id] = monto; rest = 0; return; }
-      var need = (+p.monto || 0) - (p.estado === 'revision' ? ltPaidOn_(id, mine) : 0), a = Math.max(0, Math.min(rest, need));
-      asig[id] = Math.round(a * 100) / 100; rest -= a; if (a < need - tol) alertas.push('parcial'); });
+      var antes = p.estado === 'revision' ? ltPaidOn_(id, mine) : 0, need = (+p.monto || 0) - antes, dif = rest - need;
+      /* Falta poco, o sobra poco en el último periodo: el comprobante manda y el periodo queda pagado con ese monto. */
+      var cerca = Math.abs(dif) > tol && Math.abs(dif) <= (+p.monto || 0) * margen && (dif < 0 || k === ids.length - 1);
+      var a = cerca ? rest : Math.max(0, Math.min(rest, need));
+      asig[id] = Math.round(a * 100) / 100; rest -= a;
+      if (cerca) { ajuste[id] = Math.round((antes + a) * 100) / 100; if (alertas.indexOf('monto-ajustado') < 0) alertas.push('monto-ajustado'); }
+      else if (a < need - tol) alertas.push('parcial'); });
     if (concepto === 'renta' && rest > tol) alertas.push('excedente');
     // 4 · contra la lectura IA del servidor
     var lec = b.aiKey ? ltJson_(CacheService.getScriptCache().get('rr_' + String(b.aiKey).replace(/[^a-f0-9]/g, ''))) : null;
@@ -5020,6 +5027,7 @@ function ltUpload_(b) {
       fecha_pago: fecha, monto_pagado: monto, comentario: String(b.comentario || '').slice(0, 1000), creado: ltNow_(), concepto: concepto,
       hash: hash, banco: String(b.banco || (lec && lec.banco) || '').slice(0, 60), asignacion: JSON.stringify(asig), alertas: alertas.join(','), lectura: lec ? JSON.stringify(lec).slice(0, 2000) : '' });
     ids.forEach(function (id) { var p = own[id], upd = { estado: 'revision', motivo_rechazo: '' };
+      if (ajuste[id] != null) { upd.monto = ajuste[id]; upd.ajustado = true; }   // el monto del periodo pasa a ser el del comprobante
       if (p.estado !== 'revision' || !p.comprobante_id) upd.comprobante_id = compId;   // un abono que completa un periodo conserva el primer comprobante
       ltUpdate_('LT_Pagos', p._row, upd); });
     ltFillProfile_(r, b.perfil);

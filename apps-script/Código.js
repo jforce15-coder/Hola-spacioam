@@ -4910,8 +4910,8 @@ function ltJson_(s) { try { return s ? JSON.parse(s) : null; } catch (e) { retur
 function ltAsig_(c) { var o = ltJson_(c && c.asignacion); return o && typeof o === 'object' ? o : {}; }
 function ltNormRef_(s) { return String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
 function ltStamp_(v) { return v instanceof Date ? Utilities.formatDate(v, LT_TZ_, "yyyy-MM-dd'T'HH:mm:ss") : String(v || ''); }
-/* Diferencia pequeña con lo pactado (tipo de cambio, comisión): manda el monto del comprobante. 0.10 = 10 %. */
-function ltMargen_() { var m = parseFloat(PropertiesService.getScriptProperties().getProperty('LT_MARGEN') || '0.10'); return isNaN(m) || m < 0 ? 0.10 : m; }
+/* Diferencia con lo pactado (tipo de cambio, comisión): manda el monto del comprobante. 0.40 = 40 %. */
+function ltMargen_() { var m = parseFloat(PropertiesService.getScriptProperties().getProperty('LT_MARGEN') || '0.40'); return isNaN(m) || m < 0 ? 0.40 : m; }
 function ltTol_() { var t = parseFloat(PropertiesService.getScriptProperties().getProperty('LT_TOL') || '1'); return isNaN(t) ? 1 : t; }
 function ltVision_(key, model, prompt, mediaType, data) {
   var block = mediaType === 'application/pdf' ? { type: 'document', source: { type: 'base64', media_type: mediaType, data: data } }
@@ -4940,14 +4940,16 @@ function ltReadReceipt_(b) {
   cache.put(nk, String(n + 1), 21600);
   var key = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, data).map(function (x) { return ('0' + (x & 255).toString(16)).slice(-2); }).join('').slice(0, 40);
   var hit = cache.get('rr_' + key); if (hit) return { ok: true, text: hit, key: key };
-  var prompt = LT_RECEIPT_PROMPT_(ltToday_()), models = [cfg.AI_MODEL_PRIMARY];
-  if (cfg.AI_MODEL_FALLBACK && cfg.AI_MODEL_FALLBACK !== cfg.AI_MODEL_PRIMARY) models.push(cfg.AI_MODEL_FALLBACK);
+  /* Leer un comprobante bien vale más que ahorrar: primero un modelo con buena visión (LT_AI_MODEL), luego los de siempre. */
+  var prompt = LT_RECEIPT_PROMPT_(ltToday_()), models = [];
+  [PropertiesService.getScriptProperties().getProperty('LT_AI_MODEL') || 'claude-sonnet-5-5', cfg.AI_MODEL_FALLBACK, cfg.AI_MODEL_PRIMARY]
+    .forEach(function (m) { if (m && models.indexOf(m) < 0) models.push(m); });
   var last = '', err = '';
   for (var i = 0; i < models.length; i++) {
     var x = ltVision_(cfg.ANTHROPIC_API_KEY, models[i], prompt, mt, data); if (!x.ok) { err = x.error; continue; }
     var jm = /\{[\s\S]*\}/.exec(x.text || ''), j = jm && ltJson_(jm[0]); if (!j) { last = x.text; continue; }
     last = JSON.stringify(j);
-    if (j.es_comprobante === false || (j.legible && +j.monto > 0 && j.fecha)) break;   // lectura limpia (o claramente no es comprobante): no escala
+    if (j.es_comprobante !== false && j.legible && +j.monto > 0 && j.fecha) break;   // lectura limpia: no escala (si dice «no es comprobante», lo intenta el siguiente)
   }
   if (!last) return { ok: false, error: err || 'lectura' };
   try { cache.put('rr_' + key, last.slice(0, 90000), 21600); } catch (e) {}
@@ -4962,7 +4964,22 @@ function ltAltDates_(iso) {
   return out;
 }
 function ltPaidOn_(pid, comps) { return comps.reduce(function (n, c) { return n + (+ltAsig_(c)[pid] || 0); }, 0); }
+/* Envío de un comprobante: si falla, queda anotado en LT_Errores (qué reserva, qué error) para poder corregirlo. */
 function ltUpload_(b) {
+  var res;
+  try { res = ltUploadUno_(b); } catch (e) { res = { ok: false, error: String(e && e.message || e) }; }
+  if (!res || !res.ok) {
+    try {
+      var r = ltByToken_(b.token), ss = SpreadsheetApp.openById(CFG_().SHEET_ID), sh = ss.getSheetByName('LT_Errores') || ss.insertSheet('LT_Errores');
+      if (sh.getLastRow() < 1) sh.appendRow(['fecha', 'accion', 'codigo_lt', 'error', 'monto', 'fecha_pago', 'periodos']);
+      sh.appendRow([ltNow_(), 'ltUpload', r ? r.codigo_lt : '(token)', String(res && res.error || 'sin respuesta').slice(0, 500), +b.monto || 0, String(b.fecha || ''), (b.periodoIds || []).join(',')]);
+    } catch (e2) { console.error('LT_Errores: ' + e2); }
+    if (res && res.error && !/^(invalid|duplicado|ya-enviado|fecha-futura|sin-monto|faltan-datos)$/.test(res.error))
+      res = { ok: false, error: 'No se pudo guardar (' + String(res.error).slice(0, 120) + '). Intenta de nuevo en un momento.' };
+  }
+  return res;
+}
+function ltUploadUno_(b) {
   var r = ltByToken_(b.token); if (!r) return { ok: false, error: 'invalid' };
   var ids = (b.periodoIds || []).map(String), files = (b.files || []).slice(0, 5), concepto = b.concepto === 'luz' ? 'luz' : 'renta';
   if (!ids.length || !files.length) return { ok: false, error: 'faltan-datos' };

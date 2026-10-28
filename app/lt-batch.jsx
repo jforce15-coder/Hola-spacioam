@@ -6,7 +6,7 @@
        el navegador solo anticipa. Nada se verifica solo. */
 const LT_TOL = 1, LT_MAX_FILES = 12, LT_WINDOW = 20;
 /* Diferencia pequeña con lo pactado (tipo de cambio, comisión del banco): manda el monto del comprobante. Igual en el servidor (LT_MARGEN). */
-const LT_MARGEN = 0.10;
+const LT_MARGEN = 0.40;
 const ltPad = (n) => String(n).padStart(2, "0");
 /* "25/08/26" es día/mes/año en Guatemala. Si la lectura quedó fuera de la estancia, prueba la interpretación año↔día y un año de desfase. */
 function ltFixDate(f, entrada, today) {
@@ -140,7 +140,8 @@ function ltRowFlags(r, ctx) {
   const { t, rows, lt, cur, today, res, fmt, byId } = ctx, F = t.lt.rc.flag, out = [], ai = r.ai || {};
   if (r.status !== "ok") return out;
   const push = (code, text, hard) => out.push({ code, text, hard });
-  if (r.ai && ai.es_comprobante === false) push("notReceipt", F.notReceipt, true);
+  /* aviso suave: el equipo lo revisa (el servidor lo marca «no-comprobante»); no impide enviarlo */
+  if (r.ai && ai.es_comprobante === false) push("notReceipt", F.notReceipt);
   if (r.hash && rows.some((x) => x.hash === r.hash && x.n < r.n)) push("dupBatch", F.dupBatch, true);
   const comps = (lt.comprobantes || []), pagos = lt.pagos || [], rejected = (c) => c.periodos.length && c.periodos.every((id) => { const p = pagos.find((x) => x.id === id); return p && p.estado === "rechazado"; });
   const ref = ltNormRef(r.ref), prev = comps.filter((c) => (r.hash && c.hash === r.hash) || (ref.length >= 4 && ltNormRef(c.referencia) === ref));

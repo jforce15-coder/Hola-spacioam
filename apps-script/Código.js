@@ -217,7 +217,7 @@ function route_(e, method) {
     var action = body.action || (e && e.parameter && e.parameter.action) || 'ping';
     var __diag = accesosDiag_(body); if (__diag) return __diag;   // fase 1b: resumen de accesos (robot)
     var __ses = sesionDe_(body); registrarAcceso_(action, __ses ? true : esRobot_(body) ? 'r' : false);
-    var __bloq = exigirSesion_(action, !!__ses, body, ['ping', 'listPropertyInfo', 'getDocImage', 'findReservation', 'submitForm', 'createAccount', 'login', 'suggestion', 'hostRequest', 'flexAvailability', 'listingAmenities', 'invoiceRequest', 'guestAccess', 'streamingRequest', 'formStarted', 'formCompleted', 'saveDraft', 'getDraft', 'readDocument', 'adminLogin', 'reportProblem', 'openLink', 'regPdfRobot', 'ltGuest', 'ltUpload', 'ltReadReceipt', 'ltGuestNotice', 'ltGuestMsg', 'ltGuestFile']); if (__bloq) return __bloq;   // fase 1c: solo bloquea con SESION_EXIGIR = 1
+    var __bloq = exigirSesion_(action, !!__ses, body, ['ping', 'listPropertyInfo', 'getDocImage', 'findReservation', 'submitForm', 'createAccount', 'login', 'suggestion', 'hostRequest', 'flexAvailability', 'listingAmenities', 'invoiceRequest', 'guestAccess', 'streamingRequest', 'formStarted', 'formCompleted', 'saveDraft', 'getDraft', 'readDocument', 'adminLogin', 'reportProblem', 'openLink', 'regPdfRobot', 'ltGuest', 'ltUpload', 'ltClientError', 'ltReadReceipt', 'ltGuestNotice', 'ltGuestMsg', 'ltGuestFile']); if (__bloq) return __bloq;   // fase 1c: solo bloquea con SESION_EXIGIR = 1
 
     switch (action) {
       case 'ping':             out = { ok: true, service: 'spacio-am-backend', time: new Date().toISOString() }; break;
@@ -4435,6 +4435,13 @@ function ltNow_() { return Utilities.formatDate(new Date(), LT_TZ_, "yyyy-MM-dd'
 function ltToday_() { return Utilities.formatDate(new Date(), LT_TZ_, 'yyyy-MM-dd'); }
 function ltId_(p) { return p + Utilities.getUuid().replace(/-/g, '').slice(0, 10).toUpperCase(); }
 function ltIso_(v) { return String(v || '').slice(0, 10); }
+/* Fecha que exista; si la IA puso el día en el lugar del mes («2026-28-10»), se ordena; si no tiene arreglo, vacía. */
+function ltFechaReal_(s) {
+  var m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(String(s || '').trim()); if (!m) return '';
+  var y = +m[1], mo = +m[2], d = +m[3]; if (mo > 12 && d <= 12) { var t = mo; mo = d; d = t; }
+  var f = new Date(y, mo - 1, d); if (f.getFullYear() !== y || f.getMonth() !== mo - 1 || f.getDate() !== d) return '';
+  return y + '-' + ('0' + mo).slice(-2) + '-' + ('0' + d).slice(-2);
+}
 function ltD_(iso) { var p = ltIso_(iso).split('-'); return new Date(+p[0], +p[1] - 1, +p[2], 12); }
 function ltFmt_(d) { return Utilities.formatDate(d, LT_TZ_, 'yyyy-MM-dd'); }
 function ltAdd_(iso, n) { var d = ltD_(iso); d.setDate(d.getDate() + n); return ltFmt_(d); }
@@ -4948,6 +4955,7 @@ function ltReadReceipt_(b) {
   for (var i = 0; i < models.length; i++) {
     var x = ltVision_(cfg.ANTHROPIC_API_KEY, models[i], prompt, mt, data); if (!x.ok) { err = x.error; continue; }
     var jm = /\{[\s\S]*\}/.exec(x.text || ''), j = jm && ltJson_(jm[0]); if (!j) { last = x.text; continue; }
+    j.fecha = ltFechaReal_(j.fecha);
     last = JSON.stringify(j);
     if (j.es_comprobante !== false && j.legible && +j.monto > 0 && j.fecha) break;   // lectura limpia: no escala (si dice «no es comprobante», lo intenta el siguiente)
   }
@@ -4969,21 +4977,31 @@ function ltUpload_(b) {
   var res;
   try { res = ltUploadUno_(b); } catch (e) { res = { ok: false, error: String(e && e.message || e) }; }
   if (!res || !res.ok) {
-    try {
-      var r = ltByToken_(b.token), ss = SpreadsheetApp.openById(CFG_().SHEET_ID), sh = ss.getSheetByName('LT_Errores') || ss.insertSheet('LT_Errores');
-      if (sh.getLastRow() < 1) sh.appendRow(['fecha', 'accion', 'codigo_lt', 'error', 'monto', 'fecha_pago', 'periodos']);
-      sh.appendRow([ltNow_(), 'ltUpload', r ? r.codigo_lt : '(token)', String(res && res.error || 'sin respuesta').slice(0, 500), +b.monto || 0, String(b.fecha || ''), (b.periodoIds || []).join(',')]);
-    } catch (e2) { console.error('LT_Errores: ' + e2); }
+    var r = ltByToken_(b.token);
+    ltLogErr_('ltUpload', r ? r.codigo_lt : '(token)', String(res && res.error || 'sin respuesta'), b);
     if (res && res.error && !/^(invalid|duplicado|ya-enviado|fecha-futura|sin-monto|faltan-datos)$/.test(res.error))
       res = { ok: false, error: 'No se pudo guardar (' + String(res.error).slice(0, 120) + '). Intenta de nuevo en un momento.' };
   }
   return res;
 }
+function ltLogErr_(accion, codigo, error, b) {
+  try {
+    var ss = SpreadsheetApp.openById(CFG_().SHEET_ID), sh = ss.getSheetByName('LT_Errores') || ss.insertSheet('LT_Errores');
+    if (sh.getLastRow() < 1) sh.appendRow(['fecha', 'accion', 'codigo_lt', 'error', 'monto', 'fecha_pago', 'periodos']);
+    sh.appendRow([ltNow_(), accion, codigo, String(error).slice(0, 500), +(b && b.monto) || 0, String((b && b.fecha) || ''), ((b && b.periodoIds) || []).join(',')]);
+  } catch (e) { console.error('LT_Errores: ' + e); }
+}
+/* El navegador avisa que el envío se cortó antes de llegar (no hay respuesta del servidor): solo con token válido. */
+function ltClientError_(b) {
+  var r = ltByToken_(b.token); if (!r) return { ok: false, error: 'invalid' };
+  ltLogErr_('ltUpload (navegador)', r.codigo_lt, String(b.error || '').slice(0, 80) + ' · ' + (+b.seg || 0) + ' s · ' + (+b.kb || 0) + ' KB · ' + String(b.device || '').slice(0, 160), {});
+  return { ok: true };
+}
 function ltUploadUno_(b) {
   var r = ltByToken_(b.token); if (!r) return { ok: false, error: 'invalid' };
   var ids = (b.periodoIds || []).map(String), files = (b.files || []).slice(0, 5), concepto = b.concepto === 'luz' ? 'luz' : 'renta';
   if (!ids.length || !files.length) return { ok: false, error: 'faltan-datos' };
-  var today = ltToday_(), fecha = ltIso_(b.fecha), monto = Math.round((+b.monto || 0) * 100) / 100, tol = ltTol_();
+  var today = ltToday_(), fecha = ltFechaReal_(ltIso_(b.fecha)), monto = Math.round((+b.monto || 0) * 100) / 100, tol = ltTol_();
   if (fecha && fecha > today) return { ok: false, error: 'fecha-futura' };
   if (!(monto > 0)) return { ok: false, error: 'sin-monto' };
   var lock = LockService.getScriptLock(), labels = [], alertas = [], out = null; lock.waitLock(20000);
@@ -5136,6 +5154,7 @@ function ltRoute_(action, b) {
     case 'ltAdminFile': return ltAdminFile_(b);
     case 'ltGuest': return ltGuest_(b);
     case 'ltUpload': return ltUpload_(b);
+    case 'ltClientError': return ltClientError_(b);
     case 'ltReadReceipt': return ltReadReceipt_(b);
     case 'ltGuestNotice': return ltGuestNotice_(b);
     case 'ltGuestMsg': return ltGuestMsg_(b);

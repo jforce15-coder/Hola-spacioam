@@ -1588,7 +1588,7 @@ const LT_T_ES = {
       hintDiff: (x, y) => "El comprobante menciona " + x + "; lo aplicamos a " + y + ", el pendiente más antiguo. Si no es así, cámbialo en Corregir.",
       resend: "Este comprobante fue rechazado antes. Lo revisamos de nuevo.", noLuz: "Parece un recibo de luz y tu estancia no incluye ese cobro.", tampered: "Algo en la imagen se ve alterado. Lo revisamos con cuidado.",
     },
-    srvErr: { duplicado: "Ya recibimos este comprobante.", "ya-enviado": "Ese periodo ya tiene un comprobante en revisión.", "fecha-futura": "La fecha es posterior a hoy.", "sin-monto": "Falta el monto.", "faltan-datos": "Elige el periodo que paga este comprobante.", invalid: "Tu enlace venció. Ábrelo de nuevo desde tu correo." },
+    srvErr: { duplicado: "Ya recibimos este comprobante.", "ya-enviado": "Ese periodo ya tiene un comprobante en revisión.", "fecha-futura": "La fecha es posterior a hoy.", "sin-monto": "Falta el monto.", "faltan-datos": "Elige el periodo que paga este comprobante.", conexion: "Se cortó la conexión al enviarlo. Revisa tu internet y toca Enviar de nuevo.", invalid: "Tu enlace venció. Ábrelo de nuevo desde tu correo." },
     aFlag: { "monto-ajustado": "Monto ajustado al del comprobante (diferencia de hasta 10 %)", parcial: "Monto menor al pactado", excedente: "Monto mayor al pactado", moneda: "Moneda distinta", editado: "Datos editados por el huésped", "sin-lectura": "Sin lectura IA", manual: "Escrito a mano",
       "no-acreditado": "Transferencia pendiente o rechazada", manipulacion: "Posible alteración", "fecha-antigua": "Fecha antigua", "ref-repetida": "Referencia repetida", reenvio: "Reenvío tras rechazo", cuenta: "Cuenta destino no coincide", "no-comprobante": "No parece comprobante", "fecha-interpretada": "Fecha interpretada (día/mes/año)", "periodo-lejano": "Periodo lejano a la fecha", reasignado: "Reasignado por el equipo" },
     applied: "Aplicado", read: "Lectura IA",
@@ -1679,7 +1679,7 @@ const LT_T_EN = {
       hintDiff: (x, y) => "The receipt mentions " + x + "; we applied it to " + y + ", the oldest pending. If that's wrong, change it under Fix.",
       resend: "This receipt was rejected before. We'll review it again.", noLuz: "This looks like an electricity bill and your stay doesn't include that charge.", tampered: "Something in the image looks altered. We'll review it carefully.",
     },
-    srvErr: { duplicado: "We already received this receipt.", "ya-enviado": "That period already has a receipt in review.", "fecha-futura": "The date is after today.", "sin-monto": "The amount is missing.", "faltan-datos": "Choose the period this receipt pays.", invalid: "Your link expired. Open it again from your email." },
+    srvErr: { duplicado: "We already received this receipt.", "ya-enviado": "That period already has a receipt in review.", "fecha-futura": "The date is after today.", "sin-monto": "The amount is missing.", "faltan-datos": "Choose the period this receipt pays.", conexion: "The connection dropped while sending. Check your internet and tap Send again.", invalid: "Your link expired. Open it again from your email." },
     aFlag: { "monto-ajustado": "Amount set to the receipt (difference up to 10%)", parcial: "Below agreed amount", excedente: "Above agreed amount", moneda: "Different currency", editado: "Edited by guest", "sin-lectura": "No AI read", manual: "Typed by hand",
       "no-acreditado": "Transfer pending or rejected", manipulacion: "Possible tampering", "fecha-antigua": "Old date", "ref-repetida": "Repeated reference", reenvio: "Resent after rejection", cuenta: "Destination account mismatch", "no-comprobante": "Not a receipt", "fecha-interpretada": "Date interpreted (d/m/y)", "periodo-lejano": "Period far from date", reasignado: "Reassigned by team" },
     applied: "Applied", read: "AI read",
@@ -1791,7 +1791,9 @@ Object.assign(Backend, {
     }
     // un backend sin el bloque Long Term responde ok:true sin datos ("skip: action …")
     const need = { ltList: "list", ltGet: "lt", ltSave: "lt", ltSetPeriod: "lt", ltVerify: "lt", ltAdminMsg: "lt", ltEnd: "lt", ltDelete: "deleted", ltGuest: "lt", ltUpload: "lt", ltGuestMsg: "lt", ltToken: "url", ltLink: "url", ltReadReceipt: "text", ltGuestNotice: "lt", ltCompReassign: "lt", ltCompDelete: "lt" }[action];
-    if ((j && typeof j.result === "string" && /^skip/i.test(j.result)) || (need && !(j && j[need]))) {
+    /* ltUpload en lote: los envíos intermedios responden { ok, alertas } sin «lt» (lite) y son válidos */
+    const liteOk = action === "ltUpload" && j && j.ok && (Array.isArray(j.alertas) || j.repeat);
+    if ((j && typeof j.result === "string" && /^skip/i.test(j.result)) || (need && !liteOk && !(j && j[need]))) {
       return { ok: false, error: "El backend publicado no tiene Long Term. Publica una versión nueva del Apps Script." };
     }
     // el enlace del huésped siempre apunta a ESTA app (no depende de APP_URL en el backend)
@@ -1926,7 +1928,19 @@ Object.assign(Backend, {
     return { ok: false, error: "demo" };
   },
   async ltUpload(token, data) {
-    if (this.isConnected()) return this._lt("ltUpload", { token, ...data });
+    if (this.isConnected()) {
+      /* Si se corta la conexión, se reintenta una vez: el servidor reconoce el mismo archivo (15 min) y no lo duplica.
+         El corte queda anotado en LT_Errores (tiempo, tamaño, teléfono) para encontrar la causa. */
+      const t0 = Date.now(); let j = await this._lt("ltUpload", { token, ...data });
+      if (j && !j.ok && /network|tardó/i.test(String(j.error || ""))) {
+        const kb = Math.round(JSON.stringify(data).length / 1024), seg = Math.round((Date.now() - t0) / 1000);
+        this.call("ltClientError", { token, error: String(j.error), seg, kb, device: (typeof navigator !== "undefined" && navigator.userAgent) || "" }).catch(() => {});
+        await new Promise((r) => setTimeout(r, 1500));
+        j = await this._lt("ltUpload", { token, ...data });
+        if (j && !j.ok && /network/i.test(String(j.error || ""))) j.error = "conexion";
+      }
+      return j;
+    }
     const d = ltDemo.load(), r = d.list.find((x) => x.token === token); if (!r) return { ok: false, error: "invalid" };
     const monto = Math.round((+data.monto || 0) * 100) / 100, ref = String(data.referencia || "").toUpperCase().replace(/[^A-Z0-9]/g, ""), alertas = [];
     if (data.fecha && data.fecha > isoDay(todayDay())) return { ok: false, error: "fecha-futura" };

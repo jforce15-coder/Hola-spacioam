@@ -87,6 +87,14 @@ async function ltHashFile(f) {
   try { const d = await crypto.subtle.digest("SHA-256", await f.arrayBuffer()); return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 40); }
   catch (e) { return ""; }
 }
+/* Una fecha que exista. La IA a veces devuelve el día en el lugar del mes («2026-28-10»): se ordena sola;
+   si no tiene arreglo, queda vacía para que el huésped la escriba (antes salía «—» y «la fecha es posterior a hoy»). */
+function ltFechaReal(s) {
+  const m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(String(s || "").trim()); if (!m) return "";
+  let y = +m[1], mo = +m[2], d = +m[3]; if (mo > 12 && d <= 12) [mo, d] = [d, mo];
+  const f = new Date(y, mo - 1, d); if (f.getFullYear() !== y || f.getMonth() !== mo - 1 || f.getDate() !== d) return "";
+  return y + "-" + String(mo).padStart(2, "0") + "-" + String(d).padStart(2, "0");
+}
 async function ltShrinkForAI(dataUrl) {
   try {
     const img = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = dataUrl; });
@@ -128,7 +136,7 @@ async function ltReadReceipt(file, token) {
     } else return null;
     const jm = /\{[\s\S]*\}/.exec(text || ""); if (!jm) return null;
     const j = JSON.parse(jm[0]);
-    j.fecha = /^\d{4}-\d{2}-\d{2}$/.test(j.fecha || "") ? j.fecha : ""; j.monto = +String(j.monto == null ? "" : j.monto).replace(/[^\d.]/g, "") || 0;
+    j.fecha = ltFechaReal(j.fecha); j.monto = +String(j.monto == null ? "" : j.monto).replace(/[^\d.]/g, "") || 0;
     j.moneda = /^(GTQ|USD)$/.test(j.moneda || "") ? j.moneda : "";
     ["periodo_desde", "periodo_hasta"].forEach((k) => { if (!/^\d{4}-\d{2}-\d{2}$/.test(j[k] || "")) j[k] = ""; });
     return { ai: j, key };

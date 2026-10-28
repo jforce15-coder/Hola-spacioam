@@ -4435,6 +4435,13 @@ function ltNow_() { return Utilities.formatDate(new Date(), LT_TZ_, "yyyy-MM-dd'
 function ltToday_() { return Utilities.formatDate(new Date(), LT_TZ_, 'yyyy-MM-dd'); }
 function ltId_(p) { return p + Utilities.getUuid().replace(/-/g, '').slice(0, 10).toUpperCase(); }
 function ltIso_(v) { return String(v || '').slice(0, 10); }
+/* Fecha que exista; si la IA puso el día en el lugar del mes («2026-28-10»), se ordena; si no tiene arreglo, vacía. */
+function ltFechaReal_(s) {
+  var m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(String(s || '').trim()); if (!m) return '';
+  var y = +m[1], mo = +m[2], d = +m[3]; if (mo > 12 && d <= 12) { var t = mo; mo = d; d = t; }
+  var f = new Date(y, mo - 1, d); if (f.getFullYear() !== y || f.getMonth() !== mo - 1 || f.getDate() !== d) return '';
+  return y + '-' + ('0' + mo).slice(-2) + '-' + ('0' + d).slice(-2);
+}
 function ltD_(iso) { var p = ltIso_(iso).split('-'); return new Date(+p[0], +p[1] - 1, +p[2], 12); }
 function ltFmt_(d) { return Utilities.formatDate(d, LT_TZ_, 'yyyy-MM-dd'); }
 function ltAdd_(iso, n) { var d = ltD_(iso); d.setDate(d.getDate() + n); return ltFmt_(d); }
@@ -4948,6 +4955,7 @@ function ltReadReceipt_(b) {
   for (var i = 0; i < models.length; i++) {
     var x = ltVision_(cfg.ANTHROPIC_API_KEY, models[i], prompt, mt, data); if (!x.ok) { err = x.error; continue; }
     var jm = /\{[\s\S]*\}/.exec(x.text || ''), j = jm && ltJson_(jm[0]); if (!j) { last = x.text; continue; }
+    j.fecha = ltFechaReal_(j.fecha);
     last = JSON.stringify(j);
     if (j.es_comprobante !== false && j.legible && +j.monto > 0 && j.fecha) break;   // lectura limpia: no escala (si dice «no es comprobante», lo intenta el siguiente)
   }
@@ -4993,7 +5001,7 @@ function ltUploadUno_(b) {
   var r = ltByToken_(b.token); if (!r) return { ok: false, error: 'invalid' };
   var ids = (b.periodoIds || []).map(String), files = (b.files || []).slice(0, 5), concepto = b.concepto === 'luz' ? 'luz' : 'renta';
   if (!ids.length || !files.length) return { ok: false, error: 'faltan-datos' };
-  var today = ltToday_(), fecha = ltIso_(b.fecha), monto = Math.round((+b.monto || 0) * 100) / 100, tol = ltTol_();
+  var today = ltToday_(), fecha = ltFechaReal_(ltIso_(b.fecha)), monto = Math.round((+b.monto || 0) * 100) / 100, tol = ltTol_();
   if (fecha && fecha > today) return { ok: false, error: 'fecha-futura' };
   if (!(monto > 0)) return { ok: false, error: 'sin-monto' };
   var lock = LockService.getScriptLock(), labels = [], alertas = [], out = null; lock.waitLock(20000);

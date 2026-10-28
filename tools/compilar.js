@@ -12,7 +12,11 @@ for (const src of LISTA.jsx) {
   const code = fs.readFileSync(path.join(raiz, src), 'utf8');
   const out = Babel.transform(code, { filename: src, presets: ['react', 'env'],
     plugins: ['transform-class-properties', 'transform-object-rest-spread'], compact: true, comments: false, minified: true }).code;
-  salida += '\n/* ' + src + ' */\n' + out + '\n;\n';
+  /* Babel crea variables propias de cada archivo (_excluded, _excluded2…: qué props quita un {...rest}). Todo va en un solo
+     script, así que el «var _excluded» del último archivo pisaba al de los demás: LtInput dejaba pasar el onChange crudo y
+     los campos guardaban el evento («[object Object]»). Cada archivo lleva las suyas con su propio nombre. */
+  const k = LISTA.jsx.indexOf(src);
+  salida += '\n/* ' + src + ' */\n' + out.replace(/\b(_excluded\d*|_templateObject\d*)\b/g, '$1_' + k) + '\n;\n';
   console.log(src, Math.round(out.length / 1024) + ' KB');
 }
 fs.mkdirSync(path.join(raiz, 'build'), { recursive: true });

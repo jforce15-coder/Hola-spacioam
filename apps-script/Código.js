@@ -217,7 +217,7 @@ function route_(e, method) {
     var action = body.action || (e && e.parameter && e.parameter.action) || 'ping';
     var __diag = accesosDiag_(body); if (__diag) return __diag;   // fase 1b: resumen de accesos (robot)
     var __ses = sesionDe_(body); registrarAcceso_(action, __ses ? true : esRobot_(body) ? 'r' : false);
-    var __bloq = exigirSesion_(action, !!__ses, body, ['ping', 'listPropertyInfo', 'getDocImage', 'findReservation', 'submitForm', 'createAccount', 'login', 'suggestion', 'hostRequest', 'flexAvailability', 'listingAmenities', 'invoiceRequest', 'guestAccess', 'streamingRequest', 'formStarted', 'formCompleted', 'saveDraft', 'getDraft', 'readDocument', 'adminLogin', 'reportProblem', 'openLink', 'regPdfRobot', 'ltGuest', 'ltUpload', 'ltReadReceipt', 'ltGuestNotice', 'ltGuestMsg', 'ltGuestFile']); if (__bloq) return __bloq;   // fase 1c: solo bloquea con SESION_EXIGIR = 1
+    var __bloq = exigirSesion_(action, !!__ses, body, ['ping', 'listPropertyInfo', 'getDocImage', 'findReservation', 'submitForm', 'createAccount', 'login', 'suggestion', 'hostRequest', 'flexAvailability', 'listingAmenities', 'invoiceRequest', 'guestAccess', 'streamingRequest', 'formStarted', 'formCompleted', 'saveDraft', 'getDraft', 'readDocument', 'adminLogin', 'reportProblem', 'openLink', 'regPdfRobot', 'ltGuest', 'ltUpload', 'ltClientError', 'ltReadReceipt', 'ltGuestNotice', 'ltGuestMsg', 'ltGuestFile']); if (__bloq) return __bloq;   // fase 1c: solo bloquea con SESION_EXIGIR = 1
 
     switch (action) {
       case 'ping':             out = { ok: true, service: 'spacio-am-backend', time: new Date().toISOString() }; break;
@@ -4969,15 +4969,25 @@ function ltUpload_(b) {
   var res;
   try { res = ltUploadUno_(b); } catch (e) { res = { ok: false, error: String(e && e.message || e) }; }
   if (!res || !res.ok) {
-    try {
-      var r = ltByToken_(b.token), ss = SpreadsheetApp.openById(CFG_().SHEET_ID), sh = ss.getSheetByName('LT_Errores') || ss.insertSheet('LT_Errores');
-      if (sh.getLastRow() < 1) sh.appendRow(['fecha', 'accion', 'codigo_lt', 'error', 'monto', 'fecha_pago', 'periodos']);
-      sh.appendRow([ltNow_(), 'ltUpload', r ? r.codigo_lt : '(token)', String(res && res.error || 'sin respuesta').slice(0, 500), +b.monto || 0, String(b.fecha || ''), (b.periodoIds || []).join(',')]);
-    } catch (e2) { console.error('LT_Errores: ' + e2); }
+    var r = ltByToken_(b.token);
+    ltLogErr_('ltUpload', r ? r.codigo_lt : '(token)', String(res && res.error || 'sin respuesta'), b);
     if (res && res.error && !/^(invalid|duplicado|ya-enviado|fecha-futura|sin-monto|faltan-datos)$/.test(res.error))
       res = { ok: false, error: 'No se pudo guardar (' + String(res.error).slice(0, 120) + '). Intenta de nuevo en un momento.' };
   }
   return res;
+}
+function ltLogErr_(accion, codigo, error, b) {
+  try {
+    var ss = SpreadsheetApp.openById(CFG_().SHEET_ID), sh = ss.getSheetByName('LT_Errores') || ss.insertSheet('LT_Errores');
+    if (sh.getLastRow() < 1) sh.appendRow(['fecha', 'accion', 'codigo_lt', 'error', 'monto', 'fecha_pago', 'periodos']);
+    sh.appendRow([ltNow_(), accion, codigo, String(error).slice(0, 500), +(b && b.monto) || 0, String((b && b.fecha) || ''), ((b && b.periodoIds) || []).join(',')]);
+  } catch (e) { console.error('LT_Errores: ' + e); }
+}
+/* El navegador avisa que el envío se cortó antes de llegar (no hay respuesta del servidor): solo con token válido. */
+function ltClientError_(b) {
+  var r = ltByToken_(b.token); if (!r) return { ok: false, error: 'invalid' };
+  ltLogErr_('ltUpload (navegador)', r.codigo_lt, String(b.error || '').slice(0, 80) + ' · ' + (+b.seg || 0) + ' s · ' + (+b.kb || 0) + ' KB · ' + String(b.device || '').slice(0, 160), {});
+  return { ok: true };
 }
 function ltUploadUno_(b) {
   var r = ltByToken_(b.token); if (!r) return { ok: false, error: 'invalid' };
@@ -5136,6 +5146,7 @@ function ltRoute_(action, b) {
     case 'ltAdminFile': return ltAdminFile_(b);
     case 'ltGuest': return ltGuest_(b);
     case 'ltUpload': return ltUpload_(b);
+    case 'ltClientError': return ltClientError_(b);
     case 'ltReadReceipt': return ltReadReceipt_(b);
     case 'ltGuestNotice': return ltGuestNotice_(b);
     case 'ltGuestMsg': return ltGuestMsg_(b);

@@ -289,13 +289,14 @@ function LtReceiptIntake({ t, es, token, lt, onDone, perfilSlot, perfil, resetPe
                   {a.why === "manual" ? rc.why.manual : a.why === "due" ? rc.why.due(d0, ltDate(p0.vence, es)) : rc.why.next(d0)}{rng ? " · " + rc.why.range(rng) : ""}</span>; })()}
             </>}
           </span>
-          {r.status === "ok" && !r.editing && <LtPill small icon="edit" onClick={() => upd(r.key, { editing: true })} disabled={busy}>{rc.edit}</LtPill>}
           <button onClick={() => setRows((p) => p.filter((x) => x.key !== r.key))} disabled={busy} aria-label="remove" className="sp-btn"
             style={{ width: 44, height: 44, borderRadius: 999, border: "none", background: "transparent", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
             <Icon name="x" size={16} color={C.tierra} /></button>
         </div>
         {r.srvErr && <LtFlag f={{ hard: true, text: r.srvErr }} />}
         {fl.map((f) => <LtFlag key={f.code} f={f} />)}
+        {/* «Corregir» en su propia línea: al lado del texto lo dejaba sin ancho y se leía en vertical */}
+        {r.status === "ok" && !r.editing && <div style={{ display: "flex", justifyContent: "flex-end" }}><LtPill small icon="edit" onClick={() => upd(r.key, { editing: true })} disabled={busy}>{rc.edit}</LtPill></div>}
         {r.status === "ok" && r.editing && <div style={{ display: "flex", flexDirection: "column", gap: 10, background: C.beige, borderRadius: 10, padding: 12 }}>
           {r.manual && <span style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra, lineHeight: 1.5 }}>{rc.manualHint}</span>}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10 }}>

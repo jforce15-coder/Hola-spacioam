@@ -666,7 +666,44 @@ const Icon = ({ name, size = 22, color = C.negro, strokeWidth = 1.4 }) => {
   return <svg viewBox="0 0 24 24" style={s} aria-hidden="true">{p[name]}</svg>;
 };
 
+/* ---------- MOVIMIENTO CON SENTIDO (hub.spacioam.com/ds/movimiento.md) ----------
+   Las piezas (window.SAMov) vienen de hub.spacioam.com/ds/movimiento.js. Si no cargaron (la red), todo funciona igual,
+   sin animar: el texto del error, el cambio de pestaña y la fila que se va siguen ahí. Con prefers-reduced-motion,
+   SAMov no anima (solo el borde rojo, el hueco se cierra de una vez). */
+/* 4 · el no se ve antes de leerlo: el campo se sacude y queda en rojo hasta que se vuelve a escribir (va con su texto). */
+function saSacudir(...els) { if (!window.SAMov) return; els.forEach((el) => { if (el) window.SAMov.sacudir(el); }); }
+/* 6 · nada salta: el alto de la fila baja a 0 y después se quita (listo). gap: el espacio del contenedor, que también se cierra. */
+function saQuitar(el, listo, gap) {
+  if (!el || !window.SAMov) { listo(); return; }
+  window.SAMov.quitar(el, listo);
+  if (gap && el.classList.contains("sa-se-va")) el.style.marginBottom = -gap + "px";
+}
+/* 5 · la píldora viaja: la barra (ref) tiene un <i className="sa-pildora"> y la opción elegida lleva aria-pressed o aria-selected.
+   La primera vez se pone sin animar; después se desliza. Sin SAMov, la opción elegida conserva su propio fondo. */
+function useSaPildora(ref, valor) {
+  React.useLayoutEffect(() => {
+    const b = ref.current; if (!b || !window.SAMov) return undefined;
+    const poner = () => {
+      const on = b.querySelector('[aria-pressed="true"],[aria-selected="true"]'), p = b.querySelector(".sa-pildora");
+      if (!on || !p || !on.offsetWidth) return;
+      const primera = !p.style.width; if (primera) p.style.transition = "none";
+      window.SAMov.pildora(b, on);
+      if (primera) { void p.offsetWidth; p.style.transition = ""; }
+      b.setAttribute("data-pildora", "lista");
+    };
+    poner(); window.addEventListener("resize", poner);
+    return () => window.removeEventListener("resize", poner);
+  }, [valor]);
+}
+/* 3 · sale de donde tocaste: al abrirse, el panel crece desde el botón que lo abrió. */
+function useSaDesde(abierto, panelRef, botonRef) {
+  React.useLayoutEffect(() => { if (abierto && window.SAMov && panelRef.current && botonRef.current) window.SAMov.desde(panelRef.current, botonRef.current); }, [abierto]);
+}
+/* el fundido de siempre, solo si SAMov no está (si está, lo reemplaza sa-desde) */
+const saFundido = (a) => (window.SAMov ? undefined : a);
+
 Object.assign(window, {
+  saSacudir, saQuitar, useSaPildora, useSaDesde, saFundido,
   LogoMain, LogoS, LogoStamp, Sparkle, FlowLine, Brush3D, WeaveHero, Grain, Btn, Field,
   PhoneInput, DocUploader, readDocumentAI, readDocumentRobust, rotateDataUrl, compressDocPhoto, Screen, TopBar, Steps, H, Alert, Spinner, Icon,
 });

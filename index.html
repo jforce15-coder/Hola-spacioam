@@ -9,6 +9,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,300;1,400&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="https://hub.spacioam.com/ds/esqueleto.css" />
+<!-- Movimiento con sentido (ds/movimiento.md): las piezas del design system. Si no llegan, la app funciona igual, sin animar. -->
+<link rel="stylesheet" href="https://hub.spacioam.com/ds/movimiento.css" />
 <style>
 @font-face { font-family:"Valky"; src:url("assets/fonts/Valky-Light.otf") format("opentype"); font-weight:300; font-display:swap; }
 @font-face { font-family:"Valky"; src:url("assets/fonts/Valky-Regular.otf") format("opentype"); font-weight:400; font-display:swap; }
@@ -80,6 +82,12 @@ button{ font-family:inherit; }
   color:var(--fg-muted); border-bottom:2px solid transparent; transition:color .18s var(--ease), border-color .18s var(--ease); white-space:nowrap; }
 .sa-tab:hover{ color:var(--ink); }
 .sa-tab.active{ color:var(--ink); border-bottom-color:var(--peach); }
+/* Movimiento con sentido · la píldora viaja (regla 5): la raya durazno se desliza bajo la pestaña elegida. */
+.sa-tabs-inner{ position:relative; }
+.sa-tabs-inner .sa-pildora{ top:auto; bottom:0; height:2px !important; border-radius:2px; background:var(--peach); }
+.sa-tabs-inner[data-pildora="lista"] .sa-tab.active{ border-bottom-color:transparent; }
+/* … y en los segmentos (ES · EN), la opción elegida deja que la píldora ponga su fondo. */
+[data-pildora="lista"] > button[aria-pressed="true"]{ background:transparent !important; box-shadow:none !important; }
 
 /* ---------- Bottom nav (móvil) ---------- */
 .sa-bottomnav{ display:none; position:fixed; left:12px; right:12px; bottom:12px; z-index:45;
@@ -97,6 +105,9 @@ button{ font-family:inherit; }
 .sa-navmore-sheet{ position:absolute; bottom:calc(100% + 12px); right:0; z-index:46; min-width:210px;
   background:var(--alabaster); border:1px solid var(--ink-08); border-radius:20px; box-shadow:var(--shadow-md);
   padding:7px; display:flex; flex-direction:column; gap:2px; animation:sa-fade .18s var(--ease); }
+/* Sale de donde tocaste (regla 3): con SAMov, «Más» crece desde su botón en vez del fundido. */
+.sa-navmore-sheet.sa-desde{ animation:sa-desde 280ms var(--resorte) both; }
+@media (prefers-reduced-motion: reduce){ .sa-navmore-sheet.sa-desde{ animation:none; } }
 .sa-navmore-item{ display:flex; align-items:center; gap:11px; border:none; background:transparent; cursor:pointer;
   padding:13px 14px; border-radius:13px; font-family:var(--sans); font-size:11px; font-weight:500; letter-spacing:.14em;
   text-transform:uppercase; color:var(--fg-muted); text-align:left; transition:background .14s var(--ease), color .14s var(--ease); }
@@ -247,6 +258,7 @@ button{ -webkit-tap-highlight-color:transparent; }
 <script src="app/tz-guatemala.js?v=20261024pdf"></script>
 <script src="config.js?v=20261024pdf"></script>
 <script src="app/sa-auth-client.js?v=20261024pdf"></script>
+<script src="https://hub.spacioam.com/ds/movimiento.js"></script>
 <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" integrity="sha384-DGyLxAyjq0f9SPpVevD6IgztCFlnMF6oW/XQGmfe+IsZ8TqEiDrcHkMLKI6fiB/Z" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" integrity="sha384-gTGxhz21lVGYNMcdJOyq01Edg0jhn/c22nsx0kyqP0TxaV5WVdsSH1fSDUf5YJj1" crossorigin="anonymous"></script>
 <script>
@@ -266,7 +278,7 @@ window.__holaRespaldo = function () {
 };
 window.__HOLA_LISTA__ = {"simples":["app/std-seed.js"],"jsx":["app/data.jsx","app/checkin-data.jsx","app/primitives.jsx","app/shell.jsx","app/noti-center.jsx","app/tutorials.jsx","app/screens-onboarding.jsx","app/screens-bento.jsx","app/screens-admin.jsx","app/lt-ui.jsx","app/screens-longterm.jsx","app/lt-batch.jsx","app/screens-ltguest.jsx","app/app.jsx"]};
 </script>
-<script src="build/app.js?v=74987ded04ec" onerror="window.__holaRespaldo()"></script>
+<script src="build/app.js?v=ff81ea3f63d4" onerror="window.__holaRespaldo()"></script>
 <script>
 /* Red de seguridad: si React no llegó de unpkg (navegadores dentro de Airbnb o Instagram), se pide a otro CDN
    y se vuelve a cargar build/app.js. */

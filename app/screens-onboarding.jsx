@@ -158,6 +158,8 @@ function CodeScreen({ t, linkErr, onClearLinkErr, onResolved, onAdmin, onSwitchL
   //   sync = "deep"  → 60 días (~2 min)
   // Si la caché falla se abre el pop-up y el huésped decide buscar en vivo.
   const [seek, setSeek] = useStateO(null); // { stage, running, elapsed, eta, done }
+  const codeRef = React.useRef(null);
+  const vencida = () => { setErr(t.expired); saSacudir(codeRef.current); };   // el código se sacude con su texto (Movimiento con sentido, regla 4)
   const submit = (sync) => {
     setErr(""); if (onClearLinkErr) onClearLinkErr(); setLoading(true);
     // acceso permitido hasta 10 días después del checkout; luego, vencida.
@@ -170,12 +172,12 @@ function CodeScreen({ t, linkErr, onClearLinkErr, onResolved, onAdmin, onSwitchL
     // demo/local codes resolve instantly; otherwise ask the backend (which
     // re-syncs from Hospitable on a miss before giving up).
     const local = findReservation(code);
-    if (local) { setTimeout(() => { setLoading(false); if (isExpired(local)) { setErr(t.expired); return; } onResolved(local); }, 500); return; }
+    if (local) { setTimeout(() => { setLoading(false); if (isExpired(local)) { vencida(); return; } onResolved(local); }, 500); return; }
     Backend.findReservation(code, sync).then(({ reservation: res, canSync, timedOut, offline }) => {
       setLoading(false);
       if (!res) { setSeek({ stage: canSync || "", running: false, timedOut: timedOut, offline: offline, fails: sync ? 1 : 0 }); return; }
       setSeek(null);
-      if (isExpired(res)) { setErr(t.expired); return; }
+      if (isExpired(res)) { vencida(); return; }
       onResolved(res);
     }).catch(() => { setLoading(false); setSeek({ stage: sync || "quick", running: false, timedOut: true, fails: 1 }); });
   };
@@ -192,7 +194,7 @@ function CodeScreen({ t, linkErr, onClearLinkErr, onResolved, onAdmin, onSwitchL
       clearInterval(tick);
       if (!res) { setSeek({ stage: canSync || "", running: false, tried: stage, timedOut: timedOut, offline: offline, fails: fails + 1 }); return; }
       setSeek(null);
-      if (isExpired(res)) { setErr(t.expired); return; }
+      if (isExpired(res)) { vencida(); return; }
       onResolved(res);
     }).catch(() => { clearInterval(tick); setSeek({ stage: stage, running: false, tried: stage, timedOut: true, fails: fails + 1 }); });
   };
@@ -212,7 +214,7 @@ function CodeScreen({ t, linkErr, onClearLinkErr, onResolved, onAdmin, onSwitchL
       <div className="reveal"><H sub={t.reservationSub}>{t.reservationTitle}</H></div>
       <div className="reveal" style={{ animationDelay: ".08s", background: C.white, borderRadius: 22, padding: 26,
         border: `1px solid ${C.grisCalido}`, boxShadow: "0 4px 16px rgba(62,63,63,.05)" }}>
-        <input value={code} placeholder={t.reservationPh}
+        <input ref={codeRef} value={code} placeholder={t.reservationPh}
           onChange={(e) => { setCode(e.target.value.replace(/\s+/g, "").toUpperCase()); setErr(""); }}
           onKeyDown={(e) => e.key === "Enter" && submit("")}
           style={{ width: "100%", boxSizing: "border-box", textAlign: "center", padding: "18px 12px",

@@ -281,11 +281,12 @@ function AccountModal({ t, emails, maxShare, onClose, onCreated }) {
 
   if (step === "password") return wrap(<>
     {header("key", t.acctPassword, chosen || candidates[0] ? `${t.acctChooseEmail}: ${chosen || candidates[0]}` : "")}
-    <Field label={t.acctPassword} type="password" value={pass} placeholder={t.acctPasswordPh} onChange={setPass} />
+    <div data-campo-pass><Field label={t.acctPassword} type="password" value={pass} placeholder={t.acctPasswordPh} onChange={setPass} /></div>
     {err && <p style={{ color: C.peach, fontFamily: C.sans, fontSize: 12, margin: "12px 0 0", letterSpacing: "0.02em" }}>{err}</p>}
     <div style={{ marginTop: 20 }}>
       <Btn full variant="peach" onClick={() => {
-        if ((pass || "").length < 6) { setErr(t.acctPasswordPh); return; }
+        /* la contraseña corta se sacude con su texto (Movimiento con sentido, regla 4) */
+        if ((pass || "").length < 6) { setErr(t.acctPasswordPh); saSacudir(document.querySelector("[data-campo-pass] input")); return; }
         if (maxShare > 1) { setStep("shareAsk"); }
         else { onCreated({ email: chosen || candidates[0], pass, sharedEmails: [] }); setStep("done"); }
       }}>{t.acctCreate}</Btn>

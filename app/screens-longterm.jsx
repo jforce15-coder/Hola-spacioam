@@ -21,8 +21,15 @@ function LtEditModal({ t, es, initial, properties, onClose, onSaved }) {
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
   const setG = (k, v) => setF((p) => ({ ...p, guest: { ...p.guest, [k]: v } }));
   const valid = f.propertyName && f.entrada && +f.monto > 0 && (f.tipoFin === "indefinido" || f.salida > f.entrada) && (f.frecuencia !== "personalizado" || +f.cadaDias > 0);
+  const caja = React.useRef(null);
+  /* los campos que faltan se sacuden y quedan en rojo, con el texto de abajo (Movimiento con sentido, regla 4) */
+  const marcar = (malos) => { const b = caja.current; if (b) saSacudir(...malos.filter(Boolean).map((k) => b.querySelector('[data-campo="' + k + '"]'))); };
   const save = async () => {
-    if (!valid) { setErr(es ? "Completa propiedad, fechas y monto." : "Fill in property, dates and amount."); return; }
+    if (!valid) {
+      setErr(es ? "Completa propiedad, fechas y monto." : "Fill in property, dates and amount.");
+      marcar([!f.propertyName && "propertyName", !f.entrada && "entrada", f.tipoFin !== "indefinido" && !(f.salida > f.entrada) && "salida", !(+f.monto > 0) && "monto", f.frecuencia === "personalizado" && !(+f.cadaDias > 0) && "cadaDias"]);
+      return;
+    }
     if (busyRef.current) return;
     busyRef.current = true; setBusy(true); setErr("");
     const r = await Backend.ltSave({ ...f, reqId: reqId.current, monto: +f.monto, diaCobro: Math.max(1, Math.min(31, +f.diaCobro || 1)), cadaDias: Math.max(1, +f.cadaDias || 30) });
@@ -33,7 +40,7 @@ function LtEditModal({ t, es, initial, properties, onClose, onSaved }) {
   const g2 = { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 14 };
   return <LtModal title={initial ? t.lt.edit + " · " + initial.code : t.lt.newRes} onClose={close} wide
     footer={<><LtPill onClick={close} disabled={busy}>{t.lt.cancel}</LtPill><LtPill tone="solid" icon="check" onClick={save} disabled={busy}>{busy ? t.lt.saving : t.lt.save}</LtPill></>}>
-    <div style={{ display: "flex", flexDirection: "column", gap: 22, position: "relative" }}>
+    <div ref={caja} style={{ display: "flex", flexDirection: "column", gap: 22, position: "relative" }}>
       {busy && <div style={{ position: "absolute", inset: -8, zIndex: 3, background: "rgba(255,255,255,.82)", borderRadius: 14, display: "flex", alignItems: "flex-start", justifyContent: "center", paddingTop: 80 }}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, maxWidth: 320, textAlign: "center" }}>
           <div style={{ width: 160, height: 3, borderRadius: 999, background: C.beige, overflow: "hidden", position: "relative" }}>
@@ -47,19 +54,19 @@ function LtEditModal({ t, es, initial, properties, onClose, onSaved }) {
         <div style={{ ...ltLabel, color: C.negro }}>{t.lt.stay}</div>
         <div style={g2}>
           <LtField label={t.lt.prop} span>
-            <select value={f.propertyName} onChange={(e) => set("propertyName", e.target.value)} style={ltInputStyle}>
+            <select data-campo="propertyName" value={f.propertyName} onChange={(e) => set("propertyName", e.target.value)} style={ltInputStyle}>
               <option value="">—</option>
               {properties.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
           </LtField>
-          <LtField label={t.lt.entry}><LtInput type="date" value={f.entrada} onChange={(v) => set("entrada", v)} /></LtField>
+          <LtField label={t.lt.entry}><LtInput data-campo="entrada" type="date" value={f.entrada} onChange={(v) => set("entrada", v)} /></LtField>
           <LtField label={t.lt.endType}>
             <select value={f.tipoFin} onChange={(e) => set("tipoFin", e.target.value)} style={ltInputStyle}>
               <option value="fecha">{t.lt.endDate}</option><option value="indefinido">{t.lt.endOpen}</option>
             </select>
           </LtField>
-          {f.tipoFin === "fecha" && <LtField label={t.lt.exit}><LtInput type="date" value={f.salida} onChange={(v) => set("salida", v)} min={f.entrada} /></LtField>}
-          <LtField label={t.lt.amount}><LtInput type="number" value={f.monto} onChange={(v) => set("monto", v)} min="0" inputMode="decimal" /></LtField>
+          {f.tipoFin === "fecha" && <LtField label={t.lt.exit}><LtInput data-campo="salida" type="date" value={f.salida} onChange={(v) => set("salida", v)} min={f.entrada} /></LtField>}
+          <LtField label={t.lt.amount}><LtInput data-campo="monto" type="number" value={f.monto} onChange={(v) => set("monto", v)} min="0" inputMode="decimal" /></LtField>
           <LtField label={t.lt.currency}>
             <select value={f.moneda} onChange={(e) => set("moneda", e.target.value)} style={ltInputStyle}><option value="GTQ">GTQ · Q</option><option value="USD">USD · US$</option></select>
           </LtField>
@@ -71,7 +78,7 @@ function LtEditModal({ t, es, initial, properties, onClose, onSaved }) {
           {(f.frecuencia || "mensual") === "mensual"
             ? <LtField label={t.lt.payDay}><LtInput type="number" value={f.diaCobro} onChange={(v) => set("diaCobro", v)} min="1" max="31" inputMode="numeric" />
                 <span style={{ fontFamily: C.sans, fontSize: 11.5, color: C.tierra, lineHeight: 1.5 }}>{t.lt.payDayHint(Math.max(1, Math.min(31, +f.diaCobro || 1)))}</span></LtField>
-            : f.frecuencia === "personalizado" && <LtField label={t.lt.everyDays}><LtInput type="number" value={f.cadaDias} onChange={(v) => set("cadaDias", v)} min="1" /></LtField>}
+            : f.frecuencia === "personalizado" && <LtField label={t.lt.everyDays}><LtInput data-campo="cadaDias" type="number" value={f.cadaDias} onChange={(v) => set("cadaDias", v)} min="1" /></LtField>}
           <label style={{ gridColumn: "1 / -1", display: "flex", gap: 12, alignItems: "flex-start", background: f.cobraLuz ? "rgba(233,130,106,.08)" : C.beige, border: `1px solid ${f.cobraLuz ? C.peach : "transparent"}`, borderRadius: 14, padding: "14px 16px", cursor: "pointer" }}>
             <input type="checkbox" checked={!!f.cobraLuz} onChange={(e) => set("cobraLuz", e.target.checked)} style={{ width: 18, height: 18, marginTop: 1, accentColor: C.negro }} />
             <span style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -384,7 +391,8 @@ function LtSwipeRow({ t, onOpen, onEdit, onDelete, children }) {
   const [anim, setAnim] = useStateLt(false);
   const OPEN = -112;
   const setDx = (v) => { g.current.dx = v; setDxS(v); };
-  const kill = () => { const w = (box.current && box.current.offsetWidth) || 400; setAnim(true); setDx(-w - 20); setTimeout(onDelete, 260); };
+  /* sale de lado y después su hueco se cierra suave: lo de abajo sube sin brincar (Movimiento con sentido, regla 6). Se puede deshacer. */
+  const kill = () => { const w = (box.current && box.current.offsetWidth) || 400; setAnim(true); setDx(-w - 20); setTimeout(() => saQuitar(box.current, onDelete, 8), 260); };
   const down = (e) => { if (e.pointerType === "mouse" && e.button !== 0) return; Object.assign(g.current, { x0: e.clientX, y0: e.clientY, base: g.current.dx, lock: null, moved: false }); setAnim(false); };
   const move = (e) => {
     const s = g.current; if (s.x0 == null) return;
@@ -430,8 +438,14 @@ function LtQuickEdit({ t, es, lt, onClose, onSaved }) {
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
   const mensual = (lt.frecuencia || "mensual") === "mensual";
   const valid = +f.monto > 0 && (f.tipoFin === "indefinido" || f.salida > lt.entrada);
+  const caja = useRefLt(null);
   const save = async () => {
-    if (!valid) { setErr(es ? "Revisa el monto y la fecha de salida." : "Check amount and check-out date."); return; }
+    if (!valid) {
+      setErr(es ? "Revisa el monto y la fecha de salida." : "Check amount and check-out date.");
+      const b = caja.current;   // el campo que está mal se sacude (Movimiento con sentido, regla 4)
+      if (b) saSacudir(!(+f.monto > 0) && b.querySelector('[data-campo="monto"]'), f.tipoFin !== "indefinido" && !(f.salida > lt.entrada) && b.querySelector('[data-campo="salida"]'));
+      return;
+    }
     if (busyRef.current) return; busyRef.current = true; setBusy(true); setErr("");
     const g = lt.guest || {};
     const r = await Backend.ltSave({ code: lt.code, propertyCode: lt.propertyCode, propertyName: lt.propertyName, entrada: lt.entrada, moneda: lt.moneda, notas: lt.notas || "",
@@ -444,7 +458,7 @@ function LtQuickEdit({ t, es, lt, onClose, onSaved }) {
   };
   return <LtModal title={t.lt.quickEdit} onClose={() => { if (!busyRef.current) onClose(); }}
     footer={<><LtPill onClick={onClose} disabled={busy}>{t.lt.cancel}</LtPill><LtPill tone="solid" icon="check" onClick={save} disabled={busy}>{busy ? t.lt.saving : t.lt.save}</LtPill></>}>
-    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+    <div ref={caja} style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       <div style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra }}>{(lt.guest && lt.guest.nombre) || lt.code} · {lt.propertyName}</div>
       <LtField label={t.lt.endType}>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -452,8 +466,8 @@ function LtQuickEdit({ t, es, lt, onClose, onSaved }) {
         </div>
       </LtField>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 14 }}>
-        {f.tipoFin === "fecha" && <LtField label={t.lt.exit}><LtInput type="date" value={f.salida} onChange={(v) => set("salida", v)} min={lt.entrada} /></LtField>}
-        <LtField label={t.lt.amount + " · " + (lt.moneda === "USD" ? "US$" : "Q")}><LtInput type="number" value={f.monto} onChange={(v) => set("monto", v)} min="0" inputMode="decimal" /></LtField>
+        {f.tipoFin === "fecha" && <LtField label={t.lt.exit}><LtInput data-campo="salida" type="date" value={f.salida} onChange={(v) => set("salida", v)} min={lt.entrada} /></LtField>}
+        <LtField label={t.lt.amount + " · " + (lt.moneda === "USD" ? "US$" : "Q")}><LtInput data-campo="monto" type="number" value={f.monto} onChange={(v) => set("monto", v)} min="0" inputMode="decimal" /></LtField>
         {mensual && <LtField label={t.lt.payDay}><LtInput type="number" value={f.diaCobro} onChange={(v) => set("diaCobro", v)} min="1" max="31" inputMode="numeric" /></LtField>}
       </div>
       {mensual && <span style={{ fontFamily: C.sans, fontSize: 11.5, color: C.tierra, lineHeight: 1.5, marginTop: -8 }}>{t.lt.payDayHint(Math.max(1, Math.min(31, +f.diaCobro || 1)))}</span>}

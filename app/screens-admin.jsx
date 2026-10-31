@@ -1128,7 +1128,7 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
     load(); const id = setInterval(() => { if (!document.hidden) load(); }, 60000);
     return () => clearInterval(id);
   }, [connected]);
-  const [avail, setAvail] = useStateAd(() => { try { return JSON.parse(localStorage.getItem("spacioam_avail")) || {}; } catch (e) { return {}; } });
+  const [avail, setAvail] = useStateAd(() => FotoLocal.leer("avail") || {});
   useEffectAd(() => {
     if (!roster || !roster.length) return;
     if (!(Backend.isConnected && Backend.isConnected() && Backend.contactsAvailability)) return;
@@ -3507,6 +3507,11 @@ function SeguimientoScreen({ t, roster, initialReqs, initialGacc, initialStrm })
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 26 }}>
+      {connected && loadingAll && (reqs || gacc || strm || invoices) && (
+        <div role="status" style={{ display: "inline-flex", alignItems: "center", gap: 8, fontFamily: C.sans, fontSize: 11, color: C.tierra, letterSpacing: "0.04em" }}>
+          <Spinner color={C.taupe} /> {es ? "Actualizando…" : "Updating…"}
+        </div>
+      )}
       {(stor || (connected && loadingAll)) && (
         <section>
           <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "0 0 12px", flexWrap: "wrap" }}>

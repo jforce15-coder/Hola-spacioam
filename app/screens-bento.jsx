@@ -849,9 +849,12 @@ function GuestAccessContent({ t, res }) {
    del equipo, para conectar la TV en remoto. */
 function StreamingQRBlock({ res, es }) {
   const [state, setState] = useStateB("");   // "" | sending | sent | fail
+  const [preview, setPreview] = useStateB("");   // foto local, al instante (ds/velocidad.md, regla 3)
   const inputRef = useRefB(null);
+  useEffectB(() => () => { if (preview) try { URL.revokeObjectURL(preview); } catch (e) {} }, [preview]);
   const pick = (file) => {
     if (!file) return;
+    try { setPreview(URL.createObjectURL(file)); } catch (e) { setPreview(""); }
     setState("sending");
     const reader = new FileReader();
     reader.onload = async () => {
@@ -869,6 +872,7 @@ function StreamingQRBlock({ res, es }) {
     <div style={{ margin: "0 18px 18px", display: "flex", flexDirection: "column", gap: 9 }}>
       <input ref={inputRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }}
         onChange={(e) => pick(e.target.files && e.target.files[0])} />
+      {preview && <img src={preview} alt="" style={{ width: "100%", maxHeight: 160, objectFit: "contain", borderRadius: 11, border: `1px solid ${C.grisCalido}`, background: C.beige }} />}
       {state === "sent" ? (
         <div style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 11, padding: "12px 14px",
           fontFamily: C.sans, fontSize: 11.5, color: C.negro, lineHeight: 1.55, letterSpacing: "0.01em", display: "flex", gap: 9, alignItems: "flex-start" }}>
@@ -881,7 +885,7 @@ function StreamingQRBlock({ res, es }) {
             fontFamily: C.sans, fontSize: 11.5, letterSpacing: "0.03em", cursor: state === "sending" ? "wait" : "pointer", fontWeight: 500,
             display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, opacity: state === "sending" ? 0.6 : 1 }}>
           <Icon name="camera" size={15} color={C.negro} />
-          {state === "sending" ? (es ? "Enviando…" : "Sending…") : (es ? "Enviar foto del código QR" : "Send a photo of the QR code")}
+          {state === "sending" ? (es ? "Enviando tu foto…" : "Sending your photo…") : (es ? "Enviar foto del código QR" : "Send a photo of the QR code")}
         </button>
       )}
       {state === "fail" && (
@@ -1116,7 +1120,7 @@ function AmenitiesContent({ t, res }) {
     } else { setState("empty"); }
     return () => { alive = false; };
   }, [res.code]);
-  if (state === "loading") return <div style={{ display: "flex", alignItems: "center", gap: 10, paddingTop: 18, fontFamily: C.sans, fontSize: 12.5, color: C.tierra }}><Spinner color={C.taupe} /> {es ? "Cargando amenidades…" : "Loading amenities…"}</div>;
+  if (state === "loading") return <div className="sa-esq dos" aria-label={es ? "Cargando amenidades" : "Loading amenities"} style={{ paddingTop: 18 }}><i /><i /><i /><i /><i className="corta" /><i className="corta" /></div>;
   if (state === "ok") return <Chips items={items} />;
   return (
     <div style={{ background: C.beige, borderRadius: 14, padding: "16px 18px", marginTop: 14 }}>

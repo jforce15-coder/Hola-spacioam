@@ -696,9 +696,7 @@ function ReservationSummary({ t, h, rec: localRec, onClose, onResend, autoPrint,
                     const img = g.docImage || (g.docFileId && docImgs[g.docFileId]);
                     if (img) return <WatermarkedDoc src={img} t={t} />;
                     if (g.docFileId && docsLoading) return (
-                      <div style={{ display: "inline-flex", alignItems: "center", gap: 9, fontFamily: C.sans, fontSize: 11.5, color: C.tierra, letterSpacing: "0.02em" }}>
-                        <Spinner color={C.taupe} /> {es ? "Cargando documento…" : "Loading document…"}
-                      </div>
+                      <div className="sa-esq sum-noprint" aria-label={es ? "Cargando documento" : "Loading document"} style={{ maxWidth: 340 }}><i className="g" /></div>
                     );
                     if (g.docFileId) return (
                       <div style={{ display: "flex", flexDirection: "column", gap: 9, alignItems: "flex-start" }}>
@@ -1395,10 +1393,7 @@ function AdminScreen({ t, adminEmail, onBack, onSwitchLang, onPreviewGuest, onRe
 
         {/* list */}
         {roster === null ? (
-          <div style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 16, padding: "38px 20px", textAlign: "center",
-            fontFamily: C.sans, fontSize: 12.5, color: C.tierra, letterSpacing: "0.02em", display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
-            <Spinner /> {t.hospSyncing}
-          </div>
+          <div className="sa-esq" aria-label={t.hospSyncing}><i className="c" /><i className="c" /><i className="c" /><i className="c" /></div>
         ) : rows.length === 0 ? (
           <div style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 16, padding: "38px 20px", textAlign: "center",
             fontFamily: C.sans, fontSize: 13, color: C.tierra, letterSpacing: "0.02em" }}>{t.adminEmpty}</div>
@@ -1719,10 +1714,7 @@ function StationsScreen({ t, onToast }) {
     <div>
       <p style={{ fontFamily: C.sans, fontSize: 12.5, color: C.tierra, margin: "0 0 18px", letterSpacing: "0.02em", lineHeight: 1.55, maxWidth: 520 }}>{t.stSub}</p>
       {list === null ? (
-        <div style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 16, padding: "38px 20px", textAlign: "center",
-          fontFamily: C.sans, fontSize: 12.5, color: C.tierra, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
-          <Spinner /> {t.stLoading}
-        </div>
+        <div className="sa-esq" aria-label={t.stLoading}><i className="g" /><i className="g" /><i className="g" /></div>
       ) : list.length === 0 ? (
         <div style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 16, padding: "38px 20px", textAlign: "center",
           fontFamily: C.sans, fontSize: 13, color: C.tierra }}>{t.stEmpty}</div>
@@ -3473,7 +3465,10 @@ function SeguimientoScreen({ t, roster, initialReqs, initialGacc, initialStrm })
       <span style={{ fontFamily: C.sans, fontSize: 11, color: C.tierra, background: C.beige, borderRadius: 999, padding: "2px 9px", fontWeight: 600 }}>{count}</span>
     </div>
   );
-  const empty = () => <p style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra, margin: 0, letterSpacing: "0.02em" }}>{t.segEmpty}</p>;
+  // mientras llega la llamada de la pestaña, la forma de una tarjeta; «sin solicitudes» solo cuando ya lo sabemos
+  const empty = () => (connected && loadingAll)
+    ? <div className="sa-esq" aria-label={es ? "Cargando" : "Loading"}><i className="c" /></div>
+    : <p style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra, margin: 0, letterSpacing: "0.02em" }}>{t.segEmpty}</p>;
   const reqLabel = { early: t.segReqEarly, late: t.segReqLate, day: t.segReqDay, luggage: t.segReqLuggage };
 
   const fmtDate = (iso) => { try { return new Date(iso).toLocaleDateString(es ? "es-GT" : "en-US", { day: "numeric", month: "short", year: "numeric" }); } catch (e) { return "—"; } };
@@ -3523,10 +3518,7 @@ function SeguimientoScreen({ t, roster, initialReqs, initialGacc, initialStrm })
             )}
           </div>
           {!stor ? (
-            <div style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 14, padding: "18px 20px",
-              fontFamily: C.sans, fontSize: 12, color: C.tierra, letterSpacing: "0.02em", display: "inline-flex", alignItems: "center", gap: 9 }}>
-              <Spinner color={C.taupe} /> {t.reading}
-            </div>
+            <div className="sa-esq" aria-label={t.reading}><i className="c" /></div>
           ) : stor.stored > 0 ? (
             <div style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 14, padding: "18px 20px",
               display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 18 }}>
@@ -3926,7 +3918,7 @@ function AdminAccessScreen({ t, onToast }) {
           <div style={{ fontFamily: C.serif, fontSize: 19, color: C.negro }}>{es ? "Reporte de fallos" : "Fault report"}</div>
           <button onClick={loadLog} disabled={logBusy} className="sp-btn" style={{ background: "transparent", color: C.negro, border: `1px solid ${C.grisCalido}`, borderRadius: 9, padding: "8px 14px",
             fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.04em", cursor: logBusy ? "default" : "pointer", opacity: logBusy ? 0.6 : 1, fontWeight: 500, display: "inline-flex", alignItems: "center", gap: 7 }}>
-            <Icon name="review" size={13} color={C.negro} /> {logBusy ? (es ? "Cargando…" : "Loading…") : (es ? "Actualizar" : "Refresh")}
+            <Icon name="review" size={13} color={C.negro} /> {logBusy ? (es ? "Leyendo envíos…" : "Reading sends…") : (es ? "Actualizar" : "Refresh")}
           </button>
         </div>
         <p style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra, margin: "0 0 12px", letterSpacing: "0.02em", lineHeight: 1.55, maxWidth: 520 }}>
@@ -3938,7 +3930,9 @@ function AdminAccessScreen({ t, onToast }) {
             {es ? "Ocultar WhatsApp (aún no implementado)" : "Hide WhatsApp (not yet live)"}
           </button>
         </div>
-        {sendLog === null ? (
+        {sendLog === null && logBusy ? (
+          <div className="sa-esq" aria-label={es ? "Cargando fallos" : "Loading failures"}><i /><i className="corta" /><i className="c" /></div>
+        ) : sendLog === null ? (
           <div style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra, padding: "10px 0", letterSpacing: "0.02em" }}>{es ? "Conecta el backend para ver los fallos." : "Connect the backend to view failures."}</div>
         ) : faultReport.length === 0 ? (
           <div style={{ display: "flex", alignItems: "center", gap: 9, fontFamily: C.sans, fontSize: 12.5, color: "#177A4F", padding: "10px 0", letterSpacing: "0.02em" }}><Icon name="check" size={15} color="#1F8A5B" /> {es ? "Sin fallos de envío. Todo salió." : "No send failures. All clear."}</div>
@@ -4049,7 +4043,7 @@ function AdminAccessScreen({ t, onToast }) {
           {es ? "Lista actual de WhatsApp de recepción (de todas las propiedades, sin el administrador). Cópiala y pégala en la regla de números internos del prompt del agente de ElevenLabs cada vez que agregues o cambies un número." : "Current list of reception WhatsApp numbers (all properties, admin excluded). Copy and paste it into the internal-numbers rule of the ElevenLabs agent prompt whenever a number changes."}
         </p>
         {contactsBusy && !contacts ? (
-          <div style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra }}>{es ? "Cargando…" : "Loading…"}</div>
+          <div className="sa-esq" aria-label={es ? "Cargando números" : "Loading numbers"}><i className="c" /></div>
         ) : contacts ? (<>
           <div style={{ background: C.beige, border: `1px solid ${C.grisCalido}`, borderRadius: 12, padding: "13px 15px", fontFamily: C.sans, fontSize: 13, color: C.negro, letterSpacing: "0.02em", lineHeight: 1.7, wordBreak: "break-word" }}>
             {(contacts.numbers || []).length ? (contacts.numbers || []).join(", ") : (es ? "Sin números configurados." : "No numbers configured.")}

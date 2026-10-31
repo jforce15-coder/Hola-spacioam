@@ -100,3 +100,13 @@ function exigirSesion_(accion, conSesion, body, publicas) {
   registrarAcceso_('⛔ ' + accion, false);
   return ContentService.createTextOutput(JSON.stringify({ ok: false, error: 'session' })).setMimeType(ContentService.MimeType.JSON);
 }
+
+
+/* Diagnóstico público y sin datos: hace una comprobación con una sesión inventada y dice qué contestó el login.
+   Lo correcto es «login dijo session». Cualquier otra cosa explica por qué Hola no reconocía las sesiones. */
+function sesDiag_() {
+  var cache = CacheService.getScriptCache();
+  var falsa = 'diag' + Date.now().toString(36) + '.x';
+  var p = sesionDe_({ session: falsa });
+  return { ok: true, reconocida: !!p, duda: SES_DUDA_, falla: PropertiesService.getScriptProperties().getProperty('SES_FALLA') || '', tokenPropio: !!PropertiesService.getScriptProperties().getProperty('LOGIN_TOKEN') };
+}

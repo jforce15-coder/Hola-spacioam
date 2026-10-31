@@ -217,10 +217,11 @@ function route_(e, method) {
     var action = body.action || (e && e.parameter && e.parameter.action) || 'ping';
     var __diag = accesosDiag_(body); if (__diag) return __diag;   // fase 1b: resumen de accesos (robot)
     var __ses = sesionDe_(body); registrarAcceso_(action, __ses ? true : esRobot_(body) ? 'r' : false);
-    var __bloq = exigirSesion_(action, !!__ses, body, ['ping', 'listPropertyInfo', 'getDocImage', 'findReservation', 'submitForm', 'createAccount', 'login', 'suggestion', 'hostRequest', 'flexAvailability', 'listingAmenities', 'invoiceRequest', 'guestAccess', 'streamingRequest', 'formStarted', 'formCompleted', 'saveDraft', 'getDraft', 'readDocument', 'adminLogin', 'reportProblem', 'openLink', 'regPdfRobot', 'ltGuest', 'ltUpload', 'ltClientError', 'ltReadReceipt', 'ltGuestNotice', 'ltGuestMsg', 'ltGuestFile']); if (__bloq) return __bloq;   // fase 1c: solo bloquea con SESION_EXIGIR = 1
+    var __bloq = exigirSesion_(action, !!__ses, body, ['ping', 'sesDiag', 'listPropertyInfo', 'getDocImage', 'findReservation', 'submitForm', 'createAccount', 'login', 'suggestion', 'hostRequest', 'flexAvailability', 'listingAmenities', 'invoiceRequest', 'guestAccess', 'streamingRequest', 'formStarted', 'formCompleted', 'saveDraft', 'getDraft', 'readDocument', 'adminLogin', 'reportProblem', 'openLink', 'regPdfRobot', 'ltGuest', 'ltUpload', 'ltClientError', 'ltReadReceipt', 'ltGuestNotice', 'ltGuestMsg', 'ltGuestFile']); if (__bloq) return __bloq;   // fase 1c: solo bloquea con SESION_EXIGIR = 1
 
     switch (action) {
       case 'ping':             out = { ok: true, service: 'spacio-am-backend', time: new Date().toISOString() }; break;
+      case 'sesDiag':          out = sesDiag_(); break;   // diagnóstico de la sesión (sesion.js), sin datos
       case 'listReservations': var lr = listReservations_({ days: body.days, fast: body.fast }); out = { ok: true, reservations: lr.reservations, meta: lr.meta }; if (body.withCached) { try { out.cached = listCached_(); out.meta.sheetRows = out.cached.length; } catch (ce) { out.meta.sheetError = String(ce && ce.message || ce); } } break;
       case 'listCached':       out = { ok: true, reservations: listCached_(), meta: { cached: true } }; break;
       case 'findReservation':  out = findReservation_(body); break;

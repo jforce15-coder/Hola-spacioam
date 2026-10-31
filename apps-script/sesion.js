@@ -12,7 +12,14 @@
 var SES_LOGIN_URL_ = 'https://script.google.com/macros/s/AKfycbxfdwLzsA8bwgOxUTOtf3Hw1ptIm8Cy34tspmFndu3WtRrkVSSnGyBP7obRrm73mcUd/exec';
 var SES_ROBOT_HASH_ = 'b0d3ca9d3adb76025e4b4289181cb6300d7769a1d53a2a0c91636df9e0c65ed5';
 
+/* SES_DUDA_: el login no pudo contestar (error, cupo o red). La sesión no se da por mala: exigirSesion_ deja pasar
+   esa llamada en vez de mandar «session», que en el teléfono cierra la sesión. Antes un error pasajero del login
+   (por ejemplo, al descargar un PDF que pide muchas fotos a la vez) quedaba guardado 10 min como «sesión inválida»
+   y sacaba a Juan de Hola una y otra vez. Solo se guarda como inválida si el login lo dice claro. */
+var SES_DUDA_ = false;
+var SES_DEFINITIVOS_ = { session: 1, no_user: 1, suspended: 1 };
 function sesionDe_(body) {
+  SES_DUDA_ = false;
   var session = String((body && body.session) || '');
   if (session.indexOf('.') < 1 || session.length > 4000) return null;
   var cache = CacheService.getScriptCache();
@@ -23,15 +30,20 @@ function sesionDe_(body) {
   try {
     hit = cache.get(k);
     if (hit) { try { return hit === '-' ? null : JSON.parse(hit); } catch (e) {} }
-    var prof = null;
-    try {
-      var r = UrlFetchApp.fetch(SES_LOGIN_URL_, { method: 'post', contentType: 'text/plain;charset=utf-8', muteHttpExceptions: true, followRedirects: true,
-        payload: JSON.stringify({ action: 'verify', token: PropertiesService.getScriptProperties().getProperty('LOGIN_TOKEN') || 'SpacioAM2026!', session: session }) });
-      var j = JSON.parse(r.getContentText() || '{}');
-      if (j.ok && j.profile) prof = j.profile;
-    } catch (e) { console.warn('sesionDe_: ' + e); return null; }   // error de red: no se guarda el negativo
-    cache.put(k, prof ? JSON.stringify(prof) : '-', prof ? 3600 : 600);
-    return prof;
+    var j = null;
+    for (var intento = 0; intento < 2 && !(j && (j.ok || SES_DEFINITIVOS_[j.error])); intento++) {
+      if (intento) Utilities.sleep(700);
+      try {
+        var r = UrlFetchApp.fetch(SES_LOGIN_URL_, { method: 'post', contentType: 'text/plain;charset=utf-8', muteHttpExceptions: true, followRedirects: true,
+          payload: JSON.stringify({ action: 'verify', token: PropertiesService.getScriptProperties().getProperty('LOGIN_TOKEN') || 'SpacioAM2026!', session: session }) });
+        j = JSON.parse(r.getContentText() || '{}');
+      } catch (e) { console.warn('sesionDe_: ' + e); j = null; }
+    }
+    if (j && j.ok && j.profile) { cache.put(k, JSON.stringify(j.profile), 3600); return j.profile; }
+    if (j && SES_DEFINITIVOS_[j.error]) { cache.put(k, '-', 600); return null; }   // el login dice que no vale: inválida de verdad
+    SES_DUDA_ = true;                                                              // el login falló: no se guarda nada
+    console.warn('sesionDe_: el login no confirmó (' + String((j && j.error) || 'sin respuesta').slice(0, 120) + '); se deja pasar');
+    return null;
   } finally { if (conLock) lock.releaseLock(); }
 }
 
@@ -76,6 +88,7 @@ function esRobot_(body) {
 }
 function exigirSesion_(accion, conSesion, body, publicas) {
   if (conSesion) return null;
+  if (SES_DUDA_) { registrarAcceso_('⚠ ' + String(accion || ''), 'r'); return null; }   // el login no contestó: no se saca a nadie por eso
   accion = String(accion || '');
   if ((publicas || []).indexOf(accion) >= 0 || esRobot_(body)) return null;
   if (PropertiesService.getScriptProperties().getProperty('SESION_EXIGIR') !== '1') return null;

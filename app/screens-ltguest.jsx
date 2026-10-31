@@ -16,7 +16,8 @@ function LtAskMissing({ t, faltan, perfil, setPerfil }) {
         {["DPI", "Pasaporte", "Otro"].map((d) => <option key={d} value={d}>{d}</option>)}</select>
       <div style={{ flex: "1 1 180px" }}><LtInput value={perfil.docNumero} onChange={(v) => set("docNumero", v)} placeholder={a.doc[1]} /></div>
       <label style={{ flexBasis: "100%", display: "inline-flex", alignItems: "center", gap: 8, fontFamily: C.sans, fontSize: 12, color: C.tierra, cursor: "pointer" }}>
-        <Icon name={perfil.docImage ? "check" : "camera"} size={15} color={perfil.docImage ? "#3d6b52" : C.tierra} strokeWidth={1.5} />{perfil.docImage ? a.docPhoto : a.docPhoto + " · " + a.optional}
+        {/^data:image\//.test(perfil.docImage || "") ? <img src={perfil.docImage} alt="" style={{ width: 52, height: 36, borderRadius: 7, objectFit: "cover", border: `1px solid ${C.grisCalido}` }} />
+          : <Icon name={perfil.docImage ? "check" : "camera"} size={15} color={perfil.docImage ? "#3d6b52" : C.tierra} strokeWidth={1.5} />}{perfil.docImage ? a.docPhoto : a.docPhoto + " · " + a.optional}
         <input type="file" accept="image/*,application/pdf" hidden onChange={(e) => { const f = e.target.files && e.target.files[0]; if (f) ltReadFile(f).then((x) => set("docImage", x.dataUrl)).catch(() => {}); }} />
       </label>
     </div>)}

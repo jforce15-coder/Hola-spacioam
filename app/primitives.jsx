@@ -375,18 +375,28 @@ function DocUploader({ t, roleLabel, badge, badgeColor, doc, update }) {
   const camRef = useRef(null);
   const fileRef = useRef(null);
   const d = doc || {};
+  // Vista previa local (ds/velocidad.md, regla 3): la foto se ve al instante desde el
+  // teléfono, antes de leerla y comprimirla. Solo se muestra; lo que se guarda sigue siendo dataUrl.
+  const [preview, setPreview] = useState("");
+  const [stage, setStage] = useState("");   // "" | prep (comprimiendo) | read (leyendo con IA)
+  useEffect(() => () => { if (preview) try { URL.revokeObjectURL(preview); } catch (e) {} }, [preview]);
   const pick = (file, inputEl) => {
     // reset the input so re-selecting the SAME file fires onChange again
     if (inputEl) inputEl.value = "";
     if (!file) return;
+    try { setPreview(URL.createObjectURL(file)); } catch (e) { setPreview(""); }
+    setStage("prep");
     const reader = new FileReader();
+    reader.onerror = () => setStage("");
     reader.onload = async () => {
       // comprimir ANTES de guardar: esta versión es la que se muestra, se
       // guarda en el dispositivo y se envía al backend.
       update({ file: file.name, dataUrl: reader.result, reading: true, error: null, manual: false, name: "", id: "" });
       const small = await compressDocPhoto(reader.result);
       update({ dataUrl: small });
+      setStage("read");
       const res = await readDocumentRobust(small);
+      setStage("");
       if (res.image && res.image !== small) update({ dataUrl: res.image });
       if (res.ok) {
         update({ reading: false, error: null, name: res.name, id: res.id, isDocument: true });
@@ -432,7 +442,12 @@ function DocUploader({ t, roleLabel, badge, badgeColor, doc, update }) {
         </div>
       </div>
 
-      {d.reading && <div style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra, marginTop: 14, display: "flex", alignItems: "center", gap: 9, letterSpacing: "0.02em" }}><Spinner color={C.taupe} /> {t.reading}</div>}
+      {(d.reading || stage) && (
+        <div style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra, marginTop: 14, display: "flex", alignItems: "center", gap: 11, letterSpacing: "0.02em" }}>
+          {(preview || d.dataUrl) && <img src={preview || d.dataUrl} alt="" style={{ width: 64, height: 46, borderRadius: 9, objectFit: "cover", flexShrink: 0, border: `1px solid ${C.grisCalido}` }} />}
+          <Spinner color={C.taupe} /> {stage === "prep" ? (t.code === "es" ? "Preparando tu foto…" : "Preparing your photo…") : t.reading}
+        </div>
+      )}
 
       {d.error && !d.manual && (
         <div style={{ marginTop: 14, background: "#FBEEEA", border: "1px solid rgba(233,130,106,.3)", borderRadius: 12, padding: "14px 16px" }}>

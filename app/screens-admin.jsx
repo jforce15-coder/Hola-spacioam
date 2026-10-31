@@ -109,6 +109,10 @@ function AdminLogin({ t, onClose, onSuccess }) {
                   onKeyDown={(e) => e.key === "Enter" && submit()} style={fieldStyle} placeholder="••••••••" />
               </div>
               {err && <p style={{ color: C.peach, fontFamily: C.sans, fontSize: 12, margin: 0, letterSpacing: "0.02em" }}>{err}</p>}
+              {(() => {   /* Rastro: por qué te sacó la última vez (js/sa-sesion.js · SASesion.salidas), si fue en la última hora */
+                let s = null; try { s = ((window.SASesion && window.SASesion.salidas && window.SASesion.salidas()) || []).filter((x) => x.h === location.host && Date.now() - x.t < 3600000)[0] || null; } catch (_) {}
+                return s ? <p style={{ color: C.tierra, fontFamily: C.sans, fontSize: 11, margin: 0, lineHeight: 1.45 }}>{(es ? "Te sacó a las " : "Signed out at ") + new Date(s.t).toLocaleTimeString(es ? "es" : "en", { hour: "2-digit", minute: "2-digit" }) + " · " + s.m + (s.x ? " · " + s.x : "")}</p> : null;
+              })()}
               <div style={{ marginTop: 6 }}>
                 <Btn full onClick={submit} disabled={busy || !email || !pass}>{busy ? <><Spinner /> {t.validating}</> : t.adminLoginBtn}</Btn>
               </div>

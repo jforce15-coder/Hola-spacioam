@@ -30,19 +30,24 @@ function sesionDe_(body) {
   try {
     hit = cache.get(k);
     if (hit) { try { return hit === '-' ? null : JSON.parse(hit); } catch (e) {} }
-    var j = null;
+    var j = null, porque = '';
+    /* Si la propiedad LOGIN_TOKEN quedó vieja, el login contesta «token»: el segundo intento va con la llave de siempre. */
+    var llaves = [PropertiesService.getScriptProperties().getProperty('LOGIN_TOKEN') || 'SpacioAM2026!', 'SpacioAM2026!'];
     for (var intento = 0; intento < 2 && !(j && (j.ok || SES_DEFINITIVOS_[j.error])); intento++) {
       if (intento) Utilities.sleep(700);
       try {
         var r = UrlFetchApp.fetch(SES_LOGIN_URL_, { method: 'post', contentType: 'text/plain;charset=utf-8', muteHttpExceptions: true, followRedirects: true,
-          payload: JSON.stringify({ action: 'verify', token: PropertiesService.getScriptProperties().getProperty('LOGIN_TOKEN') || 'SpacioAM2026!', session: session }) });
-        j = JSON.parse(r.getContentText() || '{}');
-      } catch (e) { console.warn('sesionDe_: ' + e); j = null; }
+          payload: JSON.stringify({ action: 'verify', token: llaves[intento], session: session }) });
+        var txt = r.getContentText() || '';
+        try { j = JSON.parse(txt || '{}'); porque = j.ok ? '' : 'login dijo ' + String(j.error || '?'); }
+        catch (e2) { j = null; porque = 'login no devolvió JSON (HTTP ' + r.getResponseCode() + '): ' + txt.slice(0, 80).replace(/\s+/g, ' '); }
+      } catch (e) { console.warn('sesionDe_: ' + e); j = null; porque = 'no se pudo llamar al login: ' + String(e).slice(0, 120); }
     }
     if (j && j.ok && j.profile) { cache.put(k, JSON.stringify(j.profile), 3600); return j.profile; }
     if (j && SES_DEFINITIVOS_[j.error]) { cache.put(k, '-', 600); return null; }   // el login dice que no vale: inválida de verdad
     SES_DUDA_ = true;                                                              // el login falló: no se guarda nada
-    console.warn('sesionDe_: el login no confirmó (' + String((j && j.error) || 'sin respuesta').slice(0, 120) + '); se deja pasar');
+    try { var pc = CacheService.getScriptCache(); if (!pc.get('ses_falla_m')) { pc.put('ses_falla_m', '1', 300); PropertiesService.getScriptProperties().setProperty('SES_FALLA', new Date().toISOString() + ' · ' + porque); } } catch (e3) {}
+    console.warn('sesionDe_: el login no confirmó (' + porque + '); se deja pasar');
     return null;
   } finally { if (conLock) lock.releaseLock(); }
 }
@@ -68,7 +73,7 @@ function accesosDiag_(body) {
   if (!body || body.action !== '__accesos') return null;
   var t = String(body.token || ''), h = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, t, Utilities.Charset.UTF_8)
     .map(function (b) { return ('0' + (b & 0xff).toString(16)).slice(-2); }).join('');
-  var out = h === SES_ROBOT_HASH_ ? { ok: true, accesos: JSON.parse(PropertiesService.getScriptProperties().getProperty('ACCESOS') || '{}') } : { ok: false, error: 'token' };
+  var out = h === SES_ROBOT_HASH_ ? { ok: true, accesos: JSON.parse(PropertiesService.getScriptProperties().getProperty('ACCESOS') || '{}'), sesFalla: PropertiesService.getScriptProperties().getProperty('SES_FALLA') || '' } : { ok: false, error: 'token' };
   return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
 }
 

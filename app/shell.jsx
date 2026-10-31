@@ -9,13 +9,16 @@ const { useState: uS, useEffect: uE, useRef: uR, useMemo: uM } = React;
 /* ---------- SEGMENTED (pill segments) — copia de mi-spacioam ---------- */
 function Segmented({ value, onChange, options, size }) {
   const sm = size === "sm";
+  const barra = uR(null);
+  useSaPildora(barra, value);   // la píldora viaja entre las opciones (Movimiento con sentido, regla 5)
   return (
-    <div style={{ display: "inline-flex", gap: 3, background: "var(--beige-soft)", borderRadius: 999, padding: 3 }}>
+    <div ref={barra} style={{ position: "relative", display: "inline-flex", gap: 3, background: "var(--beige-soft)", borderRadius: 999, padding: 3 }}>
+      <i className="sa-pildora" aria-hidden="true" style={{ background: "var(--ink)", boxShadow: "var(--shadow-xs)" }} />
       {options.map((o) => {
         const on = value === o.value;
         return (
-          <button key={o.value} onClick={() => onChange(o.value)} className="sp-btn"
-            style={{ border: "none", cursor: "pointer", borderRadius: 999, padding: sm ? "6px 12px" : "8px 15px",
+          <button key={o.value} onClick={() => onChange(o.value)} className="sp-btn" aria-pressed={on}
+            style={{ position: "relative", zIndex: 1, border: "none", cursor: "pointer", borderRadius: 999, padding: sm ? "6px 12px" : "8px 15px",
               background: on ? "var(--ink)" : "transparent", color: on ? "var(--alabaster)" : "var(--fg-muted)",
               fontFamily: "var(--sans)", fontSize: sm ? 10.5 : 11.5, fontWeight: 600, letterSpacing: "0.06em",
               boxShadow: on ? "var(--shadow-xs)" : "none", transition: "all .16s var(--ease)", whiteSpace: "nowrap" }}>
@@ -55,7 +58,8 @@ function AppHeader({ t, lang, onSwitchLang, user, isAdmin, guest, connected, syn
   onAccount, onSetup, onLogout, onBrand, onFarol, setupLabel }) {
   const es = t.code === "es";
   const [menu, setMenu] = uS(false);
-  const mref = uR(null);
+  const mref = uR(null), avatarRef = uR(null), menuRef = uR(null);
+  useSaDesde(menu, menuRef, avatarRef);   // el menú crece desde el avatar (Movimiento con sentido, regla 3)
   uE(() => {
     const h = (e) => { if (mref.current && !mref.current.contains(e.target)) setMenu(false); };
     document.addEventListener("mousedown", h);
@@ -92,11 +96,11 @@ function AppHeader({ t, lang, onSwitchLang, user, isAdmin, guest, connected, syn
             </React.Fragment>
           ) : (
             <div ref={mref} style={{ position: "relative" }}>
-              <button onClick={() => setMenu((m) => !m)} className="sa-avatar" aria-label="account" style={u.avatar ? { padding: 0, overflow: "hidden" } : undefined}>
+              <button ref={avatarRef} onClick={() => setMenu((m) => !m)} className="sa-avatar" aria-label="account" style={u.avatar ? { padding: 0, overflow: "hidden" } : undefined}>
                 {u.avatar ? <img src={u.avatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /> : initialsOf(u.name || u.email)}
               </button>
               {menu && (
-                <div className="sa-menu" style={{ animation: "sa-fade .18s var(--ease)" }}>
+                <div ref={menuRef} className="sa-menu" style={{ animation: saFundido("sa-fade .18s var(--ease)") }}>
                   <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--warm-grey)" }}>
                     <div style={{ fontFamily: "var(--serif)", fontSize: 18, color: "var(--ink)", lineHeight: 1.1 }}>{u.name || (es ? "Tu cuenta" : "Your account")}</div>
                     {u.email && <div style={{ fontFamily: "var(--sans)", fontSize: 11, letterSpacing: "0.06em", color: "var(--fg-muted)", marginTop: 3 }}>{u.email}</div>}
@@ -138,12 +142,16 @@ function NavTabs({ tabs, active, onSelect, t }) {
   const overflow = tabs.slice(3);
   const overflowActive = overflow.some((tb) => tb.id === active);
   const go = (id) => { setMore(false); onSelect(id); try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (e) {} };
+  const barra = uR(null), masBtn = uR(null), masHoja = uR(null);
+  useSaPildora(barra, active);            // la raya de la pestaña se desliza (regla 5)
+  useSaDesde(more, masHoja, masBtn);      // «Más» crece desde su botón (regla 3)
   return (
     <React.Fragment>
       <div className="sa-tabs-bar">
-        <div className="sa-tabs-inner">
+        <div ref={barra} className="sa-tabs-inner">
+          <i className="sa-pildora" aria-hidden="true" />
           {tabs.map((tb) => (
-            <button key={tb.id} className={"sa-tab" + (active === tb.id ? " active" : "")} onClick={() => go(tb.id)}>
+            <button key={tb.id} className={"sa-tab" + (active === tb.id ? " active" : "")} aria-selected={active === tb.id} onClick={() => go(tb.id)}>
               {tb.icon && <Icon name={tb.icon} size={15} color="currentColor" />}{tb.label}
             </button>
           ))}
@@ -161,13 +169,13 @@ function NavTabs({ tabs, active, onSelect, t }) {
           {overflow.length > 0 && (
             <div className="sa-navmore">
               {more && <div className="sa-navmore-backdrop" onClick={() => setMore(false)} />}
-              <button className={"sa-navbtn" + (overflowActive ? " active" : "")} onClick={() => setMore((m) => !m)} style={{ width: "100%" }}>
+              <button ref={masBtn} className={"sa-navbtn" + (overflowActive ? " active" : "")} onClick={() => setMore((m) => !m)} style={{ width: "100%" }}>
                 <Icon name={more ? "chevronDown" : "grid"} size={19} color="currentColor" />
                 <span className="sa-navdot" />
                 {es ? "Más" : "More"}
               </button>
               {more && (
-                <div className="sa-navmore-sheet">
+                <div ref={masHoja} className="sa-navmore-sheet">
                   {overflow.map((tb) => (
                     <button key={tb.id} className={"sa-navmore-item" + (active === tb.id ? " active" : "")} onClick={() => go(tb.id)}>
                       {tb.icon && <Icon name={tb.icon} size={16} color="currentColor" />} {tb.label}
@@ -188,7 +196,8 @@ function NavTabs({ tabs, active, onSelect, t }) {
 function PillSelect({ value, options, onChange, icon, minWidth, multi, searchable, placeholder, align }) {
   const [open, setOpen] = uS(false);
   const [q, setQ] = uS("");
-  const ref = uR(null);
+  const ref = uR(null), btnRef = uR(null), hojaRef = uR(null);
+  useSaDesde(open, hojaRef, btnRef);   // la lista crece desde el filtro que la abrió (regla 3)
   uE(() => {
     const h = (e) => { if (ref.current && !ref.current.contains(e.target)) { setOpen(false); setQ(""); } };
     document.addEventListener("mousedown", h);
@@ -215,7 +224,7 @@ function PillSelect({ value, options, onChange, icon, minWidth, multi, searchabl
   };
   return (
     <div ref={ref} style={{ position: "relative" }}>
-      <button onClick={() => setOpen((o) => !o)} className="sp-btn" style={{ display: "inline-flex", alignItems: "center", gap: 9, cursor: "pointer",
+      <button ref={btnRef} onClick={() => setOpen((o) => !o)} className="sp-btn" style={{ display: "inline-flex", alignItems: "center", gap: 9, cursor: "pointer",
         background: "var(--alabaster)", border: "1px solid var(--ink-08)", borderRadius: 999, padding: "10px 13px 10px 15px",
         fontFamily: "var(--sans)", fontSize: 12, letterSpacing: "0.04em", color: "var(--ink)", boxShadow: "var(--shadow-xs)" }}>
         {icon && <Icon name={icon} size={14} color="var(--fg-muted)" />}
@@ -224,9 +233,9 @@ function PillSelect({ value, options, onChange, icon, minWidth, multi, searchabl
         <Icon name="chevronDown" size={13} color="var(--fg-muted)" />
       </button>
       {open && (
-        <div style={{ position: "absolute", top: "calc(100% + 8px)", [align || "left"]: 0, zIndex: 90, minWidth: minWidth || 210,
+        <div ref={hojaRef} style={{ position: "absolute", top: "calc(100% + 8px)", [align || "left"]: 0, zIndex: 90, minWidth: minWidth || 210,
           background: "var(--alabaster)", border: "1px solid var(--ink-08)", borderRadius: 16, boxShadow: "var(--shadow-md)",
-          padding: 6, animation: "sa-fade .18s var(--ease)", maxHeight: 340, display: "flex", flexDirection: "column" }}>
+          padding: 6, animation: saFundido("sa-fade .18s var(--ease)"), maxHeight: 340, display: "flex", flexDirection: "column" }}>
           {showSearch && (
             <div style={{ padding: "4px 4px 8px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--beige-soft)", border: "1px solid var(--warm-grey)", borderRadius: 10, padding: "9px 11px" }}>

@@ -16,6 +16,7 @@ function AdminLogin({ t, onClose, onSuccess }) {
   const [err, setErr] = useStateAd("");
   const [busy, setBusy] = useStateAd(false);
   const [needPass, setNeedPass] = useStateAd(false);   // primer ingreso: crear contraseña
+  const passRef = useRefAd(null), np1Ref = useRefAd(null), np2Ref = useRefAd(null);   // el campo con error se sacude (Movimiento con sentido, regla 4)
   const [np1, setNp1] = useStateAd("");
   const [np2, setNp2] = useStateAd("");
   const es = t.code === "es";
@@ -34,9 +35,10 @@ function AdminLogin({ t, onClose, onSuccess }) {
   // respaldo: el login viejo (admin principal + admins locales + backend)
   const legacy = (e) => {
     if (checkAdminLogin(email, pass)) { finish(e, null); return; }
+    const mal = () => { setBusy(false); setErr(t.adminLoginErr); saSacudir(passRef.current); };
     Backend.adminLogin(e, pass).then((r) => {
-      if (r && r.ok) finish(e, null); else { setBusy(false); setErr(t.adminLoginErr); }
-    }).catch(() => { setBusy(false); setErr(t.adminLoginErr); });
+      if (r && r.ok) finish(e, null); else mal();
+    }).catch(mal);
   };
   const submit = () => {
     setErr(""); setBusy(true);
@@ -53,8 +55,8 @@ function AdminLogin({ t, onClose, onSuccess }) {
   };
   const createPass = () => {
     setErr(""); const e = (email || "").trim().toLowerCase();
-    if ((np1 || "").length < 6) { setErr(es ? "Mínimo 6 caracteres." : "At least 6 characters."); return; }
-    if (np1 !== np2) { setErr(es ? "Las contraseñas no coinciden." : "Passwords don't match."); return; }
+    if ((np1 || "").length < 6) { setErr(es ? "Mínimo 6 caracteres." : "At least 6 characters."); saSacudir(np1Ref.current); return; }
+    if (np1 !== np2) { setErr(es ? "Las contraseñas no coinciden." : "Passwords don't match."); saSacudir(np2Ref.current); return; }
     setBusy(true);
     window.SAAuth.setInitialPassword(e, np1).then((r) => {
       if (r && r.ok && r.profile && window.SAAuth.roleFor(r.profile)) finish(e, r.profile);
@@ -83,9 +85,9 @@ function AdminLogin({ t, onClose, onSuccess }) {
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div><span style={lbl}>{es ? "Nueva contraseña" : "New password"}</span>
-                <input type="password" value={np1} autoFocus onChange={(e) => { setNp1(e.target.value); setErr(""); }} style={fieldStyle} placeholder="••••••••" /></div>
+                <input ref={np1Ref} type="password" value={np1} autoFocus onChange={(e) => { setNp1(e.target.value); setErr(""); }} style={fieldStyle} placeholder="••••••••" /></div>
               <div><span style={lbl}>{es ? "Repítela" : "Repeat it"}</span>
-                <input type="password" value={np2} onChange={(e) => { setNp2(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && createPass()} style={fieldStyle} placeholder="••••••••" /></div>
+                <input ref={np2Ref} type="password" value={np2} onChange={(e) => { setNp2(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && createPass()} style={fieldStyle} placeholder="••••••••" /></div>
               {err && <p style={{ color: C.peach, fontFamily: C.sans, fontSize: 12, margin: 0, letterSpacing: "0.02em" }}>{err}</p>}
               <div style={{ marginTop: 6 }}><Btn full onClick={createPass} disabled={busy || !np1 || !np2}>{busy ? <><Spinner /> {t.validating}</> : (es ? "Crear y entrar" : "Create & enter")}</Btn></div>
             </div>
@@ -104,7 +106,7 @@ function AdminLogin({ t, onClose, onSuccess }) {
               </div>
               <div>
                 <span style={lbl}>{t.adminLoginPass}</span>
-                <input type="password" value={pass} onChange={(e) => { setPass(e.target.value); setErr(""); }}
+                <input ref={passRef} type="password" value={pass} onChange={(e) => { setPass(e.target.value); setErr(""); }}
                   onKeyDown={(e) => e.key === "Enter" && submit()} style={fieldStyle} placeholder="••••••••" />
               </div>
               {err && <p style={{ color: C.peach, fontFamily: C.sans, fontSize: 12, margin: 0, letterSpacing: "0.02em" }}>{err}</p>}
@@ -1480,14 +1482,15 @@ function ManualFormModal({ t, onClose, onOpen }) {
   const [code, setCode] = useStateAd("");
   const [busy, setBusy] = useStateAd(false);
   const [err, setErr] = useStateAd("");
+  const codeRef = useRefAd(null);
   const go = () => {
     const c = (code || "").trim();
-    if (!c) return;
+    if (!c) { saSacudir(codeRef.current); return; }
     setBusy(true); setErr("");
     Backend.findReservation(c, "").then(({ reservation }) => {
       setBusy(false);
       if (reservation) onOpen(reservation);
-      else setErr(es ? "No encontramos esa reserva. Revisa el código." : "Reservation not found. Check the code.");
+      else { setErr(es ? "No encontramos esa reserva. Revisa el código." : "Reservation not found. Check the code."); saSacudir(codeRef.current); }
     }).catch(() => { setBusy(false); setErr(es ? "No se pudo consultar. Intenta de nuevo." : "Lookup failed. Try again."); });
   };
   return (
@@ -1499,7 +1502,7 @@ function ManualFormModal({ t, onClose, onOpen }) {
       <p style={{ fontFamily: C.sans, fontSize: 12, color: C.tierra, margin: "0 0 16px", letterSpacing: "0.01em", lineHeight: 1.55 }}>
         {es ? "Escribe el código de reserva y abriremos el registro para llenarlo por el huésped." : "Enter the reservation code and we'll open the registration to fill it in."}
       </p>
-      <input value={code} autoFocus onChange={(e) => { setCode(e.target.value.toUpperCase()); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && go()}
+      <input ref={codeRef} value={code} autoFocus onChange={(e) => { setCode(e.target.value.toUpperCase()); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && go()}
         placeholder={es ? "Código de reserva" : "Reservation code"}
         style={{ width: "100%", boxSizing: "border-box", padding: "13px 15px", borderRadius: 12, border: `1px solid ${C.grisCalido}`, background: C.alabaster, fontFamily: C.sans, fontSize: 15, letterSpacing: "0.08em", color: C.negro, outline: "none", textTransform: "uppercase" }} />
       {err && <p style={{ fontFamily: C.sans, fontSize: 11.5, color: C.peach, margin: "10px 0 0", letterSpacing: "0.01em" }}>{err}</p>}
@@ -3753,6 +3756,7 @@ function SeguimientoScreen({ t, roster, initialReqs, initialGacc, initialStrm })
    ============================================================ */
 function AdminAccessScreen({ t, onToast }) {
   const [list, setList] = useStateAd(loadAdmins());
+  const emailRef = useRefAd(null), passRef = useRefAd(null);   // el campo con error se sacude (regla 4)
   const [email, setEmail] = useStateAd("");
   const [pass, setPass] = useStateAd("");
   const [err, setErr] = useStateAd("");
@@ -3830,9 +3834,9 @@ function AdminAccessScreen({ t, onToast }) {
   }, []);
   const add = () => {
     const e = (email || "").trim().toLowerCase();
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) { setErr(t.accEmailErr); return; }
-    if ((pass || "").length < 6) { setErr(t.accPassErr); return; }
-    if (e === ADMIN_CREDENTIALS.email || list.some((a) => a.email === e)) { setErr(t.accDup); return; }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) { setErr(t.accEmailErr); saSacudir(emailRef.current); return; }
+    if ((pass || "").length < 6) { setErr(t.accPassErr); saSacudir(passRef.current); return; }
+    if (e === ADMIN_CREDENTIALS.email || list.some((a) => a.email === e)) { setErr(t.accDup); saSacudir(emailRef.current); return; }
     setBusy(true);
     // keep a local copy (works offline) AND persist to backend (cross-device)
     const local = [...loadAdmins().filter((a) => a.email !== e), { email: e, pass, at: Date.now() }];
@@ -3844,9 +3848,9 @@ function AdminAccessScreen({ t, onToast }) {
       onToast(`${t.accAdded} · ${e}`);
     }).catch(() => { setBusy(false); setList((l) => [...l.filter((a) => a.email !== e), { email: e }]); setEmail(""); setPass(""); onToast(`${t.accAdded} · ${e}`); });
   };
-  const remove = (e) => {
+  const remove = (e, fila) => {
     saveAdmins(loadAdmins().filter((a) => a.email !== e));
-    setList((l) => l.filter((a) => a.email !== e));
+    saQuitar(fila, () => setList((l) => l.filter((a) => a.email !== e)), 8);   // el hueco se cierra suave (regla 6)
     Backend.removeAdmin(e).catch(() => {});
     onToast(t.accRemoved);
   };
@@ -3859,8 +3863,8 @@ function AdminAccessScreen({ t, onToast }) {
       <div style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 16, padding: "18px 18px", marginBottom: 18 }}>
         <div style={{ fontFamily: C.serif, fontSize: 19, color: C.negro, marginBottom: 14 }}>{t.accNew}</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <input value={email} onChange={(e) => { setEmail(e.target.value); setErr(""); }} placeholder={t.accEmail} type="email" style={fieldStyle} />
-          <input value={pass} onChange={(e) => { setPass(e.target.value); setErr(""); }} placeholder={t.accPass} type="text" style={fieldStyle} />
+          <input ref={emailRef} value={email} onChange={(e) => { setEmail(e.target.value); setErr(""); }} placeholder={t.accEmail} type="email" style={fieldStyle} />
+          <input ref={passRef} value={pass} onChange={(e) => { setPass(e.target.value); setErr(""); }} placeholder={t.accPass} type="text" style={fieldStyle} />
           {err && <span style={{ fontFamily: C.sans, fontSize: 11.5, color: C.peach, letterSpacing: "0.02em" }}>{err}</span>}
           <button onClick={add} className="sp-btn" style={{ background: C.negro, color: C.alabaster, border: "none", borderRadius: 11, padding: "11px 18px",
             fontFamily: C.sans, fontSize: 11, letterSpacing: "0.06em", cursor: "pointer", fontWeight: 500, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, alignSelf: "flex-start" }}>
@@ -3880,7 +3884,7 @@ function AdminAccessScreen({ t, onToast }) {
         {list.map((a) => (
           <div key={a.email} style={{ background: C.white, border: `1px solid ${C.grisCalido}`, borderRadius: 12, padding: "13px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
             <div style={{ fontFamily: C.sans, fontSize: 13, color: C.negro, letterSpacing: "0.01em" }}>{a.email}</div>
-            <button onClick={() => remove(a.email)} className="sp-btn" title={t.accRemove} style={{ background: "transparent", border: "none", cursor: "pointer", padding: 4 }}>
+            <button onClick={(ev) => remove(a.email, ev.currentTarget.parentNode)} className="sp-btn" title={t.accRemove} style={{ background: "transparent", border: "none", cursor: "pointer", padding: 4 }}>
               <Icon name="x" size={16} color={C.tierra} />
             </button>
           </div>

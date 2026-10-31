@@ -395,13 +395,14 @@ function App() {
     const r = window.SASesion.perfilRapido && window.SASesion.perfilRapido();
     if (r && r.apps && r.apps.hola) {
       entrar(r);
-      window.SASesion.confirmar("hola", () => { try { localStorage.removeItem("spacioam_admin_session"); } catch (e) {} location.reload(); });
+      window.SASesion.confirmar("hola", () => { FotoLocal.borrar(); try { localStorage.removeItem("spacioam_admin_session"); } catch (e) {} location.reload(); });
       return;
     }
     window.SASesion.verificar().then((p) => { if (vivo && p && p.apps && p.apps.hola) entrar(p); });
     return () => { vivo = false; };
   }, []);
   const leaveAdmin = () => {
+    FotoLocal.borrar();   // cerrar sesión: no queda ninguna copia de huéspedes ni contratos en el teléfono
     try { localStorage.removeItem("spacioam_admin_session"); } catch (e) {}
     setAdminEmail(""); setStage("code");
   };

@@ -479,7 +479,8 @@ function LongTermScreen({ t, roster, onToast, openCode, onOpened }) {
   const [loadErr, setLoadErr] = useStateLt("");
   const [pend, setPend] = useStateLt(null);    // eliminación con opción de deshacer
   const pendRef = useRefLt(null);
-  const load = () => Backend.ltList().then((r) => { if (r && r.ok && Array.isArray(r.list)) { setList(r.list); setLoadErr(""); } else { setLoadErr((r && r.error) || "backend-error"); setList((p) => p || []); } });
+  const [fresca, setFresca] = useStateLt(false);   // false mientras se ve la copia del teléfono
+  const load = () => Backend.ltList().then((r) => { setFresca(true); if (r && r.ok && Array.isArray(r.list)) { setList(r.list); setLoadErr(""); } else { setLoadErr((r && r.error) || "backend-error"); setList((p) => p || []); } });
   useEffectLt(() => { load(); const id = setInterval(() => { if (!document.hidden) load(); }, 60000); return () => clearInterval(id); }, []);
   useEffectLt(() => { if (openCode) { setOpen(openCode); onOpened && onOpened(); } }, [openCode]);
   const merge = (x) => { if (!x || !x.code) return; setList((p) => { const a = p || []; return a.some((l) => l.code === x.code) ? a.map((l) => (l.code === x.code ? { ...l, ...x } : l)) : a.concat(x); }); };
@@ -537,6 +538,7 @@ function LongTermScreen({ t, roster, onToast, openCode, onOpened }) {
     </div>
     {loadErr && <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", fontFamily: C.sans, fontSize: 13, color: "#C0392B", background: "rgba(192,57,43,.06)", border: "1px solid rgba(192,57,43,.25)", borderRadius: 14, padding: "12px 16px" }}>
       <span style={{ flex: "1 1 220px" }}>{loadErr}</span><LtPill small icon="refresh" onClick={() => { setLoadErr(""); load(); }}>{es ? "Reintentar" : "Retry"}</LtPill></div>}
+    {list !== null && !fresca && <div role="status" style={{ fontFamily: C.sans, fontSize: 11, color: C.tierra, letterSpacing: "0.04em" }}>{es ? "Actualizando…" : "Updating…"}</div>}
     {list === null && <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{[0, 1, 2].map((i) => <div key={i} style={{ height: 68, borderRadius: 14, background: C.beige }}></div>)}</div>}
     {list && !rows.length && <div style={{ textAlign: "center", padding: "40px 0", fontFamily: C.sans, fontSize: 13, color: C.tierra }}>{t.lt.empty}</div>}
     {rows.length > 0 && <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

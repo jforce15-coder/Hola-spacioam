@@ -979,6 +979,66 @@ const isPrimaryAdmin = (email) => (email || "").trim().toLowerCase() === ADMIN_C
    roster / local persistence when no endpoint is configured.
    ============================================================ */
 const BACKEND_CFG_KEY = "spacioam_backend_cfg";
+/* ---------- FOTO: la copia en el teléfono para pintar rápido (ds/velocidad.md, regla 8) ----------
+   Solo para mostrar al instante lo último que viste; el servidor la reemplaza en cada apertura y ningún botón
+   decide con ella. Reglas: por persona (la clave lleva el correo de la sesión), sin documentos (fuera DPI,
+   pasaporte, fotos y enlaces de documentos), vence a las 24 h y se borra al cerrar sesión o si la página abre
+   sin sesión. Las copias viejas (claves sin correo) se borran al abrir. */
+const FOTO_VER = "1";
+const FOTO_TTL = 24 * 3600000;
+const FOTO_VIEJAS = ["spacioam_roster_cache", "spacioam_doc_cache", "spacioam_cache_reqs", "spacioam_cache_gacc",
+  "spacioam_cache_strm", "spacioam_cache_invoices", "spacioam_cache_lt", "spacioam_avail"];
+// campos de documentos de identidad (y sus fotos/enlaces) que nunca se guardan en la copia
+const FOTO_SIN = { doc: 1, docs: 1, docTipo: 1, docNumero: 1, docNum: 1, docType: 1, docFileId: 1, docFileName: 1, docUrl: 1,
+  docImage: 1, docImg: 1, docPhoto: 1, idNumber: 1, id_number: 1, dpi: 1, passport: 1, pasaporte: 1, files: 1, fileId: 1, image: 1, img: 1 };
+const FotoLocal = {
+  quien() { try { return String(localStorage.getItem("spacioam_admin_session") || "").trim().toLowerCase(); } catch (e) { return ""; } },
+  _pre() { return "sa_foto:hola:" + FOTO_VER + ":"; },
+  _clave(k, quien) { return this._pre() + quien + ":" + k; },
+  sinDocs(v, padre) {
+    if (Array.isArray(v)) return v.map((x) => this.sinDocs(x, padre));
+    if (!v || typeof v !== "object") return v;
+    const o = {};
+    Object.keys(v).forEach((k) => {
+      if (FOTO_SIN[k]) return;
+      if (padre === "guests" && k === "id") return;   // en Invitados, «id» es el número de documento del invitado
+      o[k] = this.sinDocs(v[k], k);
+    });
+    return o;
+  },
+  leer(k) {
+    const q = this.quien(); if (!q) return null;
+    try {
+      const o = JSON.parse(localStorage.getItem(this._clave(k, q)));
+      if (!o || !o.at || Date.now() - o.at > FOTO_TTL) { localStorage.removeItem(this._clave(k, q)); return null; }
+      return o.v;
+    } catch (e) { return null; }
+  },
+  guardar(k, v) {
+    const q = this.quien(); if (!q || v == null) return;
+    try { localStorage.setItem(this._clave(k, q), JSON.stringify({ at: Date.now(), v: this.sinDocs(v) })); }
+    catch (e) { try { localStorage.removeItem(this._clave(k, q)); } catch (e2) {} }
+  },
+  /* todo: al cerrar sesión. Con «soloAjenas»: al abrir, deja solo las copias vigentes de quien tiene la sesión. */
+  borrar(soloAjenas) {
+    try {
+      FOTO_VIEJAS.forEach((k) => localStorage.removeItem(k));
+      const q = soloAjenas ? this.quien() : "", mia = q ? this._pre() + q + ":" : null, fuera = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i) || "";
+        if (k.indexOf("sa_foto:hola:") !== 0) continue;
+        if (mia && k.indexOf(mia) === 0) {
+          try { const o = JSON.parse(localStorage.getItem(k)); if (o && o.at && Date.now() - o.at <= FOTO_TTL) continue; } catch (e) {}
+        }
+        fuera.push(k);
+      }
+      fuera.forEach((k) => localStorage.removeItem(k));
+    } catch (e) {}
+  },
+};
+// al abrir: fuera las copias viejas y las de otras personas; sin sesión de admin no queda ninguna.
+FotoLocal.borrar(true);
+
 const Backend = {
   loadConfig() { try { return JSON.parse(localStorage.getItem(BACKEND_CFG_KEY)) || {}; } catch (e) { return {}; } },
   saveConfig(cfg) { try { localStorage.setItem(BACKEND_CFG_KEY, JSON.stringify(cfg)); } catch (e) {} return cfg; },
@@ -1051,13 +1111,10 @@ const Backend = {
     return new Promise((resolve) => setTimeout(() => resolve(HOSPITABLE), 260));
   },
   // instant cache read (Reservas sheet) — no Hospitable call
-  ROSTER_KEY: "spacioam_roster_cache",
   cachedRoster() {
-    try { const o = JSON.parse(localStorage.getItem(this.ROSTER_KEY)); return o && Array.isArray(o.list) && o.list.length ? o : null; } catch (e) { return null; }
+    const list = FotoLocal.leer("roster"); return Array.isArray(list) && list.length ? { list } : null;
   },
-  saveRoster(list) {
-    try { if (list && list.length) localStorage.setItem(this.ROSTER_KEY, JSON.stringify({ at: Date.now(), list })); } catch (e) {}
-  },
+  saveRoster(list) { if (list && list.length) FotoLocal.guardar("roster", list); },
   /* Actualizar en dos pasos para que el panel nunca se quede esperando:
      1) sync con Hospitable (~10-20 s) → se fusiona con la lista que ya está en pantalla y se muestra YA.
      2) lectura de la hoja en segundo plano (puede tardar minutos si la hoja está pesada) → onSheet(lista, meta). */
@@ -1265,8 +1322,8 @@ const Backend = {
   },
 
   /* caché genérica de listas de seguimiento: pinta al instante, refresca detrás */
-  cachedList(key) { try { const o = JSON.parse(localStorage.getItem("spacioam_cache_" + key)); return o && Array.isArray(o.list) ? o.list : null; } catch (e) { return null; } },
-  _cacheList(key, list) { try { if (Array.isArray(list)) localStorage.setItem("spacioam_cache_" + key, JSON.stringify({ at: Date.now(), list })); } catch (e) {} },
+  cachedList(key) { const l = FotoLocal.leer("lista_" + key); return Array.isArray(l) ? l : null; },
+  _cacheList(key, list) { if (Array.isArray(list)) FotoLocal.guardar("lista_" + key, list); },
 
   /* ---- solicitudes de nuevos invitados ---- */
   async listGuestAccess() {
@@ -1376,22 +1433,14 @@ const Backend = {
     }
     return null;
   },
-  /* Documentos: caché en el dispositivo por fileId. Una vez visto un resumen,
-     volver a abrirlo es instantáneo. Cabe poco en localStorage, así que
-     guardamos las 8 imágenes más recientes y descartamos las viejas. */
-  DOC_KEY: "spacioam_doc_cache",
-  _docCache() { try { return JSON.parse(localStorage.getItem(this.DOC_KEY)) || {}; } catch (e) { return {}; } },
-  cachedDocImage(fileId) { const c = this._docCache()[fileId]; return (c && c.img) || ""; },
+  /* Documentos: las imágenes NO se guardan en el teléfono. Solo quedan en la memoria de esta pestaña (las 8 más
+     recientes) para que volver a abrir un resumen sea instantáneo; al cerrar o recargar la página desaparecen. */
+  _docMem: {},
+  cachedDocImage(fileId) { const c = this._docMem[fileId]; return (c && c.img) || ""; },
   _saveDocImage(fileId, img) {
-    if (!img || img.length > 900000) return;
-    try {
-      const all = this._docCache();
-      all[fileId] = { at: Date.now(), img };
-      const keys = Object.keys(all).sort((a, b) => all[b].at - all[a].at).slice(0, 8);
-      const trimmed = {};
-      keys.forEach((k) => { trimmed[k] = all[k]; });
-      localStorage.setItem(this.DOC_KEY, JSON.stringify(trimmed));
-    } catch (e) { try { localStorage.removeItem(this.DOC_KEY); } catch (e2) {} }
+    if (!img) return;
+    const all = this._docMem; all[fileId] = { at: Date.now(), img };
+    Object.keys(all).sort((a, b) => all[b].at - all[a].at).slice(8).forEach((k) => { delete all[k]; });
   },
   async getDocImage(fileId, code) {   // code: el huésped sin sesión solo ve las fotos de su borrador
     if (!fileId) return "";
@@ -1461,7 +1510,7 @@ const Backend = {
     try {
       const j = await this.call("contactsAvailability", { names: names || [] });
       const a = j.availability || {};
-      try { localStorage.setItem("spacioam_avail", JSON.stringify(a)); } catch (e) {}
+      FotoLocal.guardar("avail", a);
       return a;
     } catch (e) { return null; }
   },
@@ -1805,7 +1854,7 @@ Object.assign(Backend, {
   _ltUrl(tok) { return location.origin + location.pathname + "?lt=" + tok; },   // query (no #): sobrevive a WhatsApp, correo y Safari
   _ltFix(u) { const m = /[#&?]lt=([A-Za-z0-9_-]+)/.exec(String(u || "")); return m ? this._ltUrl(m[1]) : u; },
   async ltList() {
-    if (this.isConnected()) { const j = await this._lt("ltList"); if (j.ok) { try { localStorage.setItem("spacioam_cache_lt", JSON.stringify({ list: j.list })); } catch (e) { try { localStorage.removeItem("spacioam_cache_lt"); } catch (e2) {} } } return j; }
+    if (this.isConnected()) { const j = await this._lt("ltList"); if (j.ok) this._cacheList("lt", j.list); return j; }
     const d = ltDemo.load(); ltDemo.overdue(d); ltDemo.save(d); return { ok: true, list: d.list.map((r) => ltDemo.detail(r)) };
   },
   async ltGet(code) {
@@ -1918,7 +1967,7 @@ Object.assign(Backend, {
   /* huésped */
   ltGuestCached(token) { try { const o = JSON.parse(localStorage.getItem("spacioam_ltg_" + token)); return o && o.code ? o : null; } catch (e) { return null; } },
   async ltGuest(token) {
-    if (this.isConnected()) { const j = await this._lt("ltGuest", { token }); if (j && j.ok && j.lt) { try { localStorage.setItem("spacioam_ltg_" + token, JSON.stringify(j.lt)); } catch (e) {} } return j; }
+    if (this.isConnected()) { const j = await this._lt("ltGuest", { token }); if (j && j.ok && j.lt) { try { localStorage.setItem("spacioam_ltg_" + token, JSON.stringify(FotoLocal.sinDocs(j.lt))); } catch (e) {} } return j; }
     const d = ltDemo.load(), r = d.list.find((x) => x.token === token && x.estado !== "terminada");
     if (!r) return { ok: false, error: "invalid" };
     ltDemo.periods(r); ltDemo.overdue(d); ltDemo.save(d); return { ok: true, lt: ltDemo.detail(r, true) };
@@ -2287,6 +2336,6 @@ Object.assign(window, { ltDemo,
   T, RESERVATIONS, groupReservations, findReservation, normCode, nightsBetween,
   RULES, FINES, RULES_FULL_TEXT,
   HOSPITABLE, adminSeedRecord, isAdminCode,
-  ADMIN_CREDENTIALS, checkAdminLogin, loadAdmins, saveAdmins, isPrimaryAdmin, Backend, HospitableAPI, HOSPITABLE_PROPERTIES,
+  ADMIN_CREDENTIALS, checkAdminLogin, loadAdmins, saveAdmins, isPrimaryAdmin, Backend, FotoLocal, HospitableAPI, HOSPITABLE_PROPERTIES,
   toDay, todayDay, addDays, isoDay, fmtDay, checkinBucket, checkinDiff,
 });

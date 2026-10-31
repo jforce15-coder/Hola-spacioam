@@ -32,9 +32,8 @@ function AdminLogin({ t, onClose, onSuccess }) {
     } catch (_) {}
     setBusy(false); onSuccess(e);
   };
-  // respaldo: el login viejo (admin principal + admins locales + backend)
+  // respaldo: un admin guardado en el servidor (hoja Admins, con hash). Nada se compara en el navegador.
   const legacy = (e) => {
-    if (checkAdminLogin(email, pass)) { finish(e, null); return; }
     const mal = () => { setBusy(false); setErr(t.adminLoginErr); saSacudir(passRef.current); };
     Backend.adminLogin(e, pass).then((r) => {
       if (r && r.ok) finish(e, null); else mal();
@@ -3755,7 +3754,8 @@ function SeguimientoScreen({ t, roster, initialReqs, initialGacc, initialStrm })
    ACCESOS — el administrador principal crea/elimina otros admins
    ============================================================ */
 function AdminAccessScreen({ t, onToast }) {
-  const [list, setList] = useStateAd(loadAdmins());
+  const [list, setList] = useStateAd([]);
+  useEffectAd(() => { Backend.listAdmins().then((l) => { if (Array.isArray(l)) setList(l.map((a) => ({ email: a.email || a }))); }); }, []);
   const emailRef = useRefAd(null), passRef = useRefAd(null);   // el campo con error se sacude (regla 4)
   const [email, setEmail] = useStateAd("");
   const [pass, setPass] = useStateAd("");
@@ -3838,9 +3838,7 @@ function AdminAccessScreen({ t, onToast }) {
     if ((pass || "").length < 6) { setErr(t.accPassErr); saSacudir(passRef.current); return; }
     if (e === ADMIN_CREDENTIALS.email || list.some((a) => a.email === e)) { setErr(t.accDup); saSacudir(emailRef.current); return; }
     setBusy(true);
-    // keep a local copy (works offline) AND persist to backend (cross-device)
-    const local = [...loadAdmins().filter((a) => a.email !== e), { email: e, pass, at: Date.now() }];
-    saveAdmins(local);
+    // solo en el servidor (con hash): el teléfono no guarda contraseñas
     Backend.saveAdmin(e, pass, ADMIN_CREDENTIALS.email).then(() => {
       setBusy(false);
       setList((l) => [...l.filter((a) => a.email !== e), { email: e }]);
@@ -3849,7 +3847,6 @@ function AdminAccessScreen({ t, onToast }) {
     }).catch(() => { setBusy(false); setList((l) => [...l.filter((a) => a.email !== e), { email: e }]); setEmail(""); setPass(""); onToast(`${t.accAdded} · ${e}`); });
   };
   const remove = (e, fila) => {
-    saveAdmins(loadAdmins().filter((a) => a.email !== e));
     saQuitar(fila, () => setList((l) => l.filter((a) => a.email !== e)), 8);   // el hueco se cierra suave (regla 6)
     Backend.removeAdmin(e).catch(() => {});
     onToast(t.accRemoved);

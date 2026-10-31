@@ -941,16 +941,15 @@ function adminSeedRecord() {
 const isAdminCode = (code) => ["ADMIN", "SPAADMIN", "SPAADMINISTRACION"].includes(normCode(code));
 
 /* ---------- ADMIN AUTH ---------- */
-const ADMIN_CREDENTIALS = { email: "jovalle@spacioam.com", pass: "Valencia2026!" };
+/* Solo el correo del admin principal (no es secreto). La contraseña nunca va en el código: se entra con la cuenta
+   de Spacio AM (SAAuth) o, de respaldo, con un admin guardado en el servidor (hoja Admins, con hash). */
+const ADMIN_CREDENTIALS = { email: "jovalle@spacioam.com" };
 const ADMINS_KEY = "spacioam_admins";
-function loadAdmins() { try { return JSON.parse(localStorage.getItem(ADMINS_KEY)) || []; } catch (e) { return []; } }
-function saveAdmins(list) { try { localStorage.setItem(ADMINS_KEY, JSON.stringify(list)); } catch (e) {} }
-const checkAdminLogin = (email, pass) => {
-  const e = (email || "").trim().toLowerCase();
-  if (e === ADMIN_CREDENTIALS.email && pass === ADMIN_CREDENTIALS.pass) return true;
-  // admins adicionales creados desde el panel
-  return loadAdmins().some((a) => a.email === e && a.pass === pass);
-};
+/* Antes los admins extra se guardaban en el teléfono con su contraseña: se borra esa copia y ya no se guarda nada. */
+try { localStorage.removeItem(ADMINS_KEY); } catch (e) {}
+function loadAdmins() { return []; }
+function saveAdmins() {}
+const checkAdminLogin = () => false;   // ya no hay contraseñas en el navegador
 const isPrimaryAdmin = (email) => (email || "").trim().toLowerCase() === ADMIN_CREDENTIALS.email;
 
 /* ============================================================

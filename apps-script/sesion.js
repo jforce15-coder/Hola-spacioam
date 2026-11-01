@@ -12,10 +12,10 @@
 var SES_LOGIN_URL_ = 'https://script.google.com/macros/s/AKfycbxfdwLzsA8bwgOxUTOtf3Hw1ptIm8Cy34tspmFndu3WtRrkVSSnGyBP7obRrm73mcUd/exec';
 var SES_ROBOT_HASH_ = 'b0d3ca9d3adb76025e4b4289181cb6300d7769a1d53a2a0c91636df9e0c65ed5';
 
-/* SES_DUDA_: el login no pudo contestar (error, cupo o red). La sesión no se da por mala: exigirSesion_ deja pasar
-   esa llamada en vez de mandar «session», que en el teléfono cierra la sesión. Antes un error pasajero del login
-   (por ejemplo, al descargar un PDF que pide muchas fotos a la vez) quedaba guardado 10 min como «sesión inválida»
-   y sacaba a Juan de Hola una y otra vez. Solo se guarda como inválida si el login lo dice claro. */
+/* SES_DUDA_: el login no pudo contestar (error, cupo o red). Antes (Hola #28) esa llamada pasaba sin sesión: era un
+   hueco. Ahora (Hub #318) Hola comprueba la firma él mismo con LOGIN_SECRETO (el mismo valor que SESSION_SECRET del
+   login; se pega una vez en las Propiedades del script de Hola). Si vale, entra; si no hay llave o no vale, no pasa,
+   pero tampoco se manda «session» (que en el teléfono cierra la sesión) ni se guarda como inválida: el login puede volver. */
 var SES_DUDA_ = false;
 var SES_DEFINITIVOS_ = { session: 1, no_user: 1, suspended: 1 };
 function sesionDe_(body) {
@@ -45,11 +45,30 @@ function sesionDe_(body) {
     }
     if (j && j.ok && j.profile) { cache.put(k, JSON.stringify(j.profile), 3600); return j.profile; }
     if (j && SES_DEFINITIVOS_[j.error]) { cache.put(k, '-', 600); return null; }   // el login dice que no vale: inválida de verdad
-    SES_DUDA_ = true;                                                              // el login falló: no se guarda nada
     try { var pc = CacheService.getScriptCache(); if (!pc.get('ses_falla_m')) { pc.put('ses_falla_m', '1', 300); PropertiesService.getScriptProperties().setProperty('SES_FALLA', new Date().toISOString() + ' · ' + porque); } } catch (e3) {}
-    console.warn('sesionDe_: el login no confirmó (' + porque + '); se deja pasar');
+    var local = sesionLocal_(session);                                             // el login falló: se comprueba la firma aquí
+    if (local) { cache.put(k, JSON.stringify(local), 600); console.warn('sesionDe_: el login no confirmó (' + porque + '); firma comprobada aquí'); return local; }
+    SES_DUDA_ = true;                                                              // sin llave o sin firma válida: no pasa y no se guarda nada
+    console.warn('sesionDe_: el login no confirmó (' + porque + ') y no se pudo comprobar aquí');
     return null;
   } finally { if (conLock) lock.releaseLock(); }
+}
+
+/* Comprobación local de la sesión firmada (login/apps-script/03-auth-endpoint.js, _verificarSesion del repo del Hub):
+   HMAC-SHA256 del cuerpo con LOGIN_SECRETO, comparación en tiempo constante y vencimiento. Devuelve el perfil o null. */
+function sesionLocal_(session) {
+  try {
+    var sec = PropertiesService.getScriptProperties().getProperty('LOGIN_SECRETO'); if (!sec) return null;
+    var tok = String(session || ''), i = tok.lastIndexOf('.'); if (i < 1) return null;
+    var cuerpo = tok.slice(0, i), firma = tok.slice(i + 1);
+    var esperada = Utilities.base64EncodeWebSafe(Utilities.computeHmacSha256Signature(cuerpo, sec)).replace(/=+$/, '');
+    if (firma.length !== esperada.length) return null;
+    var dif = 0; for (var n = 0; n < firma.length; n++) dif |= firma.charCodeAt(n) ^ esperada.charCodeAt(n);
+    if (dif !== 0) return null;
+    var d = JSON.parse(Utilities.newBlob(Utilities.base64DecodeWebSafe(cuerpo + '==='.slice((cuerpo.length + 3) % 4))).getDataAsString());
+    if (!d || !d.e || !d.exp || d.exp < Date.now()) return null;
+    return d.p && d.p.email ? d.p : { email: d.e, nombre: d.n || '', apps: d.apps || {} };
+  } catch (e) { console.warn('sesionLocal_: ' + e); return null; }
 }
 
 function registrarAcceso_(accion, conSesion) {
@@ -93,10 +112,11 @@ function esRobot_(body) {
 }
 function exigirSesion_(accion, conSesion, body, publicas) {
   if (conSesion) return null;
-  if (SES_DUDA_) { registrarAcceso_('⚠ ' + String(accion || ''), 'r'); return null; }   // el login no contestó: no se saca a nadie por eso
   accion = String(accion || '');
   if ((publicas || []).indexOf(accion) >= 0 || esRobot_(body)) return null;
   if (PropertiesService.getScriptProperties().getProperty('SESION_EXIGIR') !== '1') return null;
+  /* El login no contestó y la firma no se pudo comprobar aquí: no pasa, pero sin «session» (no cierra la sesión del teléfono). */
+  if (SES_DUDA_) { registrarAcceso_('⚠ ' + accion, 'r'); return ContentService.createTextOutput(JSON.stringify({ ok: false, error: 'No pude comprobar tu sesión ahora. Intenta en un rato.', login: 'sin_respuesta' })).setMimeType(ContentService.MimeType.JSON); }
   registrarAcceso_('⛔ ' + accion, false);
   return ContentService.createTextOutput(JSON.stringify({ ok: false, error: 'session' })).setMimeType(ContentService.MimeType.JSON);
 }
@@ -108,5 +128,5 @@ function sesDiag_() {
   var cache = CacheService.getScriptCache();
   var falsa = 'diag' + Date.now().toString(36) + '.x';
   var p = sesionDe_({ session: falsa });
-  return { ok: true, reconocida: !!p, duda: SES_DUDA_, falla: PropertiesService.getScriptProperties().getProperty('SES_FALLA') || '', tokenPropio: !!PropertiesService.getScriptProperties().getProperty('LOGIN_TOKEN') };
+  return { ok: true, reconocida: !!p, duda: SES_DUDA_, falla: PropertiesService.getScriptProperties().getProperty('SES_FALLA') || '', tokenPropio: !!PropertiesService.getScriptProperties().getProperty('LOGIN_TOKEN'), secretoLocal: !!PropertiesService.getScriptProperties().getProperty('LOGIN_SECRETO') };
 }

@@ -36,7 +36,7 @@ function sesionDe_(body) {
     for (var intento = 0; intento < 2 && !(j && (j.ok || SES_DEFINITIVOS_[j.error])); intento++) {
       if (intento) Utilities.sleep(700);
       try {
-        var r = UrlFetchApp.fetch(SES_LOGIN_URL_, { method: 'post', contentType: 'text/plain;charset=utf-8', muteHttpExceptions: true, followRedirects: true,
+        var r = uf_(SES_LOGIN_URL_, { method: 'post', contentType: 'text/plain;charset=utf-8', muteHttpExceptions: true, followRedirects: true,
           payload: JSON.stringify({ action: 'verify', token: llaves[intento], session: session }) });
         var txt = r.getContentText() || '';
         try { j = JSON.parse(txt || '{}'); porque = j.ok ? '' : 'login dijo ' + String(j.error || '?'); }

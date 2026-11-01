@@ -215,7 +215,7 @@ function route_(e, method) {
       body = JSON.parse(e.parameter.payload);
     }
     var action = body.action || (e && e.parameter && e.parameter.action) || 'ping';
-    var __diag = accesosDiag_(body); if (__diag) return __diag;   // fase 1b: resumen de accesos (robot)
+    var __diag = accesosDiag_(body) || cupoDiag_(body); if (__diag) return __diag;   // fase 1b: resumen de accesos (robot)
     var __ses = sesionDe_(body); registrarAcceso_(action, __ses ? true : esRobot_(body) ? 'r' : false);
     var __bloq = exigirSesion_(action, !!__ses, body, ['ping', 'sesDiag', 'listPropertyInfo', 'getDocImage', 'findReservation', 'submitForm', 'createAccount', 'login', 'suggestion', 'hostRequest', 'flexAvailability', 'listingAmenities', 'invoiceRequest', 'guestAccess', 'streamingRequest', 'formStarted', 'formCompleted', 'saveDraft', 'getDraft', 'readDocument', 'adminLogin', 'reportProblem', 'openLink', 'regPdfRobot', 'ltGuest', 'ltUpload', 'ltClientError', 'ltReadReceipt', 'ltGuestNotice', 'ltGuestMsg', 'ltGuestFile']); if (__bloq) return __bloq;   // fase 1c: solo bloquea con SESION_EXIGIR = 1
 
@@ -466,7 +466,7 @@ function allStoredPhotos_() {
 }
 
 function hosFetch_(url, cfg) {
-  var res = UrlFetchApp.fetch(url, {
+  var res = uf_(url, {
     method: 'get',
     headers: { 'Authorization': 'Bearer ' + cfg.HOSPITABLE_TOKEN, 'Accept': 'application/json' },
     muteHttpExceptions: true
@@ -480,7 +480,7 @@ function hosFetchAll_(urls, cfg) {
   var reqs = urls.map(function (u) { return { url: u, method: 'get', muteHttpExceptions: true,
     headers: { 'Authorization': 'Bearer ' + cfg.HOSPITABLE_TOKEN, 'Accept': 'application/json' } }; });
   var out = [];
-  try { out = UrlFetchApp.fetchAll(reqs); } catch (e) { return urls.map(function () { return { code: 0, json: { message: String(e && e.message || e) } }; }); }
+  try { out = ufAll_(reqs); } catch (e) { return urls.map(function () { return { code: 0, json: { message: String(e && e.message || e) } }; }); }
   return out.map(function (res) { var j = {}; try { j = JSON.parse(res.getContentText()); } catch (e) {} return { code: res.getResponseCode(), json: j }; });
 }
 
@@ -536,7 +536,7 @@ function anthropicVision_(key, model, prompt, mediaType, data) {
     }]
   };
   try {
-    var res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+    var res = uf_('https://api.anthropic.com/v1/messages', {
       method: 'post',
       contentType: 'application/json',
       headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
@@ -569,7 +569,7 @@ function anthropicVision_(key, model, prompt, mediaType, data) {
 function anthropicText_(key, model, system, userText) {
   var payload = { model: model, max_tokens: 1600, system: system, messages: [{ role: 'user', content: userText }] };
   try {
-    var res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+    var res = uf_('https://api.anthropic.com/v1/messages', {
       method: 'post', contentType: 'application/json',
       headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
       payload: JSON.stringify(payload), muteHttpExceptions: true
@@ -798,7 +798,7 @@ function fxRate_() {
       var env = '<?xml version="1.0" encoding="utf-8"?>'
         + '<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">'
         + '<soap:Body><TipoCambioDia xmlns="http://www.banguat.gob.gt/variables/ws/" /></soap:Body></soap:Envelope>';
-      var res = UrlFetchApp.fetch('https://www.banguat.gob.gt/variables/ws/TipoCambio.asmx', {
+      var res = uf_('https://www.banguat.gob.gt/variables/ws/TipoCambio.asmx', {
         method: 'post', contentType: 'text/xml; charset=utf-8',
         headers: { SOAPAction: 'http://www.banguat.gob.gt/variables/ws/TipoCambioDia' },
         payload: env, muteHttpExceptions: true
@@ -1071,7 +1071,7 @@ function driveFileDataUrl_(fileId) {
   //    original de cámara. Es lo que hace que el resumen abra en segundos.
   try {
     var token = ScriptApp.getOAuthToken();
-    var meta = UrlFetchApp.fetch(
+    var meta = uf_(
       'https://www.googleapis.com/drive/v3/files/' + fileId + '?fields=thumbnailLink,mimeType,size',
       { headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true });
     if (meta.getResponseCode() === 200) {
@@ -1079,7 +1079,7 @@ function driveFileDataUrl_(fileId) {
       var link = j.thumbnailLink || '';
       if (link) {
         link = link.replace(/=s\d+(-c)?$/, '=s1600');
-        var img = UrlFetchApp.fetch(link, { muteHttpExceptions: true });
+        var img = uf_(link, { muteHttpExceptions: true });
         if (img.getResponseCode() === 200) {
           var b = img.getBlob();
           return 'data:' + (b.getContentType() || 'image/jpeg') + ';base64,' + Utilities.base64Encode(b.getBytes());
@@ -2166,7 +2166,7 @@ function waUploadMedia_(pdf) {
   var url = 'https://graph.facebook.com/' + cfg.WHATSAPP_API_VER + '/' + cfg.WHATSAPP_PHONE_ID + '/media';
   var blob = pdf.getAs ? pdf.getAs('application/pdf') : pdf;
   blob.setName(pdf.getName ? (pdf.getName() || 'Registro.pdf') : 'Registro.pdf');
-  var res = UrlFetchApp.fetch(url, {
+  var res = uf_(url, {
     method: 'post',
     muteHttpExceptions: true,
     headers: { 'Authorization': 'Bearer ' + cfg.WHATSAPP_TOKEN },
@@ -2200,7 +2200,7 @@ function waSendDocTemplate_(to, mediaId, filename, bodyParams) {
     type: 'template',
     template: { name: cfg.WHATSAPP_TEMPLATE, language: { code: cfg.WHATSAPP_LANG }, components: components }
   };
-  var res = UrlFetchApp.fetch(url, {
+  var res = uf_(url, {
     method: 'post', contentType: 'application/json', muteHttpExceptions: true,
     headers: { 'Authorization': 'Bearer ' + cfg.WHATSAPP_TOKEN },
     payload: JSON.stringify(payload)
@@ -2224,7 +2224,7 @@ var HUB_ALMA_URL_ = 'https://script.google.com/macros/s/AKfycbzTdkEpRPgnwaUIHWbQ
 function avisarAlmaRecepcion_(meta, force) {
   var code = (meta && meta.code) || '';
   try {
-    var r = UrlFetchApp.fetch(PropertiesService.getScriptProperties().getProperty('HUB_ALMA_URL') || HUB_ALMA_URL_, { method: 'post', contentType: 'text/plain;charset=utf-8', muteHttpExceptions: true, followRedirects: true,
+    var r = uf_(PropertiesService.getScriptProperties().getProperty('HUB_ALMA_URL') || HUB_ALMA_URL_, { method: 'post', contentType: 'text/plain;charset=utf-8', muteHttpExceptions: true, followRedirects: true,
       payload: JSON.stringify({ recepcion: 1, code: code, force: !!force }) });
     var j = {}; try { j = JSON.parse(r.getContentText()); } catch (e) {}
     var ok = !!j.ok;
@@ -2317,7 +2317,7 @@ function waGraph_() { return 'https://graph.facebook.com/' + CFG_().WHATSAPP_API
 function waTemplateStatus_() {
   var cfg = CFG_(), waba = PropertiesService.getScriptProperties().getProperty('WHATSAPP_WABA_ID');
   if (!cfg.WHATSAPP_TOKEN || !waba) return { error: 'Faltan WHATSAPP_TOKEN o WHATSAPP_WABA_ID' };
-  var r = UrlFetchApp.fetch(waGraph_() + '/' + waba + '/message_templates?name=' + encodeURIComponent(cfg.WHATSAPP_TEMPLATE) + '&fields=name,status,language,rejected_reason',
+  var r = uf_(waGraph_() + '/' + waba + '/message_templates?name=' + encodeURIComponent(cfg.WHATSAPP_TEMPLATE) + '&fields=name,status,language,rejected_reason',
     { muteHttpExceptions: true, headers: { Authorization: 'Bearer ' + cfg.WHATSAPP_TOKEN } });
   var j = {}; try { j = JSON.parse(r.getContentText()); } catch (e) {}
   if (r.getResponseCode() >= 300) return { error: 'HTTP ' + r.getResponseCode() + ' · ' + r.getContentText().slice(0, 300) };
@@ -2337,13 +2337,13 @@ function crearPlantillaRegistro() {
   if (ex.status) { Logger.log('La plantilla "' + cfg.WHATSAPP_TEMPLATE + '" ya existe · estado: ' + ex.status + (ex.rejected ? ' · motivo: ' + ex.rejected : '')); return ex; }
   // PDF de ejemplo → handle (Meta lo exige para plantillas con encabezado de documento)
   var appId = p.getProperty('WHATSAPP_APP_ID') || '';
-  if (!appId) { try { appId = JSON.parse(UrlFetchApp.fetch(waGraph_() + '/app', { muteHttpExceptions: true, headers: { Authorization: 'Bearer ' + tok } }).getContentText()).id || ''; } catch (e) {} }
+  if (!appId) { try { appId = JSON.parse(uf_(waGraph_() + '/app', { muteHttpExceptions: true, headers: { Authorization: 'Bearer ' + tok } }).getContentText()).id || ''; } catch (e) {} }
   if (!appId) throw new Error('No encontré el ID de la app de Meta. Agrégalo como WHATSAPP_APP_ID (developers.facebook.com → tu app → Configuración básica).');
   var bytes = samplePdf_().getBytes();
-  var ses = JSON.parse(UrlFetchApp.fetch(waGraph_() + '/' + appId + '/uploads?file_name=registro-ejemplo.pdf&file_length=' + bytes.length + '&file_type=application/pdf',
+  var ses = JSON.parse(uf_(waGraph_() + '/' + appId + '/uploads?file_name=registro-ejemplo.pdf&file_length=' + bytes.length + '&file_type=application/pdf',
     { method: 'post', muteHttpExceptions: true, headers: { Authorization: 'Bearer ' + tok } }).getContentText() || '{}');
   if (!ses.id) throw new Error('Meta no abrió la subida del ejemplo: ' + JSON.stringify(ses));
-  var up = JSON.parse(UrlFetchApp.fetch(waGraph_() + '/' + ses.id, { method: 'post', muteHttpExceptions: true, contentType: 'application/pdf',
+  var up = JSON.parse(uf_(waGraph_() + '/' + ses.id, { method: 'post', muteHttpExceptions: true, contentType: 'application/pdf',
     headers: { Authorization: 'OAuth ' + tok, file_offset: '0' }, payload: bytes }).getContentText() || '{}');
   if (!up.h) throw new Error('Meta no aceptó el PDF de ejemplo: ' + JSON.stringify(up));
   var body = {
@@ -2355,7 +2355,7 @@ function crearPlantillaRegistro() {
       { type: 'FOOTER', text: 'Spacio AM · hola.spacioam.com' }
     ]
   };
-  var r = UrlFetchApp.fetch(waGraph_() + '/' + waba + '/message_templates', { method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+  var r = uf_(waGraph_() + '/' + waba + '/message_templates', { method: 'post', contentType: 'application/json', muteHttpExceptions: true,
     headers: { Authorization: 'Bearer ' + tok }, payload: JSON.stringify(body) });
   Logger.log('Plantilla enviada a revisión · HTTP ' + r.getResponseCode() + ' · ' + r.getContentText());
   return { http: r.getResponseCode(), body: r.getContentText() };
@@ -2567,7 +2567,7 @@ function listingPhoto_(body) {
   var url = String(body.url || '').trim();
   if (!/^https?:\/\//.test(url)) return { ok: false, error: 'url-invalida' };
   try {
-    var res = UrlFetchApp.fetch(url, {
+    var res = uf_(url, {
       muteHttpExceptions: true, followRedirects: true,
       headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36' }
     });
@@ -3704,7 +3704,7 @@ function sendStatus_(b) {
     }
   } catch (e) {}
   try {
-    var hr = UrlFetchApp.fetch(PropertiesService.getScriptProperties().getProperty('HUB_ALMA_URL') || HUB_ALMA_URL_, { method: 'post', contentType: 'text/plain;charset=utf-8', muteHttpExceptions: true, followRedirects: true,
+    var hr = uf_(PropertiesService.getScriptProperties().getProperty('HUB_ALMA_URL') || HUB_ALMA_URL_, { method: 'post', contentType: 'text/plain;charset=utf-8', muteHttpExceptions: true, followRedirects: true,
       payload: JSON.stringify({ recepcionEstado: 1, codes: codes }) });
     var j = JSON.parse(hr.getContentText() || '{}');
     Object.keys((j && j.estados) || {}).forEach(function (k) {
@@ -4925,7 +4925,7 @@ function ltVision_(key, model, prompt, mediaType, data) {
   var block = mediaType === 'application/pdf' ? { type: 'document', source: { type: 'base64', media_type: mediaType, data: data } }
     : { type: 'image', source: { type: 'base64', media_type: mediaType, data: data } };
   try {
-    var res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', { method: 'post', contentType: 'application/json',
+    var res = uf_('https://api.anthropic.com/v1/messages', { method: 'post', contentType: 'application/json',
       headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' }, muteHttpExceptions: true,
       payload: JSON.stringify({ model: model, max_tokens: 600, messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, block] }] }) });
     var json = {}; try { json = JSON.parse(res.getContentText()); } catch (e) {}
@@ -5182,7 +5182,7 @@ function registrarUsoIA_(funcion, modelo, usage, detalle, ref) {
   try {
     var p = PropertiesService.getScriptProperties(), url = p.getProperty('ALMA_URL') || 'https://script.google.com/macros/s/AKfycbzTdkEpRPgnwaUIHWbQmrysPEqGYqTqDKYwMaQlnun-OT7B2hIa6KdSNS-aedWN-I0cZQ/exec', k = p.getProperty('USO_KEY');
     if (!url || !k) return;
-    UrlFetchApp.fetch(url, {
+    uf_(url, {
       method: 'post', contentType: 'application/json', muteHttpExceptions: true,
       payload: JSON.stringify({ usoIA: 1, k: k, app: p.getProperty('USO_APP') || 'Hola', funcion: funcion || 'IA', modelo: modelo || '',
         usage: usage || {}, detalle: detalle || '', ref: ref || '' })

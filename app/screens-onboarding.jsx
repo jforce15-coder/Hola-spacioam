@@ -282,10 +282,28 @@ function OverviewScreen({ t, res, onStart, onExit, onSwitchLang }) {
   );
 }
 
+/* ---------- AVISO DEL PASO ----------
+   «Siguiente» ya no se apaga del todo: si falta algo, al tocarlo se dice qué falta. El aviso va dentro de la barra
+   de abajo (siempre a la vista, también sobre el teclado) y se sacude con su texto (Movimiento con sentido, regla 4). */
+function avisar(setErr, ref, msg) {
+  setErr(msg);
+  // solo la sacudida (sin el borde rojo de los campos: es un texto, no un campo)
+  requestAnimationFrame(() => { const el = ref.current; if (!el) return; el.classList.remove("sa-sacude"); void el.offsetWidth;
+    el.classList.add("sa-sacude"); setTimeout(() => el.classList.remove("sa-sacude"), 500); });
+}
+function PasoAviso({ err, errRef }) {
+  if (!err) return null;
+  return (
+    <p ref={errRef} role="alert" style={{ flexBasis: "100%", margin: 0, color: C.peach, fontFamily: C.sans, fontSize: 12.5,
+      lineHeight: 1.45, letterSpacing: "0.02em", textAlign: "center", textWrap: "pretty" }}>{err}</p>
+  );
+}
+
 /* ---------- BOOKER — ¿quién reserva? (self / tercero + datos del encargado) ---------- */
 function BookerScreen({ t, res, form, setForm, onBack, onNext, onSwitchLang }) {
   const b = form.booker;
   const [err, setErr] = useStateO("");
+  const errRef = useRefO(null);
   const setB = (patch) => setForm((prev) => ({ ...prev, booker: { ...prev.booker, ...patch } }));
   const updateDoc = (patch) => setForm((prev) => ({ ...prev, booker: { ...prev.booker, doc: { ...prev.booker.doc, ...patch } } }));
   const managerReady = () => {
@@ -295,8 +313,8 @@ function BookerScreen({ t, res, form, setForm, onBack, onNext, onSwitchLang }) {
   };
   const proceed = () => {
     setErr("");
-    if (!b.type) { setErr(t.requiredFields || "Selecciona una opción."); return; }
-    if (b.type === "third" && !managerReady()) { setErr(t.requiredFields || "Completa los datos del encargado."); return; }
+    if (!b.type) { avisar(setErr, errRef, t.bookerPick); return; }
+    if (b.type === "third" && !managerReady()) { avisar(setErr, errRef, t.requiredFields); return; }
     onNext();
   };
   const opt = (value, title, desc) => (
@@ -348,11 +366,11 @@ function BookerScreen({ t, res, form, setForm, onBack, onNext, onSwitchLang }) {
         </div>
       )}
 
-      {err && <p style={{ color: C.peach, fontFamily: C.sans, fontSize: 12, margin: "16px 0 0", letterSpacing: "0.02em" }}>{err}</p>}
-      <div className="paso-acciones" style={{ display: "flex", gap: 12, marginTop: 24 }}>
+      <div className="paso-acciones" style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 24 }}>
+        <PasoAviso err={(!b.type || (b.type === "third" && !managerReady())) ? err : ""} errRef={errRef} />
         <Btn variant="outline" onClick={onBack}>{t.back}</Btn>
         <div style={{ flex: 1 }} />
-        <Btn onClick={proceed} disabled={!b.type || (b.type === "third" && !managerReady())}>{t.next}</Btn>
+        <Btn onClick={proceed} pending={!b.type || (b.type === "third" && !managerReady())}>{t.next}</Btn>
       </div>
     </Screen>
   );
@@ -363,6 +381,7 @@ function DocsScreen({ t, res, form, setForm, onBack, onNext, onSwitchLang }) {
   const max = res.maxCapacity;
   const count = form.count || res.reservedGuests || 1;
   const [err, setErr] = useStateO("");
+  const errRef = useRefO(null);
   const setCount = (n) => {
     setForm((prev) => {
       const docs = [...(prev.docs || [])];
@@ -388,7 +407,7 @@ function DocsScreen({ t, res, form, setForm, onBack, onNext, onSwitchLang }) {
     ? Array.from({ length: count }).every((_, i) => (i < drivers ? docOk(docs[i]) : nameOk(docs[i])))
     : Array.from({ length: count }).every((_, i) => docOk(docs[i]));
   const proceed = () => {
-    if (!allDone) { setErr(largeCap ? t.allDriversRequired : t.allDocsRequired); return; }
+    if (!allDone) { avisar(setErr, errRef, largeCap ? t.allDriversRequired : t.allDocsRequired); return; }
     onNext();
   };
   return (
@@ -455,11 +474,11 @@ function DocsScreen({ t, res, form, setForm, onBack, onNext, onSwitchLang }) {
         <span style={{ flexShrink: 0, marginTop: 1 }}><Icon name="lock" size={16} color={C.taupe} /></span>
         <p style={{ fontFamily: C.sans, fontSize: 11.5, color: C.tierra, lineHeight: 1.6, margin: 0, letterSpacing: "0.01em" }}>{t.encryption}</p>
       </div>
-      {err && <p style={{ color: C.peach, fontFamily: C.sans, fontSize: 12, margin: "14px 0 0", letterSpacing: "0.02em" }}>{err}</p>}
-      <div className="paso-acciones" style={{ display: "flex", gap: 12, marginTop: 24 }}>
+      <div className="paso-acciones" style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 24 }}>
+        <PasoAviso err={!allDone ? err : ""} errRef={errRef} />
         <Btn variant="outline" onClick={onBack}>{t.back}</Btn>
         <div style={{ flex: 1 }} />
-        <Btn onClick={proceed} disabled={!allDone}>{t.next}</Btn>
+        <Btn onClick={proceed} pending={!allDone}>{t.next}</Btn>
       </div>
     </Screen>
   );
@@ -469,11 +488,12 @@ function DocsScreen({ t, res, form, setForm, onBack, onNext, onSwitchLang }) {
 function ContactScreen({ t, res, form, setForm, onBack, onNext, onSwitchLang }) {
   const c = form.contact;
   const [err, setErr] = useStateO("");
+  const errRef = useRefO(null);
   const setC = (patch) => setForm({ ...form, contact: { ...form.contact, ...patch } });
   const mainName = (form.docs?.[0]?.name || "").split(" ")[0] || "";
   const ready = (c.email || "").trim() && (c.phone?.number || "").trim();
   const proceed = () => {
-    if (!ready) { setErr(t.requiredFields || "Completa los campos requeridos."); return; }
+    if (!ready) { avisar(setErr, errRef, t.requiredFields); return; }
     onNext();
   };
   return (
@@ -494,11 +514,11 @@ function ContactScreen({ t, res, form, setForm, onBack, onNext, onSwitchLang }) 
           <PhoneInput label={t.emergency} value={c.emergency} hint={t.emergencyHint} onChange={(v) => setC({ emergency: v })} />
         </div>
       </div>
-      {err && <p style={{ color: C.peach, fontFamily: C.sans, fontSize: 12, margin: "14px 0 0", letterSpacing: "0.02em" }}>{err}</p>}
-      <div className="paso-acciones" style={{ display: "flex", gap: 12, marginTop: 24 }}>
+      <div className="paso-acciones" style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 24 }}>
+        <PasoAviso err={!ready ? err : ""} errRef={errRef} />
         <Btn variant="outline" onClick={onBack}>{t.back}</Btn>
         <div style={{ flex: 1 }} />
-        <Btn onClick={proceed} disabled={!ready}>{t.next}</Btn>
+        <Btn onClick={proceed} pending={!ready}>{t.next}</Btn>
       </div>
     </Screen>
   );
@@ -603,7 +623,7 @@ function RulesScreen({ t, onBack, onAccept, onSwitchLang }) {
         ))}
         <button onClick={() => setFinesOpen((v) => !v)} className="sp-btn"
           style={{ marginTop: 6, width: "100%", background: "transparent", color: C.negro, border: "none",
-            padding: "12px 0 4px", fontFamily: C.sans, fontSize: 11.5, letterSpacing: "0.04em", cursor: "pointer", fontWeight: 600,
+            padding: "12px 0 4px", minHeight: 44, fontFamily: C.sans, fontSize: 11.5, letterSpacing: "0.04em", cursor: "pointer", fontWeight: 600,
             display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
           {finesOpen ? t.finesCollapse : t.finesExpand}
           <Icon name={finesOpen ? "chevronUp" : "chevronDown"} size={15} color={C.negro} />
@@ -612,7 +632,7 @@ function RulesScreen({ t, onBack, onAccept, onSwitchLang }) {
 
       <div style={{ display: "flex", justifyContent: "center", marginTop: 16 }}>
         <button onClick={downloadRules} className="sp-btn" style={{ background: "transparent", color: C.tierra, border: "none",
-          padding: "10px 12px", fontFamily: C.sans, fontSize: 11.5, letterSpacing: "0.03em", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 7 }}>
+          padding: "10px 12px", minHeight: 44, fontFamily: C.sans, fontSize: 11.5, letterSpacing: "0.03em", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 7 }}>
           <Icon name="download" size={14} color={C.tierra} /> {t.downloadFull}
         </button>
       </div>

@@ -367,7 +367,7 @@ const T = {
     sumWatermark: "Documentación de registro", sumGenerated: "Generado",
     sumSendTo: "Enviar a", sumPrint: "Descargar PDF", sumClose: "Cerrar", sumNoImage: "Sin imagen (datos manuales)",
 
-    requiredFields: "Completa los campos requeridos antes de continuar.",
+    requiredFields: "Completa los campos requeridos antes de continuar.", bookerPick: "Elige una opción para continuar.",
     editManual: "Escribir datos manualmente",
     back: "Atrás", next: "Siguiente", continue: "Continuar", understand: "Entiendo, continuar",
     hello: "Hola", yourStay: "Tu estancia", logout: "Salir",
@@ -712,7 +712,7 @@ const T = {
     sumWatermark: "Registration documentation", sumGenerated: "Generated",
     sumSendTo: "Send to", sumPrint: "Download PDF", sumClose: "Close", sumNoImage: "No image (manual entry)",
 
-    requiredFields: "Please complete the required fields before continuing.",
+    requiredFields: "Please complete the required fields before continuing.", bookerPick: "Choose an option to continue.",
     editManual: "Enter data manually",
     back: "Back", next: "Next", continue: "Continue", understand: "Got it, continue",
     hello: "Hi", yourStay: "Your stay", logout: "Log out",

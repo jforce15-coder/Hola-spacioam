@@ -127,12 +127,14 @@ function Grain() {
 }
 
 /* ---------- BUTTON ---------- */
-function Btn({ children, onClick, variant = "solid", disabled, full, style }) {
+/* pending: se ve apagado pero se puede tocar, para explicar qué falta (un botón muerto deja al huésped sin saber qué hacer). */
+function Btn({ children, onClick, variant = "solid", disabled, pending, full, style }) {
   const base = {
     fontFamily: C.sans, fontSize: 12, letterSpacing: "0.14em", fontWeight: 500,
     padding: "16px 30px", borderRadius: 14, cursor: disabled ? "not-allowed" : "pointer",
     border: "none", textTransform: "uppercase", width: full ? "100%" : "auto",
-    opacity: disabled ? 0.38 : 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 9,
+    opacity: disabled || pending ? 0.38 : 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 9,
+    transition: "opacity .2s " + C.ease,
   };
   const variants = {
     solid:   { background: C.negro, color: C.alabaster },
@@ -141,7 +143,7 @@ function Btn({ children, onClick, variant = "solid", disabled, full, style }) {
     ghost:   { background: C.white, color: C.negro, border: `1px solid ${C.grisCalido}` },
   };
   return (
-    <button className="sp-btn" onClick={disabled ? undefined : onClick} disabled={disabled}
+    <button className="sp-btn" onClick={disabled ? undefined : onClick} disabled={disabled} aria-disabled={pending || undefined}
       style={{ ...base, ...variants[variant], ...style }}>
       {children}
     </button>
@@ -416,7 +418,7 @@ function DocUploader({ t, roleLabel, badge, badgeColor, doc, update }) {
   const pickBtn = (iconName, label, onClick, primary) => (
     <button className="sp-btn" onClick={onClick}
       style={{ background: primary ? C.negro : C.white, color: primary ? C.alabaster : C.negro,
-        border: primary ? "none" : `1px solid ${C.grisCalido}`, borderRadius: 12, padding: "11px 15px",
+        border: primary ? "none" : `1px solid ${C.grisCalido}`, borderRadius: 12, padding: "11px 15px", minHeight: 44,
         fontFamily: C.sans, fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", cursor: "pointer",
         display: "inline-flex", alignItems: "center", gap: 7, fontWeight: 500 }}>
       <Icon name={iconName} size={15} color={primary ? C.alabaster : C.negro} /> {label}
@@ -462,8 +464,8 @@ function DocUploader({ t, roleLabel, badge, badgeColor, doc, update }) {
           </div>
           <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
             <button className="sp-btn" onClick={() => fileRef.current.click()} style={{ background: C.negro, color: C.alabaster, border: "none",
-              borderRadius: 10, padding: "9px 15px", fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", cursor: "pointer", fontWeight: 500 }}>{t.retry}</button>
-            {d.canManual && <button onClick={() => update({ manual: true, error: null, isDocument: true })} className="sp-link" style={{ background: "transparent", border: "none",
+              borderRadius: 10, padding: "9px 15px", minHeight: 44, fontFamily: C.sans, fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", cursor: "pointer", fontWeight: 500 }}>{t.retry}</button>
+            {d.canManual && <button onClick={() => update({ manual: true, error: null, isDocument: true })} className="sp-link" style={{ background: "transparent", border: "none", minHeight: 44,
               fontFamily: C.sans, fontSize: 11, color: C.tierra, cursor: "pointer", letterSpacing: "0.02em", textDecoration: "underline" }}>{t.docFallbackManual}</button>}
           </div>
         </div>
@@ -539,14 +541,17 @@ function Screen({ children, maxW = 460, flowTop = true, pad }) {
 function TopBar({ t, onSwitchLang, onHome }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 26 }}>
+      {/* las dos piezas miden 44 px para el dedo; el margen negativo deja el dibujo donde estaba */}
       <button onClick={onHome} className="sp-link" title={onHome ? (t && t.code === "en" ? "Back" : "Un paso atrás") : undefined}
-        style={{ background: "none", border: "none", padding: 0, cursor: onHome ? "pointer" : "default", display: "flex" }}>
+        aria-label={onHome ? (t && t.code === "en" ? "Back" : "Un paso atrás") : undefined}
+        style={{ background: "none", border: "none", padding: 8, margin: -8, minWidth: 44, minHeight: 44, cursor: onHome ? "pointer" : "default",
+          display: "flex", alignItems: "center", justifyContent: "flex-start" }}>
         <LogoS size={28} />
       </button>
-      <button onClick={onSwitchLang} className="sp-link" style={{ background: "transparent", border: `1px solid ${C.grisCalido}`,
-        borderRadius: 999, padding: "7px 15px", fontFamily: C.sans, fontSize: 10, letterSpacing: "0.18em",
-        color: C.tierra, cursor: "pointer", fontWeight: 500 }}>
-        {t.code === "es" ? "EN" : "ES"}
+      <button onClick={onSwitchLang} className="sp-link" aria-label={t.code === "es" ? "English" : "Español"}
+        style={{ background: "transparent", border: "none", padding: "8px 0", margin: "-8px 0", minHeight: 44, cursor: "pointer", display: "flex", alignItems: "center" }}>
+        <span style={{ border: `1px solid ${C.grisCalido}`, borderRadius: 999, padding: "7px 15px", fontFamily: C.sans, fontSize: 10, letterSpacing: "0.18em",
+          color: C.tierra, fontWeight: 500 }}>{t.code === "es" ? "EN" : "ES"}</span>
       </button>
     </div>
   );

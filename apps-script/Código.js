@@ -2119,7 +2119,7 @@ function contactsFor_(name) {
 /* Resumen para el panel: la lista completa de WhatsApp internos (tabla del
    código + teléfonos editados en el panel/Estaciones, sin el administrador)
    para copiar al agente de ElevenLabs, más los contactos editados por
-   propiedad. */
+   propiedad (con el principal y el secundario por separado). */
 function adminContactsInfo_() {
   var set = {};
   PROPERTY_CONTACTS_.forEach(function (p) { (p.whatsapps || []).forEach(function (w) { set[w] = 1; }); });
@@ -2130,7 +2130,10 @@ function adminContactsInfo_() {
       var was = [];
       [s.phone1, s.phone2].forEach(function (ph) { var d = String(ph || '').replace(/[^\d]/g, ''); if (d.length >= 8) { was.push(d); set[d] = 1; } });
       var ems = [s.email1, s.email2].filter(function (e) { return e && String(e).trim(); });
-      if (was.length || ems.length) props.push({ name: s.propertyName || '', emails: ems, whatsapps: was });
+      /* email1/phone1 = contacto principal; email2/phone2 = contacto secundario (Alma: contactos_recepcion_hola). */
+      if (was.length || ems.length) props.push({ name: s.propertyName || '', emails: ems, whatsapps: was,
+        email1: String(s.email1 || '').trim(), email2: String(s.email2 || '').trim(),
+        phone1: String(s.phone1 || '').replace(/[^\d]/g, ''), phone2: String(s.phone2 || '').replace(/[^\d]/g, '') });
     });
   } catch (e) {}
   delete set[ADMIN_WHATSAPP_];

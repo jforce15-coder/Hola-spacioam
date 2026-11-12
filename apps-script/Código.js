@@ -217,7 +217,7 @@ function route_(e, method) {
     var action = body.action || (e && e.parameter && e.parameter.action) || 'ping';
     var __diag = accesosDiag_(body) || cupoDiag_(body); if (__diag) return __diag;   // fase 1b: resumen de accesos (robot)
     var __ses = sesionDe_(body); registrarAcceso_(action, __ses ? true : esRobot_(body) ? 'r' : false);
-    var __bloq = exigirSesion_(action, !!__ses, body, ['ping', 'sesDiag', 'listPropertyInfo', 'getDocImage', 'findReservation', 'submitForm', 'createAccount', 'login', 'suggestion', 'hostRequest', 'flexAvailability', 'listingAmenities', 'invoiceRequest', 'guestAccess', 'streamingRequest', 'formStarted', 'formCompleted', 'saveDraft', 'getDraft', 'readDocument', 'adminLogin', 'reportProblem', 'openLink', 'regPdfRobot', 'ltGuest', 'ltUpload', 'ltClientError', 'ltReadReceipt', 'ltGuestNotice', 'ltGuestMsg', 'ltGuestFile']); if (__bloq) return __bloq;   // fase 1c: solo bloquea con SESION_EXIGIR = 1
+    var __bloq = exigirSesion_(action, !!__ses, body, ['ping', 'sesDiag', 'listPropertyInfo', 'getDocImage', 'findReservation', 'submitForm', 'createAccount', 'login', 'suggestion', 'hostRequest', 'flexAvailability', 'listingAmenities', 'invoiceRequest', 'guestAccess', 'streamingRequest', 'formStarted', 'formCompleted', 'saveDraft', 'getDraft', 'readDocument', 'adminLogin', 'reportProblem', 'openLink', 'regPdfRobot', 'ltGuest', 'ltUpload', 'ltClientError', 'ltReadReceipt', 'ltGuestNotice', 'ltGuestMsg', 'ltGuestFile', 'enlace']); if (__bloq) return __bloq;   // fase 1c: solo bloquea con SESION_EXIGIR = 1
 
     switch (action) {
       case 'ping':             out = { ok: true, service: 'spacio-am-backend', time: new Date().toISOString() }; break;
@@ -278,7 +278,9 @@ function route_(e, method) {
       case 'listIncidents':    out = listIncidents_(); break;
       case 'resolveIncident':  out = resolveIncident_(body); break;
       case 'adminAlerts':      out = adminAlerts_(); break;
-      case 'guestLink':        out = guestLink_(body); break;
+      case 'guestLink':        out = guestLink_(body, !!(__ses || esRobot_(body))); break;
+      case 'acortar':          out = acortarEnlace_(body, __ses); break;   // enlaces cortos (#488 T3, enlaces.js): con sesión o robot
+      case 'enlace':           out = abrirEnlace_(body.codigo); break;     // pública: la usa 404.html
       case 'openLink':         out = openLink_(body); break;
       case 'listInvoices':     out = { ok: true, invoices: listInvoices_(), fx: fxRate_() }; break;
       case 'seguimientoAll':   out = seguimientoAll_(); break;
@@ -3148,14 +3150,15 @@ function linkSig_(code) {
   return hex.substring(0, 16);
 }
 
-/* Genera el enlace para una reserva. Lo usa el panel. */
-function guestLink_(b) {
+/* Genera el enlace para una reserva. Lo usa el panel: con sesión sale corto (hola.spacioam.com/<código>, #488 T3). */
+function guestLink_(b, corto) {
   var code = String(b.code || '').trim();
   if (!code) return { ok: false, error: 'no-code' };
   var base = String(b.base || CFG_().APP_URL || '').replace(/\/+$/, '');
   var sig = linkSig_(code);
   var hash = '#r=' + encodeURIComponent(code) + '&s=' + sig + (b.tile ? '&t=' + encodeURIComponent(b.tile) : '');
-  return { ok: true, sig: sig, hash: hash, url: base ? (base + '/' + hash) : hash };
+  var url = base ? (base + '/' + hash) : hash;
+  return { ok: true, sig: sig, hash: hash, url: corto ? acortar_(url, 'enlace directo') : url, largo: url };
 }
 
 /* Abre el enlace: valida la firma y devuelve la reserva. */
@@ -3812,6 +3815,9 @@ function contactsAvailability_(body) {
    ============================================================ */
 function sendMail_(to, subject, body, htmlBody, attachments) {
   if (!to) return false;
+  /* Enlaces cortos (#488 T3, enlaces.js): todo correo de Hola sale con hola.spacioam.com/<código> en vez del largo. */
+  body = acortarEnTexto_(body, 'correo');
+  if (htmlBody) htmlBody = acortarEnHtml_(htmlBody, 'correo');
   var cfg = CFG_();
   try {
     var opts = { name: cfg.FROM_NAME || 'Spacio AM' };
@@ -4652,7 +4658,7 @@ function ltDetail_(r, forGuest) {
     lectura: forGuest ? null : ltJson_(c.lectura) }; });
   o.mensajes = ltOf_('LT_Mensajes', r.codigo_lt).map(function (m) { return { id: m.msg_id, autor: m.autor, texto: m.texto, creado: m.creado }; });
   if (!forGuest) o.envios = ltOf_('LT_Envios', r.codigo_lt).map(function (e) { return { id: e.envio_id, periodo: e.periodo_id, tipo: e.tipo, canal: e.canal, destino: e.destino, estado: e.estado, creado: e.creado }; }).reverse();
-  if (forGuest) { delete o.notas; delete o.guest.docFileId; } else o.url = ltLinkOf_(r);
+  if (forGuest) { delete o.notas; delete o.guest.docFileId; } else o.url = acortar_(ltLinkOf_(r), 'Long Term');   // el panel lo copia y lo manda corto
   return o;
 }
 
@@ -4776,7 +4782,7 @@ function ltSave_(b) {
     ltOf_('LT_Pagos', code).forEach(function (p) { if (ltConcepto_(p) === 'renta' && (p.estado === 'pendiente' || p.estado === 'vencido') && !ltTrue_(p.ajustado)) ltUpdate_('LT_Pagos', p._row, { monto: base.monto, moneda: base.moneda }); });
     ltEnsurePeriods_(ltRes_(code));
     var out = { ok: true, lt: ltDetail_(ltRes_(code), false) };
-    if (token) out.url = ltUrl_(token);
+    if (token) out.url = acortar_(ltUrl_(token), 'Long Term');
     return out;
   } finally { lock.releaseLock(); }
 }
@@ -4798,11 +4804,11 @@ function ltToken_(b) {
   var r = ltRes_(b.code); if (!r) return { ok: false, error: 'not-found' };
   var token = ltNewToken_();
   ltUpdate_('LT_Reservas', r._row, { token_hash: ltHash_(token), token_enc: ltEnc_(token), token_activo: true, actualizado: ltNow_() });
-  return { ok: true, url: ltUrl_(token) };
+  return { ok: true, url: acortar_(ltUrl_(token), 'Long Term') };
 }
 function ltLink_(b) {
   var r = ltRes_(b.code); if (!r) return { ok: false, error: 'not-found' };
-  var u = ltLinkOf_(r); return u ? { ok: true, url: u } : { ok: false, error: 'no-token' };
+  var u = ltLinkOf_(r); return u ? { ok: true, url: acortar_(u, 'Long Term') } : { ok: false, error: 'no-token' };
 }
 function ltVerify_(b) {
   var p = ltRows_('LT_Pagos').filter(function (x) { return x.periodo_id === b.periodoId; })[0]; if (!p) return { ok: false, error: 'not-found' };

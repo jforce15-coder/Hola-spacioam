@@ -11,6 +11,9 @@ on:
       - "apps-script/**"
       - ".clasp.json"
       - ".github/recepcion-numeros.js"
+      - ".github/enlaces.js"
+      - "404.html"
+      - "config.js"
 
 jobs:
   revisar:
@@ -35,6 +38,10 @@ jobs:
       - name: Números de WhatsApp de recepción en formato internacional (dobles, sin internet)
         # 12-nov-2026: un número escrito sin 502 o con espacios no debe cambiar a quién llega el registro.
         run: node .github/recepcion-numeros.js apps-script
+
+      - name: Enlaces cortos con hola.spacioam.com (dobles, sin internet)
+        # Hub #488 T3: el perfil de Long Term, el enlace directo y la invitación salían largos (?lt=<token de 40>).
+        run: node .github/enlaces.js apps-script
 
       - name: JSON y .clasp.json
         run: |

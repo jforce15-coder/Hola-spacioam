@@ -10,6 +10,7 @@ on:
     paths:
       - "apps-script/**"
       - ".clasp.json"
+      - ".github/recepcion-numeros.js"
 
 jobs:
   revisar:
@@ -30,6 +31,10 @@ jobs:
             if node --check "$f"; then echo "✓ $f"; else echo "::error file=$f::Error de sintaxis"; fallo=1; fi
           done < <(find . -path ./.git -prune -o -path '*/archivo/*' -prune -o -path '*/apps-script/*.js' -print0)
           exit $fallo
+
+      - name: Números de WhatsApp de recepción en formato internacional (dobles, sin internet)
+        # 12-nov-2026: un número escrito sin 502 o con espacios no debe cambiar a quién llega el registro.
+        run: node .github/recepcion-numeros.js apps-script
 
       - name: JSON y .clasp.json
         run: |

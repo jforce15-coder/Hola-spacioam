@@ -1055,7 +1055,11 @@ function scheduledSync() { try { listReservations_(); } catch (e) {} }
 /* Cron corto recomendado: cada 5-10 min, solo los próximos 5 días.
    Así una reserva de última hora ya está en caché antes de que el huésped
    escriba su código. Configúralo como disparador de tiempo en Apps Script. */
-function quickSync() { try { listReservations_({ days: 90, fast: true }); } catch (e) {} }
+function quickSync() {
+  try { listReservations_({ days: 90, fast: true }); } catch (e) {}
+  try { regRecepcionEnviar_(); } catch (e) { console.error('regRecepcionEnviar_: ' + e); }
+  try { baldoneRecepcionCorregir_(); } catch (e) { console.error('baldoneRecepcionCorregir_: ' + e); }
+}
 /* Ejecútalo UNA vez desde el editor: deja el sync rápido cada 10 min y el completo a las 5 a.m. y 3 p.m. */
 function installSyncTriggers() {
   ScriptApp.getProjectTriggers().forEach(function (t) { var h = t.getHandlerFunction(); if (h === 'quickSync' || h === 'scheduledSync') ScriptApp.deleteTrigger(t); });
@@ -1292,8 +1296,16 @@ function submitForm_(body) {
   if (!regPdf) logSend_('pdf', meta, '', false, 'No se pudo generar el PDF del formulario');
   var contacts = contactsFor_(meta.propertyName || '');
   var emailRes, waRes;
-  try { emailRes = notifyStation_(meta, guests, regPdf, contacts.emails); } catch (e) { emailRes = { ok: false, error: String(e) }; logSend_('email', meta, '', false, String(e)); }
-  try { waRes = notifyWhatsApp_(meta, guests, regPdf, contacts.whatsapps); } catch (e) { waRes = { ok: false, error: String(e) }; logSend_('whatsapp', meta, '', false, String(e)); }
+  /* Registro a recepción el día de llegada (Juan, 12-nov-2026): llenado antes de las 8:00 del día del check-in, queda
+     programado y sale a esa hora con lo último que haya guardado (regRecepcionEnviar_, desde quickSync). Llenado después,
+     sale ya; si ya había salido (una corrección del mismo día), sale otra vez actualizado, como «Reenviar a recepción». */
+  var prog = null; try { prog = regRecepcionProgramarSiToca_(meta); } catch (e) { logSend_('recepcion-programada', meta, '', false, 'No se pudo programar: ' + String(e)); }
+  if (prog) { emailRes = waRes = { ok: true, programado: prog }; }
+  else {
+    var reenvio = false; try { reenvio = regRecepcionMarcarEnviado_(code, meta); } catch (e) {}
+    try { emailRes = notifyStation_(meta, guests, regPdf, contacts.emails); } catch (e) { emailRes = { ok: false, error: String(e) }; logSend_('email', meta, '', false, String(e)); }
+    try { waRes = notifyWhatsApp_(meta, guests, regPdf, contacts.whatsapps, reenvio); } catch (e) { waRes = { ok: false, error: String(e) }; logSend_('whatsapp', meta, '', false, String(e)); }
+  }
 
   // 3) Correo de bienvenida al huésped (branded)
   var guestEmail = (f.contact && f.contact.email) || booker.email || '';
@@ -1305,6 +1317,97 @@ function submitForm_(body) {
   }
 
   return { ok: true, docsFolder: subFolder ? subFolder.getUrl() : '', saveError: saveError, sendReport: { email: emailRes, whatsapp: waRes } };
+}
+
+/* ═══ REGISTRO A RECEPCIÓN EL DÍA DE LLEGADA (Juan, 12-nov-2026) ═══════════════════════════════════════════
+   «Los formularios deben enviarse el día del check-in por la mañana (o inmediatamente después, si a la hora estipulada
+   el huésped no lo ha llenado y decide llenarlo después).» Antes, el registro (correo con el PDF y WhatsApp de ALMA con
+   la plantilla registro_recepcion) le llegaba a la recepción del edificio en cuanto el huésped lo llenaba, a veces días
+   antes de su llegada.
+   · Llenado antes de las 8:00 (hora de Guatemala) del día del check-in: no sale; queda en la pestaña RecepcionProgramada
+     y sale ese día a las 8:00 (quickSync, cada 10 min). El aviso al administrador va en el mismo WhatsApp de ALMA
+     (contactsFor_ lo incluye siempre), así que sale junto.
+   · Si el huésped lo corrige antes de esa hora, la fila es la misma: a las 8:00 sale una sola vez, con lo último guardado.
+   · Llenado ese día después de las 8:00 (o después del check-in): sale de inmediato. Si ya había salido y lo corrige,
+     sale otra vez actualizado (force, como «Reenviar a recepción» del panel).
+   · «Reenviar a recepción» del panel sigue saliendo al momento. */
+var REG_RECEP_HORA_ = '08:00';
+var REG_RECEP_CAB_ = ['code', 'propiedad', 'checkin', 'estado', 'programado', 'actualizado', 'enviado', 'detalle'];
+function regRecepcionYmd_(v) { return v instanceof Date ? Utilities.formatDate(v, 'America/Guatemala', 'yyyy-MM-dd') : String(v || '').slice(0, 10); }
+/* ¿Ya es hora de que salga? El día de llegada desde las 8:00, o cualquier día después. Sin fecha: sí (como antes). */
+function regRecepcionEsHora_(checkin) {
+  var ci = regRecepcionYmd_(checkin); if (!/^\d{4}-\d\d-\d\d$/.test(ci)) return true;
+  var ahora = new Date(), hoy = Utilities.formatDate(ahora, 'America/Guatemala', 'yyyy-MM-dd');
+  return hoy > ci || (hoy === ci && Utilities.formatDate(ahora, 'America/Guatemala', 'HH:mm') >= REG_RECEP_HORA_);
+}
+function hojaRegRecepcion_() {
+  var ss = SpreadsheetApp.openById(CFG_().SHEET_ID), sh = ss.getSheetByName('RecepcionProgramada');
+  if (!sh) { sh = ss.insertSheet('RecepcionProgramada'); sh.appendRow(REG_RECEP_CAB_); }
+  return sh;
+}
+function regRecepcionFila_(sh, code) {
+  var n = sh.getLastRow(); if (n < 2) return null;
+  var v = sh.getRange(2, 1, n - 1, REG_RECEP_CAB_.length).getValues(), k = normCode_(code);
+  for (var i = v.length - 1; i >= 0; i--) if (normCode_(v[i][0]) === k) return { fila: i + 2, v: v[i] };
+  return null;
+}
+/* Antes de la hora: programa (o actualiza la fila de esa reserva) y devuelve 'AAAA-MM-DD 08:00'. A la hora o después: null. */
+function regRecepcionProgramarSiToca_(meta) {
+  if (regRecepcionEsHora_(meta.checkin)) return null;
+  var ci = regRecepcionYmd_(meta.checkin), cuando = ci + ' ' + REG_RECEP_HORA_, ahora = new Date().toISOString();
+  var lock = LockService.getScriptLock(); try { lock.waitLock(20000); } catch (e) {}
+  try {
+    var sh = hojaRegRecepcion_(), f = regRecepcionFila_(sh, meta.code);
+    if (f && f.v[3] === 'pendiente') sh.getRange(f.fila, 1, 1, 8).setValues([[normCode_(meta.code), meta.propertyName || '', ci, 'pendiente', f.v[4] || ahora, ahora, '', 'corregido: sale lo último']]);
+    else sh.appendRow([normCode_(meta.code), meta.propertyName || '', ci, 'pendiente', ahora, ahora, '', '']);
+  } finally { try { lock.releaseLock(); } catch (e) {} }
+  logSend_('recepcion-programada', meta, '', true, 'Registro a recepción programado para el ' + cuando + ' (hora de Guatemala)');
+  return cuando;
+}
+/* Sale ahora (a la hora o después). Devuelve true si ya había salido antes (entonces va con force) y deja la fila al día. */
+function regRecepcionMarcarEnviado_(code, meta) {
+  var sh = hojaRegRecepcion_(), f = regRecepcionFila_(sh, code), ahora = new Date().toISOString();
+  if (!f) { sh.appendRow([normCode_(code), (meta && meta.propertyName) || '', regRecepcionYmd_(meta && meta.checkin), 'enviado', '', ahora, ahora, 'salió al momento']); return false; }
+  var antes = f.v[3] === 'enviado';
+  sh.getRange(f.fila, 4, 1, 5).setValues([['enviado', f.v[4], new Date().toISOString(), new Date().toISOString(), antes ? 'corregido el mismo día: reenviado actualizado' : 'lo llenó otra vez a la hora: salió al momento']]);
+  return antes;
+}
+/* quickSync (cada 10 min): lo programado sale el día de llegada desde las 8:00, una vez, con lo último guardado. */
+function regRecepcionEnviar_() {
+  var sh = SpreadsheetApp.openById(CFG_().SHEET_ID).getSheetByName('RecepcionProgramada');
+  if (!sh || sh.getLastRow() < 2) return 0;
+  var v = sh.getRange(2, 1, sh.getLastRow() - 1, REG_RECEP_CAB_.length).getValues(), listos = [];
+  v.forEach(function (r, i) { if (r[3] === 'pendiente' && regRecepcionEsHora_(r[2])) listos.push({ fila: i + 2, code: String(r[0]) }); });
+  if (!listos.length) return 0;
+  var lock = LockService.getScriptLock(); if (!lock.tryLock(10000)) return 0;
+  var enviados = 0;
+  try {
+    listos.slice(0, 5).forEach(function (x) {
+      /* Otra pasada ya lo tomó: se lee la fila otra vez con el candado. */
+      if (sh.getRange(x.fila, 4).getValue() !== 'pendiente') return;
+      sh.getRange(x.fila, 4).setValue('enviando');
+      var res = { ok: false, error: '' };
+      try { res = regRecepcionMandar_(x.code); } catch (e) { res = { ok: false, error: String(e) }; }
+      sh.getRange(x.fila, 4, 1, 5).setValues([[res.ok ? 'enviado' : 'error', sh.getRange(x.fila, 5).getValue(), sh.getRange(x.fila, 6).getValue(), new Date().toISOString(), res.ok ? 'salió a las ' + Utilities.formatDate(new Date(), 'America/Guatemala', 'HH:mm') : String(res.error || 'falló').slice(0, 300)]]);
+      if (res.ok) enviados++;
+    });
+  } finally { lock.releaseLock(); }
+  return enviados;
+}
+/* Lo mismo que submitForm_ manda a recepción (correo con el PDF y WhatsApp por ALMA), armado con lo último guardado. */
+function regRecepcionMandar_(code) {
+  var reg = getRegistration_({ code: code });
+  if (!reg || !reg.ok) return { ok: false, error: 'registro-no-encontrado' };
+  var rec = reg.record, meta = metaForCode_(code);
+  meta = Object.assign({}, meta, { checkin: regRecepcionYmd_(meta.checkin), checkout: regRecepcionYmd_(meta.checkout) });
+  var guests = conImagenesDoc_(rec.guests || []);
+  var pdf = null; try { pdf = buildRegistrationPdf_(meta, { booker: rec.booker, contact: rec.contact, guests: guests, acceptedRulesAt: rec.acceptedRulesAt }, guests); } catch (e) {}
+  if (!pdf) logSend_('pdf', meta, '', false, 'No se pudo generar el PDF del formulario (envío programado)');
+  var contacts = contactsFor_(meta.propertyName || ''), er = null, wr = null;
+  try { er = notifyStation_(meta, guests, pdf, contacts.emails); } catch (e) { er = { ok: false, error: String(e) }; logSend_('email', meta, '', false, String(e)); }
+  try { wr = notifyWhatsApp_(meta, guests, pdf, contacts.whatsapps); } catch (e) { wr = { ok: false, error: String(e) }; logSend_('whatsapp', meta, '', false, String(e)); }
+  var ok = !!((er && er.ok) || (wr && wr.ok));
+  return { ok: ok, error: ok ? '' : [(er && er.error), (wr && wr.error)].filter(Boolean).join(' · ') };
 }
 
 /* Guardado en Sheets + Drive. Devuelve la carpeta de la reserva.
@@ -2072,7 +2175,7 @@ var PROPERTY_CONTACTS_ = [
   { match: 'modra',       emails: ['recepcionmodra@gmail.com'],    whatsapps: [] },
   { match: 'inara',       emails: [],                              whatsapps: ['50230093340'] },
   { match: 'brunelo',     emails: ['admon.brunelo@gmail.com'],     whatsapps: ['50238630735'] },
-  { match: 'baldone',     emails: ['recepcionbaldone@gmail.com'],  whatsapps: ['50231289117'] },
+  { match: 'baldone',     emails: ['recepcionbaldone@gmail.com'],  whatsapps: ['50257846455'] },
   { match: 'fiamene',     emails: ['fiamenerecepcion@gmail.com'],  whatsapps: ['50255114843'] },
   { match: 'casco',       emails: [],                              whatsapps: ['50255334643'] },
   { match: 'coloniales',  emails: [],                              whatsapps: ['50242179852'] },
@@ -2081,6 +2184,29 @@ var PROPERTY_CONTACTS_ = [
   { match: 'monterrico',  emails: [],                              whatsapps: ['50258561222'] },
   { match: 'eon',         emails: ['recepcion@eon.com.gt'],        whatsapps: ['50255362790'] }
 ];
+
+/* Baldone cambió su número de recepción (12-nov-2026: el anterior no tiene WhatsApp). Juan: «Cámbialo tú en ambos
+   apartamentos de Baldone.» Corrección de una sola vez en la pestaña Estaciones (corre en el primer quickSync después de
+   publicar): solo las filas de Baldone y solo el teléfono que tenga el número viejo. La propiedad BALDONE_RECEPCION_V1
+   evita que se repita y el registro de envíos (EnviosLog) dice qué cambió. */
+var BALDONE_TEL_VIEJO_ = '50231289117', BALDONE_TEL_NUEVO_ = '50257846455';
+function baldoneRecepcionCorregir_() {
+  var P = PropertiesService.getScriptProperties(); if (P.getProperty('BALDONE_RECEPCION_V1')) return 0;
+  var sh = SpreadsheetApp.openById(CFG_().SHEET_ID).getSheetByName('Estaciones'); if (!sh) return 0;
+  var n = sh.getLastRow(), cambios = 0, cab = SCHEMA_['Estaciones'], c1 = cab.indexOf('phone1'), c2 = cab.indexOf('phone2');
+  if (n >= 2) {
+    sh.getRange(2, 1, n - 1, cab.length).getValues().forEach(function (r, i) {
+      if (!/baldone/i.test(String(r[1] || ''))) return;
+      [c1, c2].forEach(function (c) {
+        if (normTel_(r[c]) !== BALDONE_TEL_VIEJO_) return;
+        sh.getRange(i + 2, c + 1).setValue(BALDONE_TEL_NUEVO_); cambios++;
+        logSend_('correccion', { code: '', propertyName: r[1] }, '…' + BALDONE_TEL_NUEVO_.slice(-4), true, 'Recepción de Baldone: ' + cab[c] + ' pasó del número que terminaba en ' + BALDONE_TEL_VIEJO_.slice(-4) + ' al nuevo');
+      });
+    });
+  }
+  P.setProperty('BALDONE_RECEPCION_V1', new Date().toISOString() + ' · ' + cambios + ' cambio(s)');
+  return cambios;
+}
 
 /* Un solo lugar para el formato de los números de WhatsApp (12-nov-2026, recepciones).
    En el panel cada quien escribe el número como le sale: «+502 5555 0101», «(502) 5555-0101», «55550101» o un número

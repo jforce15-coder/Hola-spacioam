@@ -14,6 +14,7 @@ on:
       - ".github/enlaces.js"
       - "404.html"
       - "config.js"
+      - ".github/registro-recepcion.js"
 
 jobs:
   revisar:
@@ -42,6 +43,9 @@ jobs:
       - name: Enlaces cortos con hola.spacioam.com (dobles, sin internet)
         # Hub #488 T3: el perfil de Long Term, el enlace directo y la invitación salían largos (?lt=<token de 40>).
         run: node .github/enlaces.js apps-script
+      - name: Registro a recepción el día de llegada a las 8:00 y número nuevo de Baldone (dobles, sin internet)
+        # 12-nov-2026: el registro le llegaba a la recepción en cuanto el huésped llenaba el formulario, a veces días antes.
+        run: node .github/registro-recepcion.js apps-script
 
       - name: JSON y .clasp.json
         run: |

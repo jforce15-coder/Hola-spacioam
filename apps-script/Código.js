@@ -2060,7 +2060,8 @@ function buildRegistrationPdf_(meta, f, guests) {
    sin distinguir mayúsculas. Cada propiedad puede tener correo,
    WhatsApp, o ambos. El ADMINISTRADOR SIEMPRE recibe por WhatsApp.
    Si una propiedad no está en la tabla → solo se avisa al admin.
-   Los números van en formato internacional sin '+'.
+   Los números van en formato internacional sin '+' (normTel_ los deja así
+   aunque se escriban con espacios, guiones, + o sin el 502).
    ============================================================ */
 var ADMIN_WHATSAPP_ = '50256909499';
 var PROPERTY_CONTACTS_ = [
@@ -2079,6 +2080,37 @@ var PROPERTY_CONTACTS_ = [
   { match: 'eon',         emails: ['recepcion@eon.com.gt'],        whatsapps: ['50255362790'] }
 ];
 
+/* Un solo lugar para el formato de los números de WhatsApp (12-nov-2026, recepciones).
+   En el panel cada quien escribe el número como le sale: «+502 5555 0101», «(502) 5555-0101», «55550101» o un número
+   que Sheets guardó como 5.02E+10. Meta pide el formato internacional sin «+»: 8 dígitos son de Guatemala y llevan
+   502 delante; «00502…» pierde el 00. Sin esto, un número sin 502 salía tal cual (Meta lo puede leer con otro código
+   de país) y el mismo número escrito de dos formas recibía dos veces. Igual que
+   normTel_ del Hub (ALMA), que es quien manda el WhatsApp a recepción. Devuelve '' si no es un número válido. */
+function normTel_(x) {
+  var s = String(x == null ? '' : x).trim(); if (!s) return '';
+  if (/^\d+(\.\d+)?e\+?\d+$/i.test(s)) s = Number(s).toFixed(0);
+  var d = s.replace(/\D/g, '');
+  if (d.indexOf('00') === 0) d = d.slice(2);
+  if (d.length === 8) d = '502' + d;
+  if (d.length === 12 && d.indexOf('5020') === 0) d = '502' + d.slice(4);
+  return d.length >= 10 && d.length <= 15 ? d : '';
+}
+/* Celdas o textos → números normalizados y sin repetir. Una celda puede traer varios («5551 2345 / 4444 1234»,
+   «… y …»); si un trozo no es un número válido y tiene espacios, se prueba cada parte (p. ej. WHATSAPP_TO separado
+   por espacios). */
+function telsWa_(lista) {
+  var out = [];
+  var suma = function (n) { if (n && out.indexOf(n) === -1) out.push(n); };
+  (lista || []).forEach(function (celda) {
+    String(celda == null ? '' : celda).split(/[\/,;|\n]+|\s{2,}|\s+[yo]\s+/i).forEach(function (trozo) {
+      var n = normTel_(trozo);
+      if (n) suma(n);
+      else if (/\S\s+\S/.test(String(trozo).trim())) String(trozo).trim().split(/\s+/).forEach(function (p) { suma(normTel_(p)); });
+    });
+  });
+  return out;
+}
+
 /* Contactos SOLO de la tabla del código (sin hoja, sin admin), usados para
    pre-rellenar el panel y como base del ruteo. */
 function codeContactsFor_(name) {
@@ -2090,7 +2122,7 @@ function codeContactsFor_(name) {
       was = was.concat(p.whatsapps || []);
     }
   });
-  return { emails: uniq_(emails), whatsapps: uniq_(was.map(function (s) { return String(s).replace(/[^\d]/g, ''); }).filter(function (s) { return s.length >= 8; })) };
+  return { emails: uniq_(emails), whatsapps: telsWa_(was) };
 }
 
 /* Devuelve { emails:[], whatsapps:[] } para una propiedad. Combina la tabla
@@ -2109,11 +2141,11 @@ function contactsFor_(name) {
     var st = stationFor_(name);
     if (st) {
       [st.email1, st.email2].forEach(function (e) { if (e && String(e).trim()) emails.push(String(e).trim()); });
-      [st.phone1, st.phone2].forEach(function (ph) { var d = String(ph || '').replace(/[^\d]/g, ''); if (d.length >= 8) was.push(d); });
+      was.push(st.phone1, st.phone2);
     }
   } catch (e) {}
   was.push(ADMIN_WHATSAPP_); // el administrador siempre recibe por WhatsApp
-  return { emails: uniq_(emails), whatsapps: uniq_(was.map(function (s) { return String(s).replace(/[^\d]/g, ''); }).filter(function (s) { return s.length >= 8; })) };
+  return { emails: uniq_(emails), whatsapps: telsWa_(was) };
 }
 
 /* Resumen para el panel: la lista completa de WhatsApp internos (tabla del
@@ -2122,18 +2154,18 @@ function contactsFor_(name) {
    propiedad. */
 function adminContactsInfo_() {
   var set = {};
-  PROPERTY_CONTACTS_.forEach(function (p) { (p.whatsapps || []).forEach(function (w) { set[w] = 1; }); });
+  PROPERTY_CONTACTS_.forEach(function (p) { telsWa_(p.whatsapps).forEach(function (w) { set[w] = 1; }); });
   var props = [];
   try {
     var st = listStations_() || [];
     st.forEach(function (s) {
-      var was = [];
-      [s.phone1, s.phone2].forEach(function (ph) { var d = String(ph || '').replace(/[^\d]/g, ''); if (d.length >= 8) { was.push(d); set[d] = 1; } });
+      var was = telsWa_([s.phone1, s.phone2]);
+      was.forEach(function (d) { set[d] = 1; });
       var ems = [s.email1, s.email2].filter(function (e) { return e && String(e).trim(); });
       if (was.length || ems.length) props.push({ name: s.propertyName || '', emails: ems, whatsapps: was });
     });
   } catch (e) {}
-  delete set[ADMIN_WHATSAPP_];
+  delete set[normTel_(ADMIN_WHATSAPP_)];
   return { ok: true, numbers: Object.keys(set), admin: ADMIN_WHATSAPP_, properties: props };
 }
 
@@ -2196,7 +2228,7 @@ function waSendDocTemplate_(to, mediaId, filename, bodyParams) {
   }
   var payload = {
     messaging_product: 'whatsapp',
-    to: String(to).replace(/[^\d]/g, ''),
+    to: normTel_(to) || String(to).replace(/[^\d]/g, ''),
     type: 'template',
     template: { name: cfg.WHATSAPP_TEMPLATE, language: { code: cfg.WHATSAPP_LANG }, components: components }
   };
@@ -2212,9 +2244,7 @@ function waSendDocTemplate_(to, mediaId, filename, bodyParams) {
 
 /* Lista de números destino (WHATSAPP_TO), limpios y en formato internacional. */
 function waRecipients_() {
-  return String(CFG_().WHATSAPP_TO || '').split(/[,\s;]+/)
-    .map(function (s) { return s.replace(/[^\d]/g, ''); })
-    .filter(function (s) { return s.length >= 8; });
+  return telsWa_([CFG_().WHATSAPP_TO]);
 }
 
 /* Desde oct 2026 el WhatsApp a recepción lo manda ALMA (Hub), con su número y su token: aquí solo se le avisa el
@@ -2261,7 +2291,7 @@ function notifyWhatsApp_(meta, guests, pdf, numbers, force) {
   if (PropertiesService.getScriptProperties().getProperty('WA_VIA_ALMA') !== '0') return avisarAlmaRecepcion_(meta, force);
   var cfg = CFG_();
   if (!cfg.WHATSAPP_TOKEN || !cfg.WHATSAPP_PHONE_ID) { logSend_('whatsapp', meta, '', false, 'WhatsApp no configurado (falta WHATSAPP_TOKEN / WHATSAPP_PHONE_ID)'); return { ok: false, error: 'wa-no-configurado' }; }
-  var nums = uniq_((numbers || []).map(function (s) { return String(s).replace(/[^\d]/g, ''); }).filter(function (s) { return s.length >= 8; }));
+  var nums = telsWa_(numbers);
   if (!nums.length) { logSend_('whatsapp', meta, '', false, 'Sin números destino'); return { ok: false, error: 'sin-numeros' }; }
   if (!pdf) { logSend_('whatsapp', meta, nums.join(','), false, 'No se pudo generar el PDF del formulario'); return { ok: false, error: 'sin-pdf' }; }
   var up = waUploadMedia_(pdf);
@@ -3837,7 +3867,7 @@ function sendTestEmail_(b) {
 function sendTestWhatsApp_(b) {
   var cfg = CFG_();
   if (!cfg.WHATSAPP_TOKEN || !cfg.WHATSAPP_PHONE_ID) return { ok: false, error: 'Falta configurar WHATSAPP_TOKEN / WHATSAPP_PHONE_ID en Propiedades del script.' };
-  var override = (b && b.to) ? String(b.to).split(/[,\s;]+/).map(function (s) { return s.replace(/[^\d]/g, ''); }).filter(function (s) { return s.length >= 8; }) : null;
+  var override = (b && b.to) ? telsWa_([b.to]) : null;
   var nums = override && override.length ? override : (waRecipients_().length ? waRecipients_() : [ADMIN_WHATSAPP_]);
   if (!nums.length) return { ok: false, error: 'No hay números destino. Configura WHATSAPP_TO o escribe uno en el campo.' };
   var meta = {

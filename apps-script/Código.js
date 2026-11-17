@@ -1059,6 +1059,7 @@ function quickSync() {
   try { listReservations_({ days: 90, fast: true }); } catch (e) {}
   try { regRecepcionEnviar_(); } catch (e) { console.error('regRecepcionEnviar_: ' + e); }
   try { baldoneRecepcionCorregir_(); } catch (e) { console.error('baldoneRecepcionCorregir_: ' + e); }
+  try { juanRecepcionQuitar_(); } catch (e) { console.error('juanRecepcionQuitar_: ' + e); }
 }
 /* Ejecútalo UNA vez desde el editor: deja el sync rápido cada 10 min y el completo a las 5 a.m. y 3 p.m. */
 function installSyncTriggers() {
@@ -1325,8 +1326,8 @@ function submitForm_(body) {
    la plantilla registro_recepcion) le llegaba a la recepción del edificio en cuanto el huésped lo llenaba, a veces días
    antes de su llegada.
    · Llenado antes de las 8:00 (hora de Guatemala) del día del check-in: no sale; queda en la pestaña RecepcionProgramada
-     y sale ese día a las 8:00 (quickSync, cada 10 min). El aviso al administrador va en el mismo WhatsApp de ALMA
-     (contactsFor_ lo incluye siempre), así que sale junto.
+     y sale ese día a las 8:00 (quickSync, cada 10 min). Desde el 17-nov-2026 solo le llega a la recepción del edificio
+     (contactsFor_ ya no agrega al administrador).
    · Si el huésped lo corrige antes de esa hora, la fila es la misma: a las 8:00 sale una sola vez, con lo último guardado.
    · Llenado ese día después de las 8:00 (o después del check-in): sale de inmediato. Si ya había salido y lo corrige,
      sale otra vez actualizado (force, como «Reenviar a recepción» del panel).
@@ -2163,8 +2164,8 @@ function buildRegistrationPdf_(meta, f, guests) {
    El match es por SUBcadena contra el nombre de la propiedad de
    Hospitable (que suele venir como "Z1 - Centro vivo - 1106"),
    sin distinguir mayúsculas. Cada propiedad puede tener correo,
-   WhatsApp, o ambos. El ADMINISTRADOR SIEMPRE recibe por WhatsApp.
-   Si una propiedad no está en la tabla → solo se avisa al admin.
+   WhatsApp, o ambos. El administrador ya no recibe (Juan, 17-nov-2026):
+   solo la recepción del edificio.
    Los números van en formato internacional sin '+' (normTel_ los deja así
    aunque se escriban con espacios, guiones, + o sin el 502).
    ============================================================ */
@@ -2255,7 +2256,7 @@ function codeContactsFor_(name) {
 
 /* Devuelve { emails:[], whatsapps:[] } para una propiedad. Combina la tabla
    anterior con lo que haya en la pestaña Estaciones (por si se edita desde el
-   panel) y agrega SIEMPRE el WhatsApp del administrador. */
+   panel). Sin el administrador (Juan, 17-nov-2026). */
 function contactsFor_(name) {
   var n = String(name || '').toLowerCase();
   var emails = [], was = [];
@@ -2272,8 +2273,47 @@ function contactsFor_(name) {
       was.push(st.phone1, st.phone2);
     }
   } catch (e) {}
-  was.push(ADMIN_WHATSAPP_); // el administrador siempre recibe por WhatsApp
-  return { emails: uniq_(emails), whatsapps: telsWa_(was) };
+  /* Juan, 17-nov-2026 (pedido pc1794935556577): el registro de llegada le llega solo a la recepción del edificio. Antes el
+     administrador se agregaba siempre; ahora no se agrega y, si su número o su correo quedó en Estaciones, se salta. */
+  var juan = normTel_(ADMIN_WHATSAPP_);
+  return { emails: uniq_(emails).filter(function (e) { return !esCorreoJuan_(e); }),
+    whatsapps: telsWa_(was).filter(function (w) { return w !== juan; }) };
+}
+var JUAN_CORREOS_ = ['jovalle@spacioam.com'];
+function esCorreoJuan_(e) { return JUAN_CORREOS_.indexOf(String(e || '').trim().toLowerCase()) >= 0; }
+
+/* Quitar a Juan de las recepciones (Juan, 17-nov-2026): «revisar en las fichas de apartamentos dónde está Juan como
+   contacto de recepción o backup para formularios de llegada, quitarlo para que solo le llegue a las recepciones de
+   edificios, y avisarle en cuáles estaba registrado para confirmar». Corrección de una sola vez en la pestaña Estaciones
+   (primer quickSync después de publicar): borra su número (phone1/phone2) y su correo (email1/email2) solo en esas
+   celdas; lo demás de la fila no se toca. JUAN_RECEPCION_V1 guarda en qué apartamentos estaba (no se repite), cada cambio
+   queda en EnviosLog y a Juan le llega un correo con la lista para que confirme. */
+function juanRecepcionQuitar_() {
+  var P = PropertiesService.getScriptProperties(); if (P.getProperty('JUAN_RECEPCION_V1')) return null;
+  var sh = SpreadsheetApp.openById(CFG_().SHEET_ID).getSheetByName('Estaciones'); if (!sh) return null;
+  var n = sh.getLastRow(), cab = SCHEMA_['Estaciones'], juan = normTel_(ADMIN_WHATSAPP_), donde = [];
+  var cols = ['phone1', 'phone2', 'email1', 'email2'].map(function (k) { return { k: k, c: cab.indexOf(k) }; });
+  if (n >= 2) {
+    sh.getRange(2, 1, n - 1, cab.length).getValues().forEach(function (r, i) {
+      var campos = [];
+      cols.forEach(function (x) {
+        var v = r[x.c], es = /^phone/.test(x.k) ? telsWa_([v]).indexOf(juan) >= 0 : esCorreoJuan_(v);
+        if (!es) return;
+        sh.getRange(i + 2, x.c + 1).setValue(''); campos.push(x.k);
+      });
+      if (!campos.length) return;
+      donde.push(String(r[1] || r[0] || 'fila ' + (i + 2)) + ' (' + campos.join(', ') + ')');
+      logSend_('correccion', { code: '', propertyName: r[1] }, '', true, 'Recepción: se quitó a Juan de ' + campos.join(', ') + ' (solo le llega a la recepción del edificio)');
+    });
+  }
+  P.setProperty('JUAN_RECEPCION_V1', new Date().toISOString() + ' · ' + donde.length + ' apartamento(s)' + (donde.length ? ': ' + donde.join(' · ') : ''));
+  try {
+    var txt = donde.length
+      ? 'Hola Juan. Te quité como contacto de recepción del registro de llegada en ' + donde.length + ' apartamento(s):\n\n' + donde.map(function (d) { return '· ' + d; }).join('\n') + '\n\nDesde ahora el registro solo le llega a la recepción de cada edificio. Si alguno necesita seguir contigo, agrégalo otra vez desde el panel de Hola (Estaciones).'
+      : 'Hola Juan. Revisé las fichas de recepción (Estaciones) y no estabas como contacto en ningún apartamento. Además, el registro de llegada ya no te llega a ti por defecto: solo a la recepción de cada edificio.';
+    sendMail_(JUAN_CORREOS_[0], 'Hola · te quité de las recepciones', txt, '<div style="font-family:Helvetica,Arial,sans-serif;white-space:pre-line">' + txt.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</div>');
+  } catch (e) { console.error('juanRecepcionQuitar_ correo: ' + e); }
+  return donde;
 }
 
 /* Resumen para el panel: la lista completa de WhatsApp internos (tabla del

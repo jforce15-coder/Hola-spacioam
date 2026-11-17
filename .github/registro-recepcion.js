@@ -9,6 +9,8 @@
    4. llenado el día de llegada antes de las 8:00: sale a las 8:00 de ese día;
    5. Baldone: la corrección cambia solo las filas de Baldone con el número viejo, solo ese campo, y una segunda vez no
       hace nada.
+   6. Juan fuera de las recepciones (17-nov-2026): la corrección borra solo su número y su correo en Estaciones, anota en
+      qué apartamentos estaba, le manda la lista por correo y una segunda vez no hace nada.
    node .github/registro-recepcion.js [carpeta apps-script] */
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const DIR = process.argv[2] || path.join(__dirname, '..', 'apps-script');
@@ -121,5 +123,22 @@ ok(avisosAlma.length === 1 && avisosAlma[0].version === 'v2', '4 · si lo vuelve
   ok(ctx.baldoneRecepcionCorregir_() === 0 && Number(F[1][4]) === Number(viejo) && /2 cambio/.test(props.BALDONE_RECEPCION_V1), '5 · una segunda vez no hace nada (BALDONE_RECEPCION_V1)');
   const pc = ctx.codeContactsFor_('Z2 - Baldone - 1010');
   ok(pc.whatsapps.length === 1 && pc.whatsapps[0] === nuevo, '5 · la tabla del código (PROPERTY_CONTACTS_) ya tiene el número nuevo de Baldone');
+}
+
+/* 6 · Juan fuera de las recepciones en Estaciones */
+{ const juan = ctx.ADMIN_WHATSAPP_, juan8 = juan.slice(-8), cab = ['property_id', 'property_name', 'email1', 'email2', 'phone1', 'phone2', 'updated_at'];
+  hojas = { Estaciones: hoja([cab,
+    ['p1', 'Z7 - Monaco - C2', 'jovalle@spacioam.com', '', '50255550101', juan8, 'u1'],
+    ['p2', 'Z10 - EdificioA4 - 3', '', '', Number(juan), '', 'u2'],
+    ['p3', 'Z10 - Brunelo - 905', 'admon@prueba', '', '50255550202', '', 'u3']]) };
+  props = {}; logs = []; const mandados = []; ctx.sendMail_ = (to, asunto, txt) => { mandados.push({ to, asunto, txt }); return true; };
+  const d = ctx.juanRecepcionQuitar_(), F = hojas.Estaciones.filas;
+  ok(d.length === 2 && /Monaco/.test(d[0]) && /EdificioA4/.test(d[1]), '6 · encuentra a Juan en Monaco y EdificioA4 (número sin 502, como número y correo)');
+  ok(F[1][2] === '' && F[1][5] === '' && F[2][4] === '', '6 · borra su número y su correo');
+  ok(F[1][4] === '50255550101' && F[1][6] === 'u1' && F[3][2] === 'admon@prueba' && F[3][4] === '50255550202', '6 · no toca la recepción del edificio ni otras filas');
+  ok(mandados.length === 1 && /Monaco/.test(mandados[0].txt) && /EdificioA4/.test(mandados[0].txt) && !/Brunelo/.test(mandados[0].txt), '6 · le manda a Juan la lista para que confirme');
+  ok(logs.filter((l) => l.canal === 'correccion').length === 2 && /2 apartamento/.test(props.JUAN_RECEPCION_V1), '6 · lo anota en el registro y en JUAN_RECEPCION_V1');
+  F[2][4] = juan;
+  ok(ctx.juanRecepcionQuitar_() === null && F[2][4] === juan && mandados.length === 1, '6 · una segunda vez no hace nada');
 }
 process.exit(fallo);

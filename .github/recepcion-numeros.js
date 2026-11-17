@@ -3,7 +3,8 @@
    número que Sheets guarda con decimales). Revisa que:
    1. normTel_ deja siempre el formato internacional de Guatemala (8 dígitos → 502 delante; sin espacios, guiones,
       +, paréntesis ni 00);
-   2. contactsFor_ junta tabla del código + Estaciones + administrador sin repetir el mismo número escrito distinto;
+   2. contactsFor_ junta tabla del código + Estaciones sin repetir el mismo número escrito distinto, y nunca al
+      administrador (Juan, 17-nov-2026: el registro solo le llega a la recepción del edificio);
    3. lo que Hola le da a ALMA (listContacts → adminContactsInfo_) ya va normalizado;
    4. el WhatsApp viejo (WA_VIA_ALMA = 0) manda a Meta el número normalizado.
    node .github/recepcion-numeros.js [carpeta apps-script] */
@@ -33,17 +34,20 @@ casos.forEach(([x, esp]) => ok(ctx.normTel_(x) === esp, 'normTel_(' + JSON.strin
 ok(igual(ctx.telsWa_(['5555 0101 / 5555 0202', '50255550101']), ['50255550101', '50255550202']), 'una celda con dos números da los dos, sin repetir');
 ok(igual(ctx.telsWa_(['50255550101 50255550202']), ['50255550101', '50255550202']), 'dos números separados por un espacio (WHATSAPP_TO) se leen los dos');
 
-// 2. contactsFor_: tabla + Estaciones + administrador, sin repetir
+// 2. contactsFor_: tabla + Estaciones, sin repetir y sin el administrador
 const ADMIN = ctx.ADMIN_WHATSAPP_;
 const admin8 = ADMIN.slice(-8);
 vm.runInContext("PROPERTY_CONTACTS_ = [{ match: 'prueba', emails: ['recepcion@prueba'], whatsapps: ['50255550101'] }];", ctx);
 let estacion = { email1: '', email2: '', phone1: '+502 5555 0101', phone2: '5555-0202' };
 ctx.stationFor_ = () => estacion;
 let c = ctx.contactsFor_('Z10 - Prueba - 905');
-ok(igual(c.whatsapps, ['50255550101', '50255550202', ADMIN]), 'contactsFor_: tabla + Estaciones (con +, espacios y sin 502) + administrador, una vez cada uno');
+ok(igual(c.whatsapps, ['50255550101', '50255550202']), 'contactsFor_: tabla + Estaciones (con +, espacios y sin 502), una vez cada uno y sin el administrador');
 estacion = { phone1: admin8, phone2: '' };   // el administrador escrito sin 502 (pasaba en Monaco y EdificioA4)
 c = ctx.contactsFor_('Z7 - Otra - D1');
-ok(igual(c.whatsapps, [ADMIN]), 'el administrador escrito sin 502 ya no recibe dos veces (antes salía también a un número de 8 dígitos)');
+ok(igual(c.whatsapps, []), 'el administrador escrito en Estaciones (sin 502) no recibe el registro');
+estacion = { email1: 'jovalle@spacioam.com', email2: 'otra@prueba', phone1: '', phone2: '' };
+c = ctx.contactsFor_('Z10 - Prueba - 905');
+ok(igual(c.emails, ['recepcion@prueba', 'otra@prueba']), 'el correo del administrador en Estaciones no recibe el registro; el de recepción sí');
 estacion = { phone1: 50255550303, phone2: '' };   // número guardado por Sheets como número
 c = ctx.contactsFor_('Z1 - Otra - 1');
 ok(c.whatsapps[0] === '50255550303', 'un número que Sheets guardó como número se lee bien');

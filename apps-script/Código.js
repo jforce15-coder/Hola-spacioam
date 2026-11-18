@@ -5403,3 +5403,5 @@ function registrarUsoIA_(funcion, modelo, usage, detalle, ref) {
   } catch (e) { console.warn('registrarUsoIA_: ' + e); }
 }
 
+
+// Unir = publicar: lo que se une a main en apps-script/ llega solo a alma@ (Traslado a Workspace, 18-nov-2026).

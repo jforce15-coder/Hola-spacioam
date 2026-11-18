@@ -30,6 +30,10 @@ function sesionDe_(body) {
   try {
     hit = cache.get(k);
     if (hit) { try { return hit === '-' ? null : JSON.parse(hit); } catch (e) {} }
+    /* Regla de Juan (18-nov-2026): entrar nunca depende del cupo de Google. Si la firma vale aquí (LOGIN_SECRETO, sin
+       internet), entra sin llamar al login; solo sin secreto o con firma que no calza se le pregunta al login. */
+    var propia = sesionLocal_(session);
+    if (propia) { cache.put(k, JSON.stringify(propia), 3600); return propia; }
     var j = null, porque = '';
     /* Si la propiedad LOGIN_TOKEN quedó vieja, el login contesta «token»: el segundo intento va con la llave de siempre. */
     var llaves = [PropertiesService.getScriptProperties().getProperty('LOGIN_TOKEN') || 'SpacioAM2026!', 'SpacioAM2026!'];

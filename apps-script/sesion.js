@@ -33,7 +33,9 @@ function sesionDe_(body) {
     var j = null, porque = '';
     /* Si la propiedad LOGIN_TOKEN quedó vieja, el login contesta «token»: el segundo intento va con la llave de siempre. */
     var llaves = [PropertiesService.getScriptProperties().getProperty('LOGIN_TOKEN') || 'SpacioAM2026!', 'SpacioAM2026!'];
-    for (var intento = 0; intento < 2 && !(j && (j.ok || SES_DEFINITIVOS_[j.error])); intento++) {
+    /* Sin cupo de Google (UrlFetch) no se insiste: 30 min directo a la firma local, sin esperar ni gastar intentos. */
+    var sinCupo = !!cache.get('ses_sin_cupo'); if (sinCupo) porque = 'sin cupo de Google';
+    for (var intento = 0; !sinCupo && intento < 2 && !(j && (j.ok || SES_DEFINITIVOS_[j.error])); intento++) {
       if (intento) Utilities.sleep(700);
       try {
         var r = uf_(SES_LOGIN_URL_, { method: 'post', contentType: 'text/plain;charset=utf-8', muteHttpExceptions: true, followRedirects: true,
@@ -41,7 +43,10 @@ function sesionDe_(body) {
         var txt = r.getContentText() || '';
         try { j = JSON.parse(txt || '{}'); porque = j.ok ? '' : 'login dijo ' + String(j.error || '?'); }
         catch (e2) { j = null; porque = 'login no devolvió JSON (HTTP ' + r.getResponseCode() + '): ' + txt.slice(0, 80).replace(/\s+/g, ' '); }
-      } catch (e) { console.warn('sesionDe_: ' + e); j = null; porque = 'no se pudo llamar al login: ' + String(e).slice(0, 120); }
+      } catch (e) {
+        console.warn('sesionDe_: ' + e); j = null; porque = 'no se pudo llamar al login: ' + String(e).slice(0, 120);
+        if (/too many times|cuota|quota/i.test(String(e))) { try { cache.put('ses_sin_cupo', '1', 1800); } catch (e4) {} break; }
+      }
     }
     if (j && j.ok && j.profile) { cache.put(k, JSON.stringify(j.profile), 3600); return j.profile; }
     if (j && SES_DEFINITIVOS_[j.error]) { cache.put(k, '-', 600); return null; }   // el login dice que no vale: inválida de verdad

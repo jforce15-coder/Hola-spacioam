@@ -193,6 +193,7 @@ function doGet(e)  {
 }
 function doPost(e) {
   var b = parseBody_(e);
+  var __mud = typeof trasladoEntregar_ === 'function' && trasladoEntregar_(b); if (__mud) return __mud;   // traslado a Workspace: Propiedades solo a alma@ (traslado.js)
   if (isHospitableWebhook_(b) && typeof almaRelay_ === 'function') return almaRelay_(e);
   if (isWhatsAppPost_(b) && typeof whatsappWebhook_ === 'function') return whatsappWebhook_(e);
   return route_(e, 'POST');
@@ -1050,12 +1051,13 @@ function findReservation_(body) {
 }
 
 /* Sincronización programada (cron) — escribe/actualiza la pestaña Reservas. */
-function scheduledSync() { try { listReservations_(); } catch (e) {} }
+function scheduledSync() { if (typeof holaSoyRespaldo_ === 'function' && holaSoyRespaldo_()) return; try { listReservations_(); } catch (e) {} }
 
 /* Cron corto recomendado: cada 5-10 min, solo los próximos 5 días.
    Así una reserva de última hora ya está en caché antes de que el huésped
    escriba su código. Configúralo como disparador de tiempo en Apps Script. */
 function quickSync() {
+  if (typeof holaSoyRespaldo_ === 'function' && holaSoyRespaldo_()) return;   // traslado: otro proyecto atiende lo de fondo (trasladocorte.js)
   try { listReservations_({ days: 90, fast: true }); } catch (e) {}
   try { regRecepcionEnviar_(); } catch (e) { console.error('regRecepcionEnviar_: ' + e); }
   try { baldoneRecepcionCorregir_(); } catch (e) { console.error('baldoneRecepcionCorregir_: ' + e); }
@@ -2631,6 +2633,7 @@ function ensurePurgeTrigger_() {
 }
 
 function purgeExpiredDocuments() {
+  if (typeof holaSoyRespaldo_ === 'function' && holaSoyRespaldo_()) return;   // traslado: otro proyecto atiende lo de fondo (trasladocorte.js)
   var ss = SpreadsheetApp.openById(CFG_().SHEET_ID);
   var sh = ss.getSheetByName('Documentos');
   if (!sh || sh.getLastRow() < 2) return;
@@ -2951,6 +2954,7 @@ function adminEmails_() {
 
 /* 16:30 — verificación preliminar + email al admin con enlace de aprobación */
 function earlyAdminPrompt() {
+  if (typeof holaSoyRespaldo_ === 'function' && holaSoyRespaldo_()) return;   // traslado: otro proyecto atiende lo de fondo (trasladocorte.js)
   syncNow_(); // datos frescos
   var ss = SpreadsheetApp.openById(CFG_().SHEET_ID);
   var sh = ss.getSheetByName('Solicitudes');
@@ -2974,6 +2978,7 @@ function earlyAdminPrompt() {
 
 /* 19:00 — recordatorio al admin si aún no ha aprobado */
 function earlyAdminReminder() {
+  if (typeof holaSoyRespaldo_ === 'function' && holaSoyRespaldo_()) return;   // traslado: otro proyecto atiende lo de fondo (trasladocorte.js)
   var ss = SpreadsheetApp.openById(CFG_().SHEET_ID);
   var sh = ss.getSheetByName('Solicitudes');
   var items = earlyRowsForTomorrow_(sh);
@@ -3009,6 +3014,7 @@ function approveEarlyByToken_(token) {
 
 /* 20:45 — verificación FINAL en vivo + aviso al huésped */
 function earlyFinalNotify() {
+  if (typeof holaSoyRespaldo_ === 'function' && holaSoyRespaldo_()) return;   // traslado: otro proyecto atiende lo de fondo (trasladocorte.js)
   syncNow_(); // sync en vivo: captura reservas de última hora
   var ss = SpreadsheetApp.openById(CFG_().SHEET_ID);
   var sh = ss.getSheetByName('Solicitudes');
@@ -4441,6 +4447,7 @@ function ensureCheckoutTrigger_() {
 }
 
 function checkoutMorningEmails() {
+  if (typeof holaSoyRespaldo_ === 'function' && holaSoyRespaldo_()) return;   // traslado: otro proyecto atiende lo de fondo (trasladocorte.js)
   var ss = SpreadsheetApp.openById(CFG_().SHEET_ID);
   var sh = ss.getSheetByName('Reservas');
   if (!sh || sh.getLastRow() < 2) return 0;
@@ -5318,6 +5325,7 @@ function ltGuestFile_(b) {
 
 /* ---------- recordatorios (trigger diario) ---------- */
 function ltDailyReminders() {
+  if (typeof holaSoyRespaldo_ === 'function' && holaSoyRespaldo_()) return;   // traslado: otro proyecto atiende lo de fondo (trasladocorte.js)
   var dias = String(PropertiesService.getScriptProperties().getProperty('LT_DIAS') || '-3,0,3').split(',').map(function (x) { return parseInt(x, 10); }).filter(function (x) { return !isNaN(x); });
   ltRows_('LT_Reservas').forEach(function (r) { try { ltEnsurePeriods_(r); } catch (e) {} });
   ltMarkOverdue_();

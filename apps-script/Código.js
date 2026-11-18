@@ -2420,11 +2420,14 @@ function waRecipients_() {
 /* Desde oct 2026 el WhatsApp a recepción lo manda ALMA (Hub), con su número y su token: aquí solo se le avisa el
    código. ALMA pide el PDF con la llave del robot (regPdfRobot) y lo envía a los números de esta propiedad.
    Para volver al envío anterior desde este script: propiedad WA_VIA_ALMA = 0. */
-var HUB_ALMA_URL_ = 'https://script.google.com/macros/s/AKfycbzTdkEpRPgnwaUIHWbQmrysPEqGYqTqDKYwMaQlnun-OT7B2hIa6KdSNS-aedWN-I0cZQ/exec';
+var HUB_ALMA_URL_ = 'https://script.google.com/macros/s/AKfycbycTV0MsPWym02-ZcbpBBtwg9-WLw8dK9SAEDBslPd_9mgmizPQJS4-B_Q4uEkTWFqQ/exec';   // Hub en alma@ (traslado a Workspace)
+var HUB_ALMA_URL_VIEJA_ = 'https://script.google.com/macros/s/AKfycbzTdkEpRPgnwaUIHWbQmrysPEqGYqTqDKYwMaQlnun-OT7B2hIa6KdSNS-aedWN-I0cZQ/exec';
+/* La Propiedad (HUB_ALMA_URL o ALMA_URL) manda, salvo que guarde la dirección vieja del Hub. */
+function hubAlmaUrl_(prop) { var u = PropertiesService.getScriptProperties().getProperty(prop || 'HUB_ALMA_URL'); return u && u !== HUB_ALMA_URL_VIEJA_ ? u : HUB_ALMA_URL_; }
 function avisarAlmaRecepcion_(meta, force) {
   var code = (meta && meta.code) || '';
   try {
-    var r = uf_(PropertiesService.getScriptProperties().getProperty('HUB_ALMA_URL') || HUB_ALMA_URL_, { method: 'post', contentType: 'text/plain;charset=utf-8', muteHttpExceptions: true, followRedirects: true,
+    var r = uf_(hubAlmaUrl_('HUB_ALMA_URL'), { method: 'post', contentType: 'text/plain;charset=utf-8', muteHttpExceptions: true, followRedirects: true,
       payload: JSON.stringify({ recepcion: 1, code: code, force: !!force }) });
     var j = {}; try { j = JSON.parse(r.getContentText()); } catch (e) {}
     var ok = !!j.ok;
@@ -3909,7 +3912,7 @@ function sendStatus_(b) {
     }
   } catch (e) {}
   try {
-    var hr = uf_(PropertiesService.getScriptProperties().getProperty('HUB_ALMA_URL') || HUB_ALMA_URL_, { method: 'post', contentType: 'text/plain;charset=utf-8', muteHttpExceptions: true, followRedirects: true,
+    var hr = uf_(hubAlmaUrl_('HUB_ALMA_URL'), { method: 'post', contentType: 'text/plain;charset=utf-8', muteHttpExceptions: true, followRedirects: true,
       payload: JSON.stringify({ recepcionEstado: 1, codes: codes }) });
     var j = JSON.parse(hr.getContentText() || '{}');
     Object.keys((j && j.estados) || {}).forEach(function (k) {
@@ -5390,7 +5393,7 @@ function ltRoute_(action, b) {
 
 function registrarUsoIA_(funcion, modelo, usage, detalle, ref) {
   try {
-    var p = PropertiesService.getScriptProperties(), url = p.getProperty('ALMA_URL') || 'https://script.google.com/macros/s/AKfycbzTdkEpRPgnwaUIHWbQmrysPEqGYqTqDKYwMaQlnun-OT7B2hIa6KdSNS-aedWN-I0cZQ/exec', k = p.getProperty('USO_KEY');
+    var p = PropertiesService.getScriptProperties(), url = hubAlmaUrl_('ALMA_URL'), k = p.getProperty('USO_KEY');
     if (!url || !k) return;
     uf_(url, {
       method: 'post', contentType: 'application/json', muteHttpExceptions: true,

@@ -1042,8 +1042,9 @@ const Backend = {
   loadConfig() { try { return JSON.parse(localStorage.getItem(BACKEND_CFG_KEY)) || {}; } catch (e) { return {}; } },
   saveConfig(cfg) { try { localStorage.setItem(BACKEND_CFG_KEY, JSON.stringify(cfg)); } catch (e) {} return cfg; },
   endpoint() {
-    const override = (this.loadConfig().endpoint || "").trim();
+    let override = (this.loadConfig().endpoint || "").trim();
     const fromConfig = (window.SPACIO_CONFIG && window.SPACIO_CONFIG.backendUrl || "").trim();
+    if (override && override === (window.SPACIO_CONFIG && window.SPACIO_CONFIG.backendViejo)) override = "";   // traslado: la dirección vieja guardada a mano no manda
     return override || fromConfig;
   },
   isConnected() { return !!this.endpoint(); },

@@ -13,7 +13,10 @@
 window.SPACIO_CONFIG = {
   // URL del Web App de Google Apps Script (termina en /exec). Ej:
   // "https://script.google.com/macros/s/AKfy.../exec"
-  backendUrl: "https://script.google.com/macros/s/AKfycbwnaUyShyZHDD--rLd7XouPY4mBpgEYPYVxG2bL86nswVg89XZ9jLMFkh2ktL2IG1VRUg/exec",
+  // Apps Script de Hola en alma@spacioam.com (traslado a Workspace, 18-nov-2026). backendViejo: el de la cuenta Gmail,
+  // de respaldo unos días; si el panel de un teléfono lo guardó a mano, se ignora.
+  backendUrl: "https://script.google.com/macros/s/AKfycbxgMoVZxVnfRqmvCEEoVvbVfDkthnRw_Mq0IeiOLJbjlyaBc6UyBzEfvBi8eSaLu1yW2A/exec",
+  backendViejo: "https://script.google.com/macros/s/AKfycbwnaUyShyZHDD--rLd7XouPY4mBpgEYPYVxG2bL86nswVg89XZ9jLMFkh2ktL2IG1VRUg/exec",
 
   // IDs de referencia (informativos — el backend los usa del lado servidor).
   sheetId: "12TF-FO6vld2VkzDr9YlUnHlNjh4d1u9Ss6qWz3F3KeQ",

@@ -136,7 +136,7 @@ function DoneLightbox({ t, onClose }) {
               : "Everything is in Mi espacio now: arrival, Wi-Fi, parking and the house guide."}
         </p>
         <button onClick={close} className="sp-btn" style={{ marginTop: 22, background: "var(--fg,#3E3F3F)", color: "var(--bg,#FAFAFA)", border: "none",
-          borderRadius: 999, padding: "13px 26px", fontFamily: "var(--sans)", fontSize: 11.5, letterSpacing: "0.14em", textTransform: "uppercase", cursor: "pointer", fontWeight: 500 }}>
+          borderRadius: 999, padding: "13px 26px", minHeight: 44, fontFamily: "var(--sans)", fontSize: 11.5, letterSpacing: "0.14em", textTransform: "uppercase", cursor: "pointer", fontWeight: 500 }}>
           {es ? "Ver mi espacio" : "See my space"}
         </button>
       </div>
@@ -556,7 +556,7 @@ function App() {
     case "contact":  view = <ContactScreen t={t} res={res} form={form} setForm={setForm} onBack={() => setStage("docs")} onNext={() => { pushDraft("rules"); setStage("rules"); }} onSwitchLang={switchLang} />; break;
     case "rules":    view = <RulesScreen t={t} onBack={() => setStage("contact")} onAccept={finish} onSwitchLang={switchLang} />; break;
     case "done":     view = <DoneScreen t={t} onEnter={onDoneEnter} />; break;
-    case "bento":    view = <BentoScreen t={t} res={res} siblings={siblings} onSwitch={switchStay} firstName={firstName} emails={acctEmails()} onSwitchLang={switchLang} onLogout={onLogout} />; break;
+    case "bento":    view = <BentoScreen t={t} res={res} siblings={siblings} onSwitch={switchStay} firstName={firstName} emails={acctEmails()} onSwitchLang={switchLang} onLogout={onLogout} holdTour={doneToast} />; break;
     case "admin":    view = <AdminScreen t={t} adminEmail={adminEmail} onBack={leaveAdmin} onSwitchLang={switchLang} onPreviewGuest={previewGuest} onResetForm={resetGuestForm} onManualForm={manualForm} />; break;
     case "lt":       view = <LtGuestScreen t={t} token={boot.ltToken} onSwitchLang={switchLang} />; break;
     case "tile":     view = <TileDetail t={t} tileKey={tile} res={res} onBack={() => { window.location.hash = ""; }} />; break;

@@ -107,7 +107,8 @@ function GuestTour({ t, onClose, onGoTile, mandatory, canSkip }) {
           </span>
           {/* ya no bloquea la pantalla: siempre se puede saltar */}
           {true && (
-            <button onClick={finish} style={{ background: "transparent", border: "none", cursor: "pointer", padding: "4px 2px",
+            <button onClick={finish} style={{ background: "transparent", border: "none", cursor: "pointer", padding: "0 10px",
+              minWidth: 44, minHeight: 44, margin: "-12px -10px -12px 0",   /* 44 px para el dedo sin agrandar la fila */
               fontFamily: "var(--sans)", fontSize: 11, letterSpacing: "0.04em", color: "var(--fg-muted,#6F6867)" }}>{es ? "Saltar" : "Skip"}</button>
           )}
         </div>
@@ -117,13 +118,13 @@ function GuestTour({ t, onClose, onGoTile, mandatory, canSkip }) {
           {onGoTile && (
             <button onClick={() => { finish(); setTimeout(() => onGoTile(s.tile), 240); }} className="sp-btn"
               style={{ background: "var(--surface,#fff)", color: "var(--fg,#3E3F3F)", border: "1px solid var(--warm-grey,#D8D4CE)", borderRadius: 999,
-                padding: "10px 14px", fontFamily: "var(--sans)", fontSize: 11, letterSpacing: "0.06em", cursor: "pointer", fontWeight: 500 }}>
+                padding: "10px 14px", minHeight: 44, fontFamily: "var(--sans)", fontSize: 11, letterSpacing: "0.06em", cursor: "pointer", fontWeight: 500 }}>
               {es ? "Abrirlo" : "Open it"}
             </button>
           )}
           <button onClick={() => { if (last) finish(); else setI(i + 1); }} className="sp-btn"
             style={{ flex: 1, background: "var(--fg,#3E3F3F)", color: "var(--bg,#FAFAFA)", border: "none", borderRadius: 999,
-              padding: "11px 16px", fontFamily: "var(--sans)", fontSize: 11.5, letterSpacing: "0.08em", cursor: "pointer", fontWeight: 600 }}>
+              padding: "11px 16px", minHeight: 44, fontFamily: "var(--sans)", fontSize: 11.5, letterSpacing: "0.08em", cursor: "pointer", fontWeight: 600 }}>
             {last ? (es ? "Entendido" : "Got it") : (es ? "Siguiente" : "Next")}
           </button>
         </div>

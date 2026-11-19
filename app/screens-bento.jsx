@@ -73,7 +73,7 @@ function StaySwitcher({ t, res, siblings, onSwitch }) {
   );
 }
 
-function BentoScreen({ t, res, siblings, onSwitch, firstName, emails, onSwitchLang, onLogout }) {
+function BentoScreen({ t, res, siblings, onSwitch, firstName, emails, onSwitchLang, onLogout, holdTour }) {
   const nights = nightsBetween(res.checkin, res.checkout);
   const hasSwitcher = siblings && siblings.length > 1;
   // el bloque de check-in respira suavemente hasta que el huésped lo abre una vez
@@ -97,14 +97,21 @@ function BentoScreen({ t, res, siblings, onSwitch, firstName, emails, onSwitchLa
      (la 2a ya permite saltarlo). Después queda en el botón flotante. */
   const [tourOpen, setTourOpen] = useStateB(false);
   const [tourSess, setTourSess] = useStateB(0);
+  const [tourDue, setTourDue] = useStateB(false);
   useEffectB(() => {
     if (typeof tourState !== "function") return;
     const s = tourState();
     const n = (s.sessions || 0) + 1;
     saveTourState({ ...s, sessions: n });
     setTourSess(n);
-    if (n <= 2) { const tm = setTimeout(() => setTourOpen(true), 900); return () => clearTimeout(tm); }
+    if (n <= 2) setTourDue(true);
   }, []);
+  // Un aviso a la vez: si el aviso «Todo listo» está abierto (holdTour), el tutorial espera a que se cierre.
+  useEffectB(() => {
+    if (!tourDue || holdTour) return;
+    const tm = setTimeout(() => { setTourDue(false); setTourOpen(true); }, 900);
+    return () => clearTimeout(tm);
+  }, [tourDue, holdTour]);
   return (
     <React.Fragment>
       <AppHeader t={t} lang={t.code} onSwitchLang={onSwitchLang} user={guestUser} isAdmin={false} guest

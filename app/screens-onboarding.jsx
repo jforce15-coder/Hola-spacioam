@@ -247,6 +247,12 @@ function CodeScreen({ t, linkErr, onClearLinkErr, onResolved, onAdmin, onSwitchL
 /* ---------- STAY OVERVIEW ---------- */
 function OverviewScreen({ t, res, onStart, onExit, onSwitchLang }) {
   const nights = nightsBetween(res.checkin, res.checkout);
+  // fecha que se lee de un vistazo, en el idioma del huésped: «mié, 25 nov» / «Wed, Nov 25» (antes salía 2026-11-25)
+  const dia = (iso) => {
+    const d = new Date(String(iso || "").slice(0, 10) + "T12:00:00");
+    if (isNaN(d)) return iso || "—";
+    return d.toLocaleDateString(t.code === "en" ? "en-US" : "es-GT", { weekday: "short", day: "numeric", month: "short" }).replace(/\./g, "");
+  };
   const row = (label, value) => (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "13px 0",
       borderBottom: `1px solid ${C.beige}` }}>
@@ -272,8 +278,8 @@ function OverviewScreen({ t, res, onStart, onExit, onSwitchLang }) {
       </div>
       <div className="reveal" style={{ animationDelay: ".14s", background: C.white, borderRadius: "0 0 24px 24px",
         padding: "10px 26px 26px", border: `1px solid ${C.grisCalido}`, borderTop: "none" }}>
-        {row(t.checkin, res.checkin)}
-        {row(t.checkout, res.checkout)}
+        {row(t.checkin, dia(res.checkin))}
+        {row(t.checkout, dia(res.checkout))}
         {row(t.nights, nights)}
         {row(t.capacity, `${t.upTo} ${res.maxCapacity}`)}
         <div style={{ marginTop: 22 }}><Btn full onClick={onStart}>{t.startForm} <Icon name="arrow" size={17} color={C.alabaster} /></Btn></div>
